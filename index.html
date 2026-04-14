@@ -86,7 +86,7 @@
   </div>
 
   <div class="tab-panel active" id="panel-combat">
-    <details open id="sec-result"><summary>📊 현재 전투력 및 1:1 결과</summary><div class="body" id="result-body"></div></details>
+    <details open id="sec-result"><summary>📊 현재 전투력 및 1:1 실측 결과</summary><div class="body" id="result-body"></div></details>
     <details open id="sec-me"><summary>① 내 장비/펫/탈것 세팅</summary><div class="body" id="me-body"></div></details>
     <details id="sec-buff"><summary>② 연구 보정 및 버프</summary><div class="body" id="buff-body"></div></details>
     <details id="sec-enemy"><summary>③ 상대 스펙 (1:1 시뮬레이션용)</summary><div class="body" id="enemy-body"></div></details>
@@ -293,7 +293,7 @@ function migrate(s){
 function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 
 /* ==========================================================================
-   시뮬레이션 로직 (확률 기반 랜덤 적용)
+   시뮬레이션 로직 (전면 확률 주사위 굴림 방식 적용)
    ========================================================================== */
 function aggregateOptions(st){
   const agg = Object.fromEntries(OPT.filter(o=>o.id!=="none").map(o=>[o.id,0]));
@@ -343,45 +343,37 @@ function attackPeriod(atkSpd){
   return 0.5;
 }
 
-// 매 타격시 확률에 따라 데미지를 리턴하는 함수
-function getAutoDmg(atk, opts, oppBlock, isDeterministic = false){
+// [핵심] 평균 기댓값이 아닌 매 타격시 실제 주사위(RNG)를 굴리는 함수
+function getAutoDmg(atk, opts, oppBlock){
   const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
   const cd = (120 + (opts.critDmg||0))/100;
   const db = Math.max(0, Math.min(100, opts.double||0))/100;
   const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
   const base = atk * (1 + (opts.dmg||0)/100) * (1 + (opts.ranged||0)/100);
 
-  if (isDeterministic) {
-    return base * ((1-cr)*1 + cr*cd) * (1+db) * (1-blk);
-  } else {
-    let mult = 1;
-    if (Math.random() < cr) mult *= cd;
-    if (Math.random() < db) mult *= 2;
-    if (Math.random() < blk) mult = 0; // 블록 성공 시 데미지 0
-    return base * mult;
-  }
+  let mult = 1;
+  if (Math.random() < cr) mult *= cd; // 치명타 발동
+  if (Math.random() < db) mult *= 2;  // 더블 찬스 발동
+  if (Math.random() < blk) mult = 0;  // 상대방 블록 발동 시 데미지 무효화
+  return base * mult;
 }
 
-function getSkillFlatDmg(flatBase, opts, oppBlock, researchSkillDmg, isDeterministic = false){
+function getSkillFlatDmg(flatBase, opts, oppBlock, researchSkillDmg){
   const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
   const cd = (120 + (opts.critDmg||0))/100;
   const db = Math.max(0, Math.min(100, opts.double||0))/100;
   const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
   const base = flatBase * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (researchSkillDmg||0))/100);
 
-  if (isDeterministic) {
-    return base * ((1-cr)*1 + cr*cd) * (1+db) * (1-blk);
-  } else {
-    let mult = 1;
-    if (Math.random() < cr) mult *= cd;
-    if (Math.random() < db) mult *= 2;
-    if (Math.random() < blk) mult = 0;
-    return base * mult;
-  }
+  let mult = 1;
+  if (Math.random() < cr) mult *= cd;
+  if (Math.random() < db) mult *= 2;
+  if (Math.random() < blk) mult = 0;
+  return base * mult;
 }
 
-// 1:1 시뮬레이션 (isDeterministic = false면 매번 확률 발동)
-function simulate(me, en, isDeterministic = false){
+// 1:1 시뮬레이터 로직
+function simulate(me, en){
   const dtMs = 100;
   const tMaxMs = 120000;
   let myHp = me.totalHp, enHp = en.totalHp;
@@ -418,53 +410,61 @@ function simulate(me, en, isDeterministic = false){
   let enNextS1 = enS1DmgBase > 0 && enS1Cd !== Infinity ? Math.max(50, Math.round(enS1Cycle * 1000)) : Infinity;
   let enNextS2 = enS2DmgBase > 0 && enS2Cd !== Infinity ? Math.max(50, Math.round(enS2Cycle * 1000)) : Infinity;
 
+  // 실측 피해량 저장용 변수
+  let myTotalDealt = 0;
+  let enTotalDealt = 0;
+
   let tMs = 0;
   while(tMs < tMaxMs){
     tMs += dtMs;
-    let myDealt = 0, enDealt = 0;
+    let myDealtThisTick = 0, enDealtThisTick = 0;
     let myAutoDealt = 0, enAutoDealt = 0;
 
     if(tMs >= myNextAuto){
-      const dmg = getAutoDmg(me.totalAtk, me.opts, en.opts.block, isDeterministic);
-      myAutoDealt += dmg; myDealt += dmg;
+      const dmg = getAutoDmg(me.totalAtk, me.opts, en.opts.block);
+      myAutoDealt += dmg; myDealtThisTick += dmg;
       myNextAuto += myAutoMs;
     }
     if(tMs >= myNextS1){
-      myDealt += getSkillFlatDmg(myS1DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic);
+      myDealtThisTick += getSkillFlatDmg(myS1DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0);
       myNextS1 += Math.max(50, Math.round(myS1Cycle * 1000));
     }
     if(tMs >= myNextS2){
-      myDealt += getSkillFlatDmg(myS2DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic);
+      myDealtThisTick += getSkillFlatDmg(myS2DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0);
       myNextS2 += Math.max(50, Math.round(myS2Cycle * 1000));
     }
 
     if(tMs >= enNextAuto){
-      const dmg = getAutoDmg(en.totalAtk, en.opts, me.opts.block, isDeterministic);
-      enAutoDealt += dmg; enDealt += dmg;
+      const dmg = getAutoDmg(en.totalAtk, en.opts, me.opts.block);
+      enAutoDealt += dmg; enDealtThisTick += dmg;
       enNextAuto += enAutoMs;
     }
     if(tMs >= enNextS1){
-      enDealt += getSkillFlatDmg(enS1DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic);
+      enDealtThisTick += getSkillFlatDmg(enS1DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0);
       enNextS1 += Math.max(50, Math.round(enS1Cycle * 1000));
     }
     if(tMs >= enNextS2){
-      enDealt += getSkillFlatDmg(enS2DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic);
+      enDealtThisTick += getSkillFlatDmg(enS2DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0);
       enNextS2 += Math.max(50, Math.round(enS2Cycle * 1000));
     }
 
-    enHp -= myDealt;
-    myHp -= enDealt;
+    enHp -= myDealtThisTick;
+    myHp -= enDealtThisTick;
+    
+    myTotalDealt += myDealtThisTick;
+    enTotalDealt += enDealtThisTick;
 
+    // 흡혈은 실제 평타가 들어갔을 때만 발동
     if(myAutoDealt > 0) myHp = Math.min(myMax, myHp + myAutoDealt * myLife);
     if(enAutoDealt > 0) enHp = Math.min(enMax, enHp + enAutoDealt * enLife);
 
     const meDead = myHp <= 0, enDead = enHp <= 0;
-    if(meDead && enDead) return { winner:"draw", myHp:0, enHp:0, t:tMs/1000, myMax, enMax };
-    if(enDead) return { winner:"me", myHp:Math.max(0,myHp), enHp:0, t:tMs/1000, myMax, enMax };
-    if(meDead) return { winner:"en", myHp:0, enHp:Math.max(0,enHp), t:tMs/1000, myMax, enMax };
+    if(meDead && enDead) return { winner:"draw", myHp:0, enHp:0, t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt };
+    if(enDead) return { winner:"me", myHp:Math.max(0,myHp), enHp:0, t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt };
+    if(meDead) return { winner:"en", myHp:0, enHp:Math.max(0,enHp), t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt };
   }
   const myFrac = myHp/myMax, enFrac = enHp/enMax;
-  return { winner: myFrac>enFrac?"me":(myFrac<enFrac?"en":"draw"), myHp:Math.max(0,myHp), enHp:Math.max(0,enHp), t:tMaxMs/1000, myMax, enMax, timeout:true };
+  return { winner: myFrac>enFrac?"me":(myFrac<enFrac?"en":"draw"), myHp:Math.max(0,myHp), enHp:Math.max(0,enHp), t:tMaxMs/1000, myMax, enMax, timeout:true, myTotalDealt, enTotalDealt };
 }
 
 function buildMe(st){
@@ -473,7 +473,6 @@ function buildMe(st){
   return { isMe: true, totalHp: base.totalHp, totalAtk: base.totalAtk, opts: agg, research: st.research, _rawHp: base.rawHp, _rawAtk: base.rawAtk };
 }
 
-// 상대 스펙을 입력하지 않았을 경우, 혹은 CP 측정을 위한 공통 기준점:
 // 나와 체력/공격력 베이스가 완전히 동일하지만, 옵션은 프리셋 세팅을 한 가상의 적(섀도우)
 function buildPresetEnemy(st, fallbackHp, fallbackAtk){
   let enHp = +st.enemy.hp || 0;
@@ -489,7 +488,7 @@ function buildPresetEnemy(st, fallbackHp, fallbackAtk){
     isMe: false, 
     totalHp: enHp * 5, 
     totalAtk: enAtk,
-    opts: presetAgg, // 상대방 옵션을 프리셋으로 강제
+    opts: presetAgg, 
     skills: [
       { dmg: FIXED_SKILLS.s1.dmg, cd: FIXED_SKILLS.s1.cd }, 
       { dmg: FIXED_SKILLS.s2.dmg, cd: FIXED_SKILLS.s2.cd }
@@ -534,11 +533,19 @@ function aggregateFromDist(dist){
   return agg;
 }
 
-// 전투력 계산 시에는 값이 계속 변하는 것을 막기 위해 isDeterministic = true 로 돌립니다.
+// 전투력 점수(CP)는 확률에 따라 요동치지 않도록 10번 돌려 평균값을 냅니다.
+function simulateAverageScore(me, en, runs=10){
+  let totalScore = 0;
+  for(let i=0; i<runs; i++){
+    totalScore += powerScore(simulate(me, en));
+  }
+  return totalScore / runs;
+}
+
 function currentCPScore(st){
   const me = buildMe(st);
   const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
-  return powerScore(simulate(me, en, true)); 
+  return simulateAverageScore(me, en, 10);
 }
 
 function bestBuildCPScore(st){
@@ -550,7 +557,7 @@ function bestBuildCPScore(st){
   const presetBase = computeBase(st, presetAgg);
   const presetMe = { isMe: true, totalHp: presetBase.totalHp, totalAtk: presetBase.totalAtk, opts: presetAgg, research: st.research };
   
-  return powerScore(simulate(presetMe, en, true));
+  return simulateAverageScore(presetMe, en, 10);
 }
 
 /* ==========================================================================
@@ -814,19 +821,19 @@ function renderResult(){
 
   host.append(
     h("div",{class:"lbl-sub", style:"margin-top:10px"}, `내 현재 전투력 점수`),
+    h("p", {class:"muted", style:"margin:0 0 4px; line-height:1.4"}, "※ 전투력 점수는 오차를 줄이기 위해 내부적으로 10회 시뮬레이션의 평균값을 사용합니다."),
     h("div",{class:"big good", style:"color:#fff; margin-bottom:0"}, curCP.toLocaleString(undefined, {maximumFractionDigits:0})),
-    h("div",{class:"lbl-sub", style:"margin-top:4px"}, `표준 프리셋 대비: ${cpRatio.toFixed(1)}%`)
+    h("div",{class:"lbl-sub", style:"margin-top:4px"}, `표준 프리셋(100%) 더미 기준: ${cpRatio.toFixed(1)}%`)
   );
 
-  // 화면에 출력되는 시뮬레이션은 isDeterministic = false 로 작동합니다. (랜덤 확률 발동)
   const enCustom = buildCustomEnemy(state, me.totalHp, me.totalAtk);
-  const simCustom = simulate(me, enCustom, false); 
+  const simCustom = simulate(me, enCustom); 
   const isShadow = (+state.enemy.hp||0) <= 0;
 
   let customBox = h("div",{class:"slot"});
-  customBox.append(h("h4",null,`⚔️ 1:1 커스텀 상대 시뮬레이션 결과 ${isShadow?"(가상 섀도우)":""}`));
+  customBox.append(h("h4",null,`⚔️ 1:1 커스텀 상대 단일 시뮬레이션 ${isShadow?"(가상 섀도우)":""}`));
   customBox.append(
-    h("p", {class:"muted", style:"margin-top:0"}, "※ 매 타격 시 실제 확률(치명, 더블, 블록)이 적용되어 계산 시마다 결과가 달라집니다."),
+    h("p", {class:"muted", style:"margin-top:0"}, "※ 아래의 1:1 결과는 매 타격 시 실제 확률(치명, 더블, 블록)이 적용된 단일 전투 실측치이므로 계산 시마다 결과가 달라질 수 있습니다."),
     kv("결과", h("b",{class:simCustom.winner==="me"?"pos":"neg"}, simCustom.winner==="me"?"승리 ✔":"패배 ✘")),
     kv("소요 시간", `${simCustom.t.toFixed(1)} 초${simCustom.timeout?" (타임아웃)":""}`),
     kv("내 남은 체력", `${Math.round(simCustom.myHp).toLocaleString()} / ${Math.round(simCustom.myMax).toLocaleString()}`),
@@ -834,47 +841,13 @@ function renderResult(){
   );
   host.append(customBox);
 
-  const atkP = attackPeriod(me.opts.atkSpd);
-  const enAtkP = attackPeriod(enCustom.opts.atkSpd);
-  function dps(side, oppBlock, autoP){
-    const atk = side.totalAtk;
-    const opts = side.opts;
-    const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
-    const cd = (120 + (opts.critDmg||0))/100;
-    const db = Math.max(0, Math.min(100, opts.double||0))/100;
-    const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
-    
-    const critMult = (1-cr)*1 + cr*cd;
-    const doubleMult = 1 + db;
-    const blockMult = 1 - blk;
-    
-    const autoBase = atk * (1 + (opts.dmg||0)/100) * (1 + (opts.ranged||0)/100);
-    let v = (autoBase * critMult * doubleMult * blockMult) / autoP;
-    
-    const s1Dmg = side.isMe ? FIXED_SKILLS.s1.dmg : (side.skills[0]?.dmg||0);
-    const s1Cd  = side.isMe ? FIXED_SKILLS.s1.cd : (side.skills[0]?.cd||0);
-    const s2Dmg = side.isMe ? FIXED_SKILLS.s2.dmg : (side.skills[1]?.dmg||0);
-    const s2Cd  = side.isMe ? FIXED_SKILLS.s2.cd : (side.skills[1]?.cd||0);
-
-    const s1Cycle = (side.isMe ? FIXED_SKILLS.s1.duration : 0) + realCd(s1Cd, side.opts.skillCd);
-    const s2Cycle = (side.isMe ? FIXED_SKILLS.s2.duration : 0) + realCd(s2Cd, side.opts.skillCd);
-    
-    const skillBase1 = s1Dmg * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (side.research?.skillDmg||0))/100);
-    if(s1Dmg > 0 && s1Cd > 0) v += (skillBase1 * critMult * doubleMult * blockMult) / s1Cycle;
-    
-    const skillBase2 = s2Dmg * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (side.research?.skillDmg||0))/100);
-    if(s2Dmg > 0 && s2Cd > 0) v += (skillBase2 * critMult * doubleMult * blockMult) / s2Cycle;
-    
-    return v;
-  }
-
+  // 실측 피해량 및 DPS
   host.append(h("div",{class:"slot"},
-    h("h4",null,"평균 기댓값 파생 스탯 (가동률 적용)"),
-    kv("내 총 체력(결투장 ×5)", Math.round(me.totalHp).toLocaleString()),
-    kv("내 총 공격력", Math.round(me.totalAtk).toLocaleString()),
-    kv("내 일반공격 주기", `${atkP.toFixed(1)} 초`),
-    kv("내 기댓값 DPS", Math.round(dps(me, enCustom.opts.block, atkP)).toLocaleString()),
-    kv(`적 기댓값 DPS${isShadow?"(섀도우)":""}`, Math.round(dps(enCustom, me.opts.block, enAtkP)).toLocaleString())
+    h("h4",null,"시뮬레이션 실측 통계 (RNG 적용)"),
+    kv("내 총 가한 피해량", Math.round(simCustom.myTotalDealt).toLocaleString()),
+    kv("적 총 가한 피해량", Math.round(simCustom.enTotalDealt).toLocaleString()),
+    kv("내 평균 실측 DPS", Math.round(simCustom.myTotalDealt / simCustom.t).toLocaleString()),
+    kv(`적 평균 실측 DPS${isShadow?"(섀도우)":""}`, Math.round(simCustom.enTotalDealt / simCustom.t).toLocaleString())
   ));
 }
 
