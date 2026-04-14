@@ -536,10 +536,10 @@ function aggregateFromDist(dist){
   return agg;
 }
 
-function simulateAverageScore(me, en, runs=10){
+function simulateAverageScore(me, en, runs=1000){
   let totalScore = 0;
   for(let i=0; i<runs; i++){
-    totalScore += powerScore(simulate(me, en, true)); // 점수는 안정성을 위해 기댓값 기반
+    totalScore += powerScore(simulate(me, en, false)); // 1,000번 모두 실제 주사위(RNG) 굴림
   }
   return totalScore / runs;
 }
@@ -547,7 +547,7 @@ function simulateAverageScore(me, en, runs=10){
 function currentCPScore(st){
   const me = buildMe(st);
   const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
-  return simulateAverageScore(me, en, 10);
+  return simulateAverageScore(me, en, 1000);
 }
 
 function bestBuildCPScore(st){
@@ -559,7 +559,7 @@ function bestBuildCPScore(st){
   const presetBase = computeBase(st, presetAgg);
   const presetMe = { isMe: true, totalHp: presetBase.totalHp, totalAtk: presetBase.totalAtk, opts: presetAgg, research: st.research };
   
-  return simulateAverageScore(presetMe, en, 10);
+  return simulateAverageScore(presetMe, en, 1000);
 }
 
 /* ==========================================================================
@@ -823,7 +823,7 @@ function renderResult(){
 
   host.append(
     h("div",{class:"lbl-sub", style:"margin-top:10px"}, `내 현재 전투력 점수`),
-    h("p", {class:"muted", style:"margin:0 0 4px; line-height:1.4"}, "※ 전투력 점수는 오차를 줄이기 위해 내부적으로 10회 시뮬레이션의 기댓값 평균을 사용합니다."),
+    h("p", {class:"muted", style:"margin:0 0 4px; line-height:1.4"}, "※ 전투력 점수는 오차를 줄이고 완벽한 통계를 위해 내부적으로 1,000회 실제 확률(RNG) 시뮬레이션을 돌려 평균값을 사용합니다."),
     h("div",{class:"big good", style:"color:#fff; margin-bottom:0"}, curCP.toLocaleString(undefined, {maximumFractionDigits:0})),
     h("div",{class:"lbl-sub", style:"margin-top:4px"}, `표준 프리셋(100%) 더미 기준: ${cpRatio.toFixed(1)}%`)
   );
@@ -833,9 +833,9 @@ function renderResult(){
   const simCustom = simulate(me, enFight, false); 
 
   let customBox = h("div",{class:"slot"});
-  customBox.append(h("h4",null,`⚔️ 1:1 실측 시뮬레이션 ${isShadow?"(vs 표준 프리셋 더미)":"(vs 커스텀 상대)"}`));
+  customBox.append(h("h4",null,`⚔️ 1:1 단일 전투 시뮬레이션 결과 ${isShadow?"(vs 표준 프리셋 더미)":"(vs 커스텀 상대)"}`));
   customBox.append(
-    h("p", {class:"muted", style:"margin-top:0"}, isShadow ? "※ 상대 스펙을 비워두어, 기준점인 '표준 프리셋 더미'와 싸운 실측 로그입니다. 매 타격 RNG가 적용됩니다." : "※ 입력한 커스텀 상대와의 실측 로그입니다. 매 타격 RNG가 적용됩니다."),
+    h("p", {class:"muted", style:"margin-top:0"}, "※ 아래는 단일 전투 로그입니다. 매 타격 시 실제 확률(치명, 더블, 블록)이 적용되어 결과가 매번 달라질 수 있습니다."),
     kv("결과", h("b",{class:simCustom.winner==="me"?"pos":"neg"}, simCustom.winner==="me"?"승리 ✔":"패배 ✘")),
     kv("소요 시간", `${simCustom.t.toFixed(1)} 초${simCustom.timeout?" (타임아웃)":""}`),
     kv("내 남은 체력", `${Math.round(simCustom.myHp).toLocaleString()} / ${Math.round(simCustom.myMax).toLocaleString()}`),
@@ -843,57 +843,12 @@ function renderResult(){
   );
   host.append(customBox);
 
-  // 파생 스탯 (기댓값)
-  const atkP = attackPeriod(me.opts.atkSpd);
-  const enAtkP = attackPeriod(enFight.opts.atkSpd);
-  function dps(side, oppBlock, autoP){
-    const atk = side.totalAtk;
-    const opts = side.opts;
-    const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
-    const cd = (120 + (opts.critDmg||0))/100;
-    const db = Math.max(0, Math.min(100, opts.double||0))/100;
-    const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
-    
-    const critMult = (1-cr)*1 + cr*cd;
-    const doubleMult = 1 + db;
-    const blockMult = 1 - blk;
-    
-    const autoBase = atk * (1 + (opts.dmg||0)/100) * (1 + (opts.ranged||0)/100);
-    let v = (autoBase * critMult * doubleMult * blockMult) / autoP;
-    
-    const s1Dmg = side.isMe ? FIXED_SKILLS.s1.dmg : (side.skills[0]?.dmg||0);
-    const s1Cd  = side.isMe ? FIXED_SKILLS.s1.cd : (side.skills[0]?.cd||0);
-    const s2Dmg = side.isMe ? FIXED_SKILLS.s2.dmg : (side.skills[1]?.dmg||0);
-    const s2Cd  = side.isMe ? FIXED_SKILLS.s2.cd : (side.skills[1]?.cd||0);
-
-    const s1Cycle = (side.isMe ? FIXED_SKILLS.s1.duration : 0) + realCd(s1Cd, side.opts.skillCd);
-    const s2Cycle = (side.isMe ? FIXED_SKILLS.s2.duration : 0) + realCd(s2Cd, side.opts.skillCd);
-    
-    const skillBase1 = s1Dmg * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (side.research?.skillDmg||0))/100);
-    if(s1Dmg > 0 && s1Cd > 0) v += (skillBase1 * critMult * doubleMult * blockMult) / s1Cycle;
-    
-    const skillBase2 = s2Dmg * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (side.research?.skillDmg||0))/100);
-    if(s2Dmg > 0 && s2Cd > 0) v += (skillBase2 * critMult * doubleMult * blockMult) / s2Cycle;
-    
-    return v;
-  }
-
-  // 실측 피해량 및 DPS
   host.append(h("div",{class:"slot"},
     h("h4",null,"시뮬레이션 실측 통계 (RNG 적용)"),
     kv("내 총 가한 피해량", Math.round(simCustom.myTotalDealt).toLocaleString()),
     kv("적 총 가한 피해량", Math.round(simCustom.enTotalDealt).toLocaleString()),
     kv("내 평균 실측 DPS", Math.round(simCustom.myTotalDealt / simCustom.t).toLocaleString()),
     kv(`적 평균 실측 DPS`, Math.round(simCustom.enTotalDealt / simCustom.t).toLocaleString())
-  ));
-
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"평균 기댓값 파생 스탯 (가동률 적용)"),
-    kv("내 총 체력(결투장 ×5)", Math.round(me.totalHp).toLocaleString()),
-    kv("내 총 공격력", Math.round(me.totalAtk).toLocaleString()),
-    kv("내 일반공격 주기", `${atkP.toFixed(1)} 초`),
-    kv("내 기댓값 DPS", Math.round(dps(me, enFight.opts.block, atkP)).toLocaleString()),
-    kv(`적 기댓값 DPS`, Math.round(dps(enFight, me.opts.block, enAtkP)).toLocaleString())
   ));
 }
 
@@ -955,6 +910,7 @@ function renderCompare(){
 
   host.append(h("div",{class:"slot"},
     h("h4",null,"교체 시 전투력 점수 변화"),
+    h("p",{class:"muted",style:"margin-top:0"},"※ 정확한 값을 위해 1,000회 시뮬레이션을 수행합니다."),
     kv("현재 점수", baseScore.toFixed(0)),
     kv("새 장비 착용 시", newScore.toFixed(0)),
     (()=>{
