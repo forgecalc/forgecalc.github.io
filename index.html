@@ -293,7 +293,7 @@ function migrate(s){
 function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 
 /* ==========================================================================
-   시뮬레이션 로직
+   시뮬레이션 로직 (확률 기반 랜덤 적용)
    ========================================================================== */
 function aggregateOptions(st){
   const agg = Object.fromEntries(OPT.filter(o=>o.id!=="none").map(o=>[o.id,0]));
@@ -343,75 +343,120 @@ function attackPeriod(atkSpd){
   return 0.5;
 }
 
-function avgAutoDmg(atk, opts, oppBlock){
-  const cr = Math.max(0, Math.min(100, opts.critRate))/100;
-  const cd = (120 + opts.critDmg)/100;
-  const critMult = (1-cr)*1 + cr*cd;
-  const doubleMult = 1 + Math.max(0, Math.min(100, opts.double))/100;
-  const blockMult = 1 - Math.max(0, Math.min(100, oppBlock))/100;
-  const base = atk * (1 + opts.dmg/100) * (1 + opts.ranged/100);
-  return base * critMult * doubleMult * blockMult;
+// 매 타격시 확률에 따라 데미지를 리턴하는 함수
+function getAutoDmg(atk, opts, oppBlock, isDeterministic = false){
+  const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
+  const cd = (120 + (opts.critDmg||0))/100;
+  const db = Math.max(0, Math.min(100, opts.double||0))/100;
+  const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
+  const base = atk * (1 + (opts.dmg||0)/100) * (1 + (opts.ranged||0)/100);
+
+  if (isDeterministic) {
+    return base * ((1-cr)*1 + cr*cd) * (1+db) * (1-blk);
+  } else {
+    let mult = 1;
+    if (Math.random() < cr) mult *= cd;
+    if (Math.random() < db) mult *= 2;
+    if (Math.random() < blk) mult = 0; // 블록 성공 시 데미지 0
+    return base * mult;
+  }
 }
 
-function avgSkillFlatDmg(flatBase, opts, oppBlock, researchSkillDmg){
-  const cr = Math.max(0, Math.min(100, opts.critRate))/100;
-  const cd = (120 + opts.critDmg)/100;
-  const critMult = (1-cr)*1 + cr*cd;
-  const doubleMult = 1 + Math.max(0, Math.min(100, opts.double))/100;
-  const blockMult = 1 - Math.max(0, Math.min(100, oppBlock))/100;
-  const base = flatBase * (1 + opts.dmg/100) * (1 + (opts.skillDmg + researchSkillDmg)/100);
-  return base * critMult * doubleMult * blockMult;
+function getSkillFlatDmg(flatBase, opts, oppBlock, researchSkillDmg, isDeterministic = false){
+  const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
+  const cd = (120 + (opts.critDmg||0))/100;
+  const db = Math.max(0, Math.min(100, opts.double||0))/100;
+  const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
+  const base = flatBase * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (researchSkillDmg||0))/100);
+
+  if (isDeterministic) {
+    return base * ((1-cr)*1 + cr*cd) * (1+db) * (1-blk);
+  } else {
+    let mult = 1;
+    if (Math.random() < cr) mult *= cd;
+    if (Math.random() < db) mult *= 2;
+    if (Math.random() < blk) mult = 0;
+    return base * mult;
+  }
 }
 
-function sideState(side, oppBlock){
-  const autoPSec = attackPeriod(side.opts.atkSpd);
-  const autoPMs = Math.round(autoPSec * 1000);
-  const auto = avgAutoDmg(side.totalAtk, side.opts, oppBlock);
-  const life = Math.max(0, +side.opts.lifesteal||0)/100;
-  
-  const s1Dmg = side.isMe ? FIXED_SKILLS.s1.dmg : (side.skills[0]?.dmg || 0);
-  const s1Cd  = side.isMe ? FIXED_SKILLS.s1.cd  : (side.skills[0]?.cd || 0);
-  const s2Dmg = side.isMe ? FIXED_SKILLS.s2.dmg : (side.skills[1]?.dmg || 0);
-  const s2Cd  = side.isMe ? FIXED_SKILLS.s2.cd  : (side.skills[1]?.cd || 0);
-  
-  const s1CycleSec = (side.isMe ? FIXED_SKILLS.s1.duration : 0) + realCd(s1Cd, side.opts.skillCd);
-  const s2CycleSec = (side.isMe ? FIXED_SKILLS.s2.duration : 0) + realCd(s2Cd, side.opts.skillCd);
-  
-  const skillCdMs = [
-    s1Cd > 0 ? Math.max(50, Math.round(s1CycleSec * 1000)) : Infinity,
-    s2Cd > 0 ? Math.max(50, Math.round(s2CycleSec * 1000)) : Infinity
-  ];
-  const skillDmg = [
-    s1Dmg > 0 ? avgSkillFlatDmg(s1Dmg, side.opts, oppBlock, side.research?.skillDmg||0) : 0,
-    s2Dmg > 0 ? avgSkillFlatDmg(s2Dmg, side.opts, oppBlock, side.research?.skillDmg||0) : 0
-  ];
-
-  return { autoPMs, auto, life, skillCdMs, skillDmg, nextAutoMs: autoPMs>0 ? autoPMs : Infinity, nextSkillMs: [skillCdMs[0], skillCdMs[1]] };
-}
-
-function simulate(me, en){
+// 1:1 시뮬레이션 (isDeterministic = false면 매번 확률 발동)
+function simulate(me, en, isDeterministic = false){
   const dtMs = 100;
   const tMaxMs = 120000;
   let myHp = me.totalHp, enHp = en.totalHp;
   const myMax = myHp, enMax = enHp;
-  const M = sideState(me, en.opts.block);
-  const E = sideState(en, me.opts.block);
+
+  const myAutoP = attackPeriod(me.opts.atkSpd);
+  const enAutoP = attackPeriod(en.opts.atkSpd);
+  const myAutoMs = Math.round(myAutoP * 1000);
+  const enAutoMs = Math.round(enAutoP * 1000);
+
+  const myLife = Math.max(0, +(me.opts.lifesteal||0))/100;
+  const enLife = Math.max(0, +(en.opts.lifesteal||0))/100;
+
+  const myS1Cd = realCd(me.isMe ? FIXED_SKILLS.s1.cd : (me.skills?.[0]?.cd||0), me.opts.skillCd);
+  const myS2Cd = realCd(me.isMe ? FIXED_SKILLS.s2.cd : (me.skills?.[1]?.cd||0), me.opts.skillCd);
+  const enS1Cd = realCd(en.isMe ? FIXED_SKILLS.s1.cd : (en.skills?.[0]?.cd||0), en.opts.skillCd);
+  const enS2Cd = realCd(en.isMe ? FIXED_SKILLS.s2.cd : (en.skills?.[1]?.cd||0), en.opts.skillCd);
+
+  const myS1Cycle = (me.isMe ? FIXED_SKILLS.s1.duration : 0) + myS1Cd;
+  const myS2Cycle = (me.isMe ? FIXED_SKILLS.s2.duration : 0) + myS2Cd;
+  const enS1Cycle = (en.isMe ? FIXED_SKILLS.s1.duration : 0) + enS1Cd;
+  const enS2Cycle = (en.isMe ? FIXED_SKILLS.s2.duration : 0) + enS2Cd;
+
+  const myS1DmgBase = me.isMe ? FIXED_SKILLS.s1.dmg : (me.skills?.[0]?.dmg||0);
+  const myS2DmgBase = me.isMe ? FIXED_SKILLS.s2.dmg : (me.skills?.[1]?.dmg||0);
+  const enS1DmgBase = en.isMe ? FIXED_SKILLS.s1.dmg : (en.skills?.[0]?.dmg||0);
+  const enS2DmgBase = en.isMe ? FIXED_SKILLS.s2.dmg : (en.skills?.[1]?.dmg||0);
+
+  let myNextAuto = myAutoMs > 0 ? myAutoMs : Infinity;
+  let enNextAuto = enAutoMs > 0 ? enAutoMs : Infinity;
+  
+  let myNextS1 = myS1DmgBase > 0 && myS1Cd !== Infinity ? Math.max(50, Math.round(myS1Cycle * 1000)) : Infinity;
+  let myNextS2 = myS2DmgBase > 0 && myS2Cd !== Infinity ? Math.max(50, Math.round(myS2Cycle * 1000)) : Infinity;
+  let enNextS1 = enS1DmgBase > 0 && enS1Cd !== Infinity ? Math.max(50, Math.round(enS1Cycle * 1000)) : Infinity;
+  let enNextS2 = enS2DmgBase > 0 && enS2Cd !== Infinity ? Math.max(50, Math.round(enS2Cycle * 1000)) : Infinity;
 
   let tMs = 0;
   while(tMs < tMaxMs){
     tMs += dtMs;
     let myDealt = 0, enDealt = 0;
-    let myAutoDealt = 0;
-    if(tMs >= M.nextAutoMs){ myAutoDealt += M.auto; myDealt += M.auto; M.nextAutoMs += M.autoPMs; }
-    for(let i=0;i<2;i++) if(M.skillDmg[i]>0 && tMs >= M.nextSkillMs[i]){ myDealt += M.skillDmg[i]; M.nextSkillMs[i] += M.skillCdMs[i]; }
-    let enAutoDealt = 0;
-    if(tMs >= E.nextAutoMs){ enAutoDealt += E.auto; enDealt += E.auto; E.nextAutoMs += E.autoPMs; }
-    for(let i=0;i<2;i++) if(E.skillDmg[i]>0 && tMs >= E.nextSkillMs[i]){ enDealt += E.skillDmg[i]; E.nextSkillMs[i] += E.skillCdMs[i]; }
+    let myAutoDealt = 0, enAutoDealt = 0;
+
+    if(tMs >= myNextAuto){
+      const dmg = getAutoDmg(me.totalAtk, me.opts, en.opts.block, isDeterministic);
+      myAutoDealt += dmg; myDealt += dmg;
+      myNextAuto += myAutoMs;
+    }
+    if(tMs >= myNextS1){
+      myDealt += getSkillFlatDmg(myS1DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic);
+      myNextS1 += Math.max(50, Math.round(myS1Cycle * 1000));
+    }
+    if(tMs >= myNextS2){
+      myDealt += getSkillFlatDmg(myS2DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic);
+      myNextS2 += Math.max(50, Math.round(myS2Cycle * 1000));
+    }
+
+    if(tMs >= enNextAuto){
+      const dmg = getAutoDmg(en.totalAtk, en.opts, me.opts.block, isDeterministic);
+      enAutoDealt += dmg; enDealt += dmg;
+      enNextAuto += enAutoMs;
+    }
+    if(tMs >= enNextS1){
+      enDealt += getSkillFlatDmg(enS1DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic);
+      enNextS1 += Math.max(50, Math.round(enS1Cycle * 1000));
+    }
+    if(tMs >= enNextS2){
+      enDealt += getSkillFlatDmg(enS2DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic);
+      enNextS2 += Math.max(50, Math.round(enS2Cycle * 1000));
+    }
 
     enHp -= myDealt;
     myHp -= enDealt;
-    if(myAutoDealt > 0) myHp = Math.min(myMax, myHp + myAutoDealt * M.life);
-    if(enAutoDealt > 0) enHp = Math.min(enMax, enHp + enAutoDealt * E.life);
+
+    if(myAutoDealt > 0) myHp = Math.min(myMax, myHp + myAutoDealt * myLife);
+    if(enAutoDealt > 0) enHp = Math.min(enMax, enHp + enAutoDealt * enLife);
 
     const meDead = myHp <= 0, enDead = enHp <= 0;
     if(meDead && enDead) return { winner:"draw", myHp:0, enHp:0, t:tMs/1000, myMax, enMax };
@@ -434,11 +479,9 @@ function buildPresetEnemy(st, fallbackHp, fallbackAtk){
   let enHp = +st.enemy.hp || 0;
   let enAtk = +st.enemy.atk || 0;
   
-  // 사용자가 적 스펙을 아예 입력하지 않았다면 나와 베이스를 동일하게 세팅 (폴백)
   if(enHp <= 0) enHp = (fallbackHp || 100000) / 5; 
   if(enAtk <= 0) enAtk = fallbackAtk || 10000;
 
-  // CP 측정을 위해 상대방의 장비 옵션을 '종결 프리셋'으로 고정 장착
   const presetDist = { critRate: 7, critDmg: 7, atkSpd: 6, double: 2, lifesteal: 1, dmg: 1, hp: 0, block: 0, ranged: 0, skillDmg: 0, skillCd: 0, hpRegen: 0, melee: 0 };
   const presetAgg = aggregateFromDist(presetDist);
 
@@ -451,11 +494,10 @@ function buildPresetEnemy(st, fallbackHp, fallbackAtk){
       { dmg: FIXED_SKILLS.s1.dmg, cd: FIXED_SKILLS.s1.cd }, 
       { dmg: FIXED_SKILLS.s2.dmg, cd: FIXED_SKILLS.s2.cd }
     ],
-    research: st.research // 연구 보정도 동일하게 적용
+    research: st.research
   };
 }
 
-// 1:1 커스텀 시뮬레이션용 적 생성
 function buildCustomEnemy(st, fallbackHp, fallbackAtk){
   let enHp = +st.enemy.hp || 0;
   let enAtk = +st.enemy.atk || 0;
@@ -492,14 +534,13 @@ function aggregateFromDist(dist){
   return agg;
 }
 
-// 내 현재 점수 (나 vs 프리셋을 장착한 나)
+// 전투력 계산 시에는 값이 계속 변하는 것을 막기 위해 isDeterministic = true 로 돌립니다.
 function currentCPScore(st){
   const me = buildMe(st);
   const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
-  return powerScore(simulate(me, en));
+  return powerScore(simulate(me, en, true)); 
 }
 
-// 기준점 (프리셋을 장착한 나 vs 프리셋을 장착한 나) = 거울전이므로 무조건 5000점(무승부)
 function bestBuildCPScore(st){
   const me = buildMe(st); 
   const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
@@ -509,7 +550,7 @@ function bestBuildCPScore(st){
   const presetBase = computeBase(st, presetAgg);
   const presetMe = { isMe: true, totalHp: presetBase.totalHp, totalAtk: presetBase.totalAtk, opts: presetAgg, research: st.research };
   
-  return powerScore(simulate(presetMe, en));
+  return powerScore(simulate(presetMe, en, true));
 }
 
 /* ==========================================================================
@@ -774,26 +815,42 @@ function renderResult(){
   host.append(
     h("div",{class:"lbl-sub", style:"margin-top:10px"}, `내 현재 전투력 점수`),
     h("div",{class:"big good", style:"color:#fff; margin-bottom:0"}, curCP.toLocaleString(undefined, {maximumFractionDigits:0})),
-    h("div",{class:"lbl-sub", style:"margin-top:4px"}, `프리셋 세팅 더미 기준 (1:1 결투): ${cpRatio.toFixed(1)}%`)
+    h("div",{class:"lbl-sub", style:"margin-top:4px"}, `표준 프리셋 대비: ${cpRatio.toFixed(1)}%`)
   );
 
-  const en = buildCustomEnemy(state, me.totalHp, me.totalAtk);
-  const sim = simulate(me, en);
+  // 화면에 출력되는 시뮬레이션은 isDeterministic = false 로 작동합니다. (랜덤 확률 발동)
+  const enCustom = buildCustomEnemy(state, me.totalHp, me.totalAtk);
+  const simCustom = simulate(me, enCustom, false); 
   const isShadow = (+state.enemy.hp||0) <= 0;
 
-  let simBox = h("div",{class:"slot"});
-  simBox.append(h("h4",null,`1:1 커스텀 상대 시뮬레이션 결과 ${isShadow?"(가상 섀도우)":""}`));
-  simBox.append(
-    kv("결과", h("b",{class:sim.winner==="me"?"pos":"neg"}, sim.winner==="me"?"승리 ✔":"패배 ✘")),
-    kv("소요 시간", `${sim.t.toFixed(1)} 초${sim.timeout?" (타임아웃)":""}`),
-    kv("내 남은 체력", `${Math.round(sim.myHp).toLocaleString()} / ${Math.round(sim.myMax).toLocaleString()}`)
+  let customBox = h("div",{class:"slot"});
+  customBox.append(h("h4",null,`⚔️ 1:1 커스텀 상대 시뮬레이션 결과 ${isShadow?"(가상 섀도우)":""}`));
+  customBox.append(
+    h("p", {class:"muted", style:"margin-top:0"}, "※ 매 타격 시 실제 확률(치명, 더블, 블록)이 적용되어 계산 시마다 결과가 달라집니다."),
+    kv("결과", h("b",{class:simCustom.winner==="me"?"pos":"neg"}, simCustom.winner==="me"?"승리 ✔":"패배 ✘")),
+    kv("소요 시간", `${simCustom.t.toFixed(1)} 초${simCustom.timeout?" (타임아웃)":""}`),
+    kv("내 남은 체력", `${Math.round(simCustom.myHp).toLocaleString()} / ${Math.round(simCustom.myMax).toLocaleString()}`),
+    kv("적 남은 체력", `${Math.round(simCustom.enHp).toLocaleString()} / ${Math.round(simCustom.enMax).toLocaleString()}`)
   );
-  host.append(simBox);
+  host.append(customBox);
 
   const atkP = attackPeriod(me.opts.atkSpd);
-  const enAtkP = attackPeriod(en.opts.atkSpd);
+  const enAtkP = attackPeriod(enCustom.opts.atkSpd);
   function dps(side, oppBlock, autoP){
-    let v = avgAutoDmg(side.totalAtk, side.opts, oppBlock)/autoP;
+    const atk = side.totalAtk;
+    const opts = side.opts;
+    const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
+    const cd = (120 + (opts.critDmg||0))/100;
+    const db = Math.max(0, Math.min(100, opts.double||0))/100;
+    const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
+    
+    const critMult = (1-cr)*1 + cr*cd;
+    const doubleMult = 1 + db;
+    const blockMult = 1 - blk;
+    
+    const autoBase = atk * (1 + (opts.dmg||0)/100) * (1 + (opts.ranged||0)/100);
+    let v = (autoBase * critMult * doubleMult * blockMult) / autoP;
+    
     const s1Dmg = side.isMe ? FIXED_SKILLS.s1.dmg : (side.skills[0]?.dmg||0);
     const s1Cd  = side.isMe ? FIXED_SKILLS.s1.cd : (side.skills[0]?.cd||0);
     const s2Dmg = side.isMe ? FIXED_SKILLS.s2.dmg : (side.skills[1]?.dmg||0);
@@ -802,18 +859,22 @@ function renderResult(){
     const s1Cycle = (side.isMe ? FIXED_SKILLS.s1.duration : 0) + realCd(s1Cd, side.opts.skillCd);
     const s2Cycle = (side.isMe ? FIXED_SKILLS.s2.duration : 0) + realCd(s2Cd, side.opts.skillCd);
     
-    if(s1Dmg > 0 && s1Cd > 0) v += avgSkillFlatDmg(s1Dmg, side.opts, oppBlock, side.research?.skillDmg||0) / s1Cycle;
-    if(s2Dmg > 0 && s2Cd > 0) v += avgSkillFlatDmg(s2Dmg, side.opts, oppBlock, side.research?.skillDmg||0) / s2Cycle;
+    const skillBase1 = s1Dmg * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (side.research?.skillDmg||0))/100);
+    if(s1Dmg > 0 && s1Cd > 0) v += (skillBase1 * critMult * doubleMult * blockMult) / s1Cycle;
+    
+    const skillBase2 = s2Dmg * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (side.research?.skillDmg||0))/100);
+    if(s2Dmg > 0 && s2Cd > 0) v += (skillBase2 * critMult * doubleMult * blockMult) / s2Cycle;
+    
     return v;
   }
 
   host.append(h("div",{class:"slot"},
-    h("h4",null,"파생 스탯 (연구+버프 가동률 적용)"),
+    h("h4",null,"평균 기댓값 파생 스탯 (가동률 적용)"),
     kv("내 총 체력(결투장 ×5)", Math.round(me.totalHp).toLocaleString()),
     kv("내 총 공격력", Math.round(me.totalAtk).toLocaleString()),
     kv("내 일반공격 주기", `${atkP.toFixed(1)} 초`),
-    kv("내 추정 DPS", Math.round(dps(me, en.opts.block, atkP)).toLocaleString()),
-    kv("적 추정 DPS", Math.round(dps(en, me.opts.block, enAtkP)).toLocaleString())
+    kv("내 기댓값 DPS", Math.round(dps(me, enCustom.opts.block, atkP)).toLocaleString()),
+    kv(`적 기댓값 DPS${isShadow?"(섀도우)":""}`, Math.round(dps(enCustom, me.opts.block, enAtkP)).toLocaleString())
   ));
 }
 
