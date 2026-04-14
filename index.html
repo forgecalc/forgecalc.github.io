@@ -89,7 +89,7 @@
     <details open id="sec-result"><summary>📊 현재 전투력 및 시뮬레이션 결과</summary><div class="body" id="result-body"></div></details>
     <details open id="sec-me"><summary>① 내 장비/펫/탈것 세팅</summary><div class="body" id="me-body"></div></details>
     <details id="sec-buff"><summary>② 연구 보정 및 버프</summary><div class="body" id="buff-body"></div></details>
-    <details id="sec-enemy"><summary>③ 상대 스펙</summary><div class="body" id="enemy-body"></div></details>
+    <details open id="sec-enemy"><summary>③ 상대 스펙</summary><div class="body" id="enemy-body"></div></details>
     <details id="sec-compare"><summary>④ 장비 교체 비교 (장비 시뮬레이터)</summary><div class="body" id="cmp-body"></div></details>
     <details id="sec-recommend"><summary>⑤ 최대 효율 옵션 추천</summary><div class="body" id="rec-body"></div></details>
   </div>
@@ -120,7 +120,7 @@
 "use strict";
 
 /* ==========================================================================
-   옵션 정의 및 하드코딩 데이터
+   옵션 정의 및 하드코딩 스킬 데이터
    ========================================================================== */
 const OPT = [
   { id:"none",     name:"— 없음 —", max:0,   used:true },
@@ -140,11 +140,11 @@ const OPT = [
 ];
 const OPT_IDS_ENEMY = OPT.filter(o => o.id !== "none").map(o => o.id);
 
-// 스킬 하드코딩 (사용자 요청)
+// 스킬 하드코딩
 const FIXED_SKILLS = {
-  s1: { dmg: 18200000, cd: 8 },
-  s2: { dmg: 17100000, cd: 10 },
-  buff: { hp: 60500000, atk: 7570000 }
+  s1:   { dmg: 18200000, duration: 8, cd: 8 },
+  s2:   { dmg: 17100000, duration: 0, cd: 10 },
+  buff: { hp: 60500000, atk: 7570000, duration: 8, cd: 8 }
 };
 
 /* ==========================================================================
@@ -172,6 +172,13 @@ const OPT_SHORT = {
   critRate:"치확", critDmg:"치피", block:"블록", hpRegen:"재생",
   hp:"체력", lifesteal:"흡혈", double:"더블", dmg:"피해",
   melee:"근접", ranged:"원거리", atkSpd:"공속", skillDmg:"스킬", skillCd:"쿨감"
+};
+
+const ENEMY_LABELS = {
+  critRate:"치명타 확률%", critDmg:"치명타 피해%", block:"블록 확률%",
+  hpRegen:"체력 재생%", hp:"체력%", lifesteal:"생명력 흡수%",
+  double:"더블 찬스%", dmg:"피해%", melee:"근접 피해%", ranged:"원거리 피해%",
+  atkSpd:"공격 속도%", skillDmg:"스킬 피해%", skillCd:"스킬 쿨감%"
 };
 
 /* ==========================================================================
@@ -230,6 +237,7 @@ function defaultState(){
     enemy: {
       hp:0, atk:0,
       opts: Object.fromEntries(OPT_IDS_ENEMY.map(k => [k,0])),
+      skills: [{dmg:0, cd:0}, {dmg:0, cd:0}]
     },
     cmp: { slot:"equips-0", item:emptySlot(2) },
     forge: {
@@ -271,6 +279,7 @@ function migrate(s){
   
   s.enemy = Object.assign({}, d.enemy, s.enemy||{});
   s.enemy.opts = Object.assign({}, d.enemy.opts, s.enemy.opts||{});
+  s.enemy.skills = Array.isArray(s.enemy.skills) && s.enemy.skills.length===2 ? s.enemy.skills : d.enemy.skills;
   
   if(!s.cmp || typeof s.cmp.slot !== "string" || !s.cmp.item) s.cmp = d.cmp;
   
@@ -308,9 +317,14 @@ function aggregateOptions(st){
   return agg;
 }
 
+function realCd(baseCd, skillCdSum){
+  const v = +baseCd || 0;
+  if(v <= 0) return Infinity;
+  return Math.max(0.05, v * (1 + skillCdSum/100));
+}
+
 function computeBase(st, agg){
   const r = st.research;
-  // 부위별 개별 연구 보정 적용
   const equipHp = st.equips.reduce((sum, eq, i) => sum + (+eq.hp||0) * (1 + (r.equips[i]?.hp||0)/100), 0);
   const equipAtk = st.equips.reduce((sum, eq, i) => sum + (+eq.atk||0) * (1 + (r.equips[i]?.atk||0)/100), 0);
   const petHp    = st.pets.reduce((sum, eq) => sum + (+eq.hp||0), 0)  * (1 + r.petHp/100);
@@ -321,10 +335,14 @@ function computeBase(st, agg){
   const rawHp  = equipHp + petHp + mntHp;
   const rawAtk = equipAtk + petAtk + mntAtk;
 
-  // 하드코딩 스킬3 (버프) 포함
-  const totalHp_noArena = rawHp * (1 + agg.hp/100) + (+st.buff.hpFlat||0) + FIXED_SKILLS.buff.hp;
+  const buffWaitCd = realCd(FIXED_SKILLS.buff.cd, agg.skillCd);
+  const buffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + buffWaitCd);
+  const avgBuffHp = FIXED_SKILLS.buff.hp * buffUptime;
+  const avgBuffAtk = FIXED_SKILLS.buff.atk * buffUptime;
+
+  const totalHp_noArena = rawHp * (1 + agg.hp/100) + (+st.buff.hpFlat||0) + avgBuffHp;
   const totalHp = totalHp_noArena * 5; 
-  const totalAtk = rawAtk + (+st.buff.atkFlat||0) + FIXED_SKILLS.buff.atk;
+  const totalAtk = rawAtk + (+st.buff.atkFlat||0) + avgBuffAtk;
 
   return { totalHp, totalAtk, rawHp, rawAtk };
 }
@@ -355,15 +373,8 @@ function avgSkillFlatDmg(flatBase, opts, oppBlock, researchSkillDmg){
   const critMult = (1-cr)*1 + cr*cd;
   const doubleMult = 1 + Math.max(0, Math.min(100, opts.double))/100;
   const blockMult = 1 - Math.max(0, Math.min(100, oppBlock))/100;
-  // 하드코딩된 평타/계수 제외 순수 고정 피해량에 치명, 피해증가 등 스케일링 적용
   const base = flatBase * (1 + opts.dmg/100) * (1 + (opts.skillDmg + researchSkillDmg)/100);
   return base * critMult * doubleMult * blockMult;
-}
-
-function realCd(baseCd, skillCdSum){
-  const v = +baseCd || 0;
-  if(v <= 0) return Infinity;
-  return Math.max(0.05, v * (1 + skillCdSum/100));
 }
 
 function sideState(side, oppBlock){
@@ -372,14 +383,22 @@ function sideState(side, oppBlock){
   const auto = avgAutoDmg(side.totalAtk, side.opts, oppBlock);
   const life = Math.max(0, +side.opts.lifesteal||0)/100;
   
-  const skillCdSec = [
-    realCd(FIXED_SKILLS.s1.cd, side.opts.skillCd),
-    realCd(FIXED_SKILLS.s2.cd, side.opts.skillCd),
+  const s1Dmg = side.isMe ? FIXED_SKILLS.s1.dmg : (side.skills[0]?.dmg || 0);
+  const s1Cd  = side.isMe ? FIXED_SKILLS.s1.cd  : (side.skills[0]?.cd || 0);
+  const s2Dmg = side.isMe ? FIXED_SKILLS.s2.dmg : (side.skills[1]?.dmg || 0);
+  const s2Cd  = side.isMe ? FIXED_SKILLS.s2.cd  : (side.skills[1]?.cd || 0);
+  
+  const s1CycleSec = (side.isMe ? FIXED_SKILLS.s1.duration : 0) + realCd(s1Cd, side.opts.skillCd);
+  const s2CycleSec = (side.isMe ? FIXED_SKILLS.s2.duration : 0) + realCd(s2Cd, side.opts.skillCd);
+  
+  const skillCdMs = [
+    s1Cd > 0 ? Math.max(50, Math.round(s1CycleSec * 1000)) : Infinity,
+    s2Cd > 0 ? Math.max(50, Math.round(s2CycleSec * 1000)) : Infinity
   ];
-  const skillCdMs = skillCdSec.map(v => v===Infinity ? Infinity : Math.max(50, Math.round(v*1000)));
+  
   const skillDmg = [
-    avgSkillFlatDmg(FIXED_SKILLS.s1.dmg, side.opts, oppBlock, side.research?.skillDmg||0),
-    avgSkillFlatDmg(FIXED_SKILLS.s2.dmg, side.opts, oppBlock, side.research?.skillDmg||0)
+    s1Dmg > 0 ? avgSkillFlatDmg(s1Dmg, side.opts, oppBlock, side.research?.skillDmg||0) : 0,
+    s2Dmg > 0 ? avgSkillFlatDmg(s2Dmg, side.opts, oppBlock, side.research?.skillDmg||0) : 0
   ];
 
   return {
@@ -426,6 +445,7 @@ function buildMe(st){
   const agg = aggregateOptions(st);
   const base = computeBase(st, agg);
   return {
+    isMe: true,
     totalHp: base.totalHp, totalAtk: base.totalAtk,
     opts: agg, research: st.research,
     _rawHp: base.rawHp, _rawAtk: base.rawAtk,
@@ -433,9 +453,14 @@ function buildMe(st){
 }
 function buildEnemy(st){
   return {
-    totalHp: (+st.enemy.hp||0) * 5,
+    isMe: false,
+    totalHp: +st.enemy.hp||0, 
     totalAtk: +st.enemy.atk||0,
     opts: Object.fromEntries(OPT_IDS_ENEMY.map(k => [k, +st.enemy.opts[k]||0])),
+    skills: [
+      { dmg: +st.enemy.skills[0].dmg||0, cd: +st.enemy.skills[0].cd||0 },
+      { dmg: +st.enemy.skills[1].dmg||0, cd: +st.enemy.skills[1].cd||0 }
+    ],
     research: { skillDmg:0 },
   };
 }
@@ -459,7 +484,7 @@ function aggregateFromDist(dist){
 function scoreForDist(st, dist, enemy){
   const agg = aggregateFromDist(dist);
   const base = computeBase(st, agg);
-  const testMe = { totalHp:base.totalHp, totalAtk:base.totalAtk, opts:agg, research:st.research };
+  const testMe = { isMe: true, totalHp:base.totalHp, totalAtk:base.totalAtk, opts:agg, research:st.research };
   return powerScore(simulate(testMe, enemy));
 }
 
@@ -475,7 +500,7 @@ function currentScore(st){
 }
 
 /* ==========================================================================
-   DOM 렌더링 함수
+   DOM 렌더링 함수 & 커스텀 컴포넌트
    ========================================================================== */
 function h(tag, attrs, ...kids){
   const el = document.createElement(tag);
@@ -493,6 +518,7 @@ function h(tag, attrs, ...kids){
   return el;
 }
 
+// 옵션 퍼센트용 순수 숫자 입력
 function numInput(value, onchange, opts={}){
   return h("input", {
     type:"number", inputmode:"decimal", step:"any",
@@ -501,7 +527,32 @@ function numInput(value, onchange, opts={}){
     onchange:(e)=>{ const v = parseFloat(e.target.value); onchange(isNaN(v)?0:v); }
   });
 }
-function select(options, value, onchange){
+
+// 큰 숫자(k, m, b) 단위 선택이 결합된 커스텀 인풋
+function unitNumInput(value, onchange, opts={}){
+   let d = value || 0;
+   let u = 1;
+   if(d > 0 && d % 1000000000 === 0) { d /= 1000000000; u = 1000000000; }
+   else if(d > 0 && d % 1000000 === 0) { d /= 1000000; u = 1000000; }
+   else if(d > 0 && d % 1000 === 0) { d /= 1000; u = 1000; }
+   
+   const inp = h("input", { type:"number", inputmode:"decimal", step:"any", value: d===0?"":d, placeholder: opts.placeholder||"0" });
+   const sel = h("select", { style:"width:65px; margin-left:6px; padding:0 4px; border-radius:8px;" },
+      h("option", {value:1, selected: u===1}, "-"),
+      h("option", {value:1000, selected: u===1000}, "k (천)"),
+      h("option", {value:1000000, selected: u===1000000}, "m (백만)"),
+      h("option", {value:1000000000, selected: u===1000000000}, "b (십억)")
+   );
+   const upd = () => {
+      const val = (parseFloat(inp.value)||0) * parseFloat(sel.value);
+      onchange(val);
+   };
+   inp.addEventListener("change", upd);
+   sel.addEventListener("change", upd);
+   return h("div", {style:"display:flex; width:100%"}, inp, sel);
+}
+
+function selectUI(options, value, onchange){
   const sel = h("select", { onchange:(e)=>onchange(e.target.value) });
   for(const o of options){
     const opt = h("option", {value:o.id}, o.name);
@@ -512,7 +563,7 @@ function select(options, value, onchange){
 }
 
 function renderOptRow(opt, onTypeChange, onValChange){
-  const typeSel = select(OPT, opt.type||"none", onTypeChange);
+  const typeSel = selectUI(OPT, opt.type||"none", onTypeChange);
   const valInp = numInput(opt.val, onValChange);
   const def = OPT.find(o=>o.id===(opt.type||"none"));
   if(def && def.id!=="none"){
@@ -534,7 +585,13 @@ function gearCard(slot, label, key, active){
     return h("span",{class:"opt-chip"}, `${sh} ${o.val}`);
   });
   const hasOpts = slot.opts.some(o => o && o.type!=="none");
-  const baseTxt = (slot.hp||slot.atk) ? `H ${Math.round(slot.hp||0).toLocaleString()} · A ${Math.round(slot.atk||0).toLocaleString()}` : "";
+  const formatCompact = (n) => {
+    if(n>=1000000000) return (n/1000000000).toFixed(1).replace(/\.0$/,'')+'b';
+    if(n>=1000000) return (n/1000000).toFixed(1).replace(/\.0$/,'')+'m';
+    if(n>=1000) return (n/1000).toFixed(1).replace(/\.0$/,'')+'k';
+    return Math.round(n);
+  };
+  const baseTxt = (slot.hp||slot.atk) ? `H ${formatCompact(slot.hp||0)} · A ${formatCompact(slot.atk||0)}` : "";
   return h("div", {
     class: "gear-card" + (active?" active":"") + (hasOpts?" has-opts":""),
     onclick: ()=>{ state._selectedSlot = key; saveState(); renderMe(); }
@@ -567,8 +624,8 @@ function renderGearEditor(key){
   body.append(h("h4", null, `${label.icon} ${label.name} — 상세 편집`));
   body.append(
     h("div",{class:"row"},
-      h("div", null, h("label",null,"기본 체력"), numInput(slot.hp, v=>{ slot.hp=v; onAnyChange(); renderMe(); })),
-      h("div", null, h("label",null,"기본 공격력"), numInput(slot.atk, v=>{ slot.atk=v; onAnyChange(); renderMe(); })),
+      h("div", null, h("label",null,"기본 체력"), unitNumInput(slot.hp, v=>{ slot.hp=v; onAnyChange(); renderMe(); })),
+      h("div", null, h("label",null,"기본 공격력"), unitNumInput(slot.atk, v=>{ slot.atk=v; onAnyChange(); renderMe(); })),
     )
   );
   for(let i=0;i<slot.opts.length;i++){
@@ -581,31 +638,31 @@ function renderGearEditor(key){
     ));
   }
 
-  // 펫 인벤토리 교체 버튼
+  // 펫 교체 버튼 수정 (스프레드 연산자 적용 완료)
   if (kind === "petInv") {
     body.append(h("div", {class:"slot", style:"margin-top:10px"},
       h("h4",null,"이 펫을 본 슬롯에 장착하기"),
       h("div",{class:"btnrow"},
-        [0,1,2].map(i => h("button",{class:"btn alt", onclick:()=>{
+        ...[0,1,2].map(i => h("button",{class:"btn alt", onclick:()=>{
            const temp = state.pets[i];
            state.pets[i] = state.petInventory[idx];
            state.petInventory[idx] = temp;
            state._selectedSlot = `pets-${i}`;
            onAnyChange(); renderMe();
-        }}, `펫 ${i+1} 교체`))
+        }}, `펫 ${i+1} 장착`))
       )
     ));
   } else if (kind === "pets") {
     body.append(h("div", {class:"slot", style:"margin-top:10px"},
       h("h4",null,"보관함 펫과 맞교환"),
       h("div",{class:"btnrow"},
-        [0,1,2].map(i => h("button",{class:"btn alt", onclick:()=>{
+        ...[0,1,2].map(i => h("button",{class:"btn alt", onclick:()=>{
            const temp = state.petInventory[i];
            state.petInventory[i] = state.pets[idx];
            state.pets[idx] = temp;
            state._selectedSlot = `petInv-${i}`;
            onAnyChange(); renderMe();
-        }}, `보관 ${i+1} 교환`))
+        }}, `보관 ${i+1} 이동`))
       )
     ));
   }
@@ -648,21 +705,26 @@ function renderBuff(){
   host.append(h("div",{class:"slot"},
     h("h4",null,"기타 버프 및 하드코딩 스킬 안내"),
     h("p", {class:"muted", style:"margin:4px 0 8px; line-height:1.4"}, 
-      "스킬 3종(18.2m, 17.1m 딜스킬, 60.5m/7.57m 버프스킬)은 시뮬레이션 엔진에 이미 내장되어 계산됩니다."),
+      "스킬 3종은 엔진에 내장되어 쿨타임(대기+지속 주기) 및 가동률이 자동 계산됩니다."),
     h("div",{class:"row"},
-      h("div",null,h("label",null,"+ 추가 체력(고정치)"), numInput(state.buff.hpFlat, v=>{state.buff.hpFlat=v;onAnyChange();})),
-      h("div",null,h("label",null,"+ 추가 공격력(고정치)"), numInput(state.buff.atkFlat, v=>{state.buff.atkFlat=v;onAnyChange();})),
+      h("div",null,h("label",null,"+ 추가 체력(고정치)"), unitNumInput(state.buff.hpFlat, v=>{state.buff.hpFlat=v;onAnyChange();})),
+      h("div",null,h("label",null,"+ 추가 공격력(고정치)"), unitNumInput(state.buff.atkFlat, v=>{state.buff.atkFlat=v;onAnyChange();})),
     )
   ));
 
   const gearResearchGrid = h("div", {class:"slot"});
   gearResearchGrid.append(h("h4",null,"부위별 장비 연구 (%)"));
+  gearResearchGrid.append(h("div",{class:"row3", style:"margin-bottom:6px; align-items:center"},
+    h("div", {class:"lbl-sub", style:"text-align:left;margin:0"}, "부위명"),
+    h("div", {class:"lbl-sub", style:"margin:0"}, "체력 (%)"),
+    h("div", {class:"lbl-sub", style:"margin:0"}, "공격력 (%)")
+  ));
   GEAR_GRID_LABELS.forEach(lbl => {
     if(lbl.type !== "equips") return;
     gearResearchGrid.append(h("div",{class:"row3", style:"margin-bottom:6px; align-items:center"},
       h("div", {class:"lbl-sub", style:"text-align:left;margin:0"}, `${lbl.icon} ${lbl.name}`),
-      h("div", null, numInput(state.research.equips[lbl.idx].atk, v=>{state.research.equips[lbl.idx].atk=v;onAnyChange();}, {placeholder:"공격력%"})),
-      h("div", null, numInput(state.research.equips[lbl.idx].hp, v=>{state.research.equips[lbl.idx].hp=v;onAnyChange();}, {placeholder:"체력%"}))
+      h("div", null, numInput(state.research.equips[lbl.idx].hp, v=>{state.research.equips[lbl.idx].hp=v;onAnyChange();})),
+      h("div", null, numInput(state.research.equips[lbl.idx].atk, v=>{state.research.equips[lbl.idx].atk=v;onAnyChange();}))
     ));
   });
   host.append(gearResearchGrid);
@@ -670,10 +732,10 @@ function renderBuff(){
   host.append(h("div",{class:"slot"},
     h("h4",null,"펫 및 탈것 연구 (%)"),
     h("div",{class:"row"},
-      h("div",null,h("label",null,"펫 공격력 %"), numInput(state.research.petAtk, v=>{state.research.petAtk=v;onAnyChange();})),
       h("div",null,h("label",null,"펫 체력 %"), numInput(state.research.petHp, v=>{state.research.petHp=v;onAnyChange();})),
-      h("div",null,h("label",null,"탈것 공격력 %"), numInput(state.research.mountAtk, v=>{state.research.mountAtk=v;onAnyChange();})),
+      h("div",null,h("label",null,"펫 공격력 %"), numInput(state.research.petAtk, v=>{state.research.petAtk=v;onAnyChange();})),
       h("div",null,h("label",null,"탈것 체력 %"), numInput(state.research.mountHp, v=>{state.research.mountHp=v;onAnyChange();})),
+      h("div",null,h("label",null,"탈것 공격력 %"), numInput(state.research.mountAtk, v=>{state.research.mountAtk=v;onAnyChange();})),
     )
   ));
 }
@@ -682,10 +744,10 @@ function renderEnemy(){
   const host = document.getElementById("enemy-body");
   host.innerHTML = "";
   host.append(h("div",{class:"slot"},
-    h("h4",null,"최종 스탯"),
+    h("h4",null,"상대 기본 스탯"),
     h("div",{class:"row"},
-      h("div",null,h("label",null,"최종 체력"), numInput(state.enemy.hp, v=>{state.enemy.hp=v;onAnyChange();})),
-      h("div",null,h("label",null,"최종 공격력"), numInput(state.enemy.atk, v=>{state.enemy.atk=v;onAnyChange();})),
+      h("div",null,h("label",null,"최종 체력"), unitNumInput(state.enemy.hp, v=>{state.enemy.hp=v;onAnyChange();})),
+      h("div",null,h("label",null,"최종 공격력"), unitNumInput(state.enemy.atk, v=>{state.enemy.atk=v;onAnyChange();})),
     )
   ));
   const grid = h("div",{class:"row"});
@@ -695,6 +757,16 @@ function renderEnemy(){
     ));
   }
   host.append(h("div",{class:"slot"}, h("h4",null,"상대 옵션 %"), grid));
+
+  for(let i=0;i<2;i++){
+    host.append(h("div",{class:"slot"},
+      h("h4",null,`상대 딜스킬 #${i+1}`),
+      h("div",{class:"row"},
+        h("div",null,h("label",null,"피해량(고정)"), unitNumInput(state.enemy.skills[i].dmg, v=>{state.enemy.skills[i].dmg=v;onAnyChange();})),
+        h("div",null,h("label",null,"원본 쿨타임(초)"), numInput(state.enemy.skills[i].cd, v=>{state.enemy.skills[i].cd=v;onAnyChange();})),
+      )
+    ));
+  }
 }
 
 function renderResult(){
@@ -713,8 +785,16 @@ function renderResult(){
   
   function dps(side, oppBlock, autoP){
     let v = avgAutoDmg(side.totalAtk, side.opts, oppBlock)/autoP;
-    v += avgSkillFlatDmg(FIXED_SKILLS.s1.dmg, side.opts, oppBlock, side.research?.skillDmg||0) / realCd(FIXED_SKILLS.s1.cd, side.opts.skillCd);
-    v += avgSkillFlatDmg(FIXED_SKILLS.s2.dmg, side.opts, oppBlock, side.research?.skillDmg||0) / realCd(FIXED_SKILLS.s2.cd, side.opts.skillCd);
+    const s1Dmg = side.isMe ? FIXED_SKILLS.s1.dmg : (side.skills[0]?.dmg||0);
+    const s1Cd  = side.isMe ? FIXED_SKILLS.s1.cd : (side.skills[0]?.cd||0);
+    const s2Dmg = side.isMe ? FIXED_SKILLS.s2.dmg : (side.skills[1]?.dmg||0);
+    const s2Cd  = side.isMe ? FIXED_SKILLS.s2.cd : (side.skills[1]?.cd||0);
+
+    const s1Cycle = (side.isMe ? FIXED_SKILLS.s1.duration : 0) + realCd(s1Cd, side.opts.skillCd);
+    const s2Cycle = (side.isMe ? FIXED_SKILLS.s2.duration : 0) + realCd(s2Cd, side.opts.skillCd);
+    
+    if(s1Dmg > 0 && s1Cd > 0) v += avgSkillFlatDmg(s1Dmg, side.opts, oppBlock, side.research?.skillDmg||0) / s1Cycle;
+    if(s2Dmg > 0 && s2Cd > 0) v += avgSkillFlatDmg(s2Dmg, side.opts, oppBlock, side.research?.skillDmg||0) / s2Cycle;
     return v;
   }
   
@@ -730,7 +810,7 @@ function renderResult(){
       kv("내 남은 체력", `${Math.round(sim.myHp).toLocaleString()} / ${Math.round(sim.myMax).toLocaleString()}`),
     ),
     h("div",{class:"slot"},
-      h("h4",null,"파생 스탯 (연구+버프 적용)"),
+      h("h4",null,"파생 스탯 (연구+버프 가동률 적용)"),
       kv("내 총 체력(결투장 ×5)", Math.round(me.totalHp).toLocaleString()),
       kv("내 총 공격력", Math.round(me.totalAtk).toLocaleString()),
       kv("일반공격 주기", `${atkP.toFixed(1)} 초`),
@@ -764,7 +844,7 @@ function renderCompare(){
   host.innerHTML = "";
   
   const slots = gearOptions();
-  const slotSel = select(slots, state.cmp.slot, v=>{ state.cmp.slot=v; onAnyChange(); render(); });
+  const slotSel = selectUI(slots, state.cmp.slot, v=>{ state.cmp.slot=v; onAnyChange(); render(); });
   
   host.append(h("div",{class:"slot"},
     h("h4",null,"교체해볼 부위 (기존 장비 vs 새 장비)"), slotSel
@@ -776,8 +856,8 @@ function renderCompare(){
   const editor = h("div", {class:"slot"});
   editor.append(h("h4",null,"새로운 장비 세팅 입력"));
   editor.append(h("div",{class:"row"},
-    h("div", null, h("label",null,"기본 체력"), numInput(state.cmp.item.hp, v=>{state.cmp.item.hp=v; onAnyChange(); render();})),
-    h("div", null, h("label",null,"기본 공격력"), numInput(state.cmp.item.atk, v=>{state.cmp.item.atk=v; onAnyChange(); render();}))
+    h("div", null, h("label",null,"기본 체력"), unitNumInput(state.cmp.item.hp, v=>{state.cmp.item.hp=v; onAnyChange(); render();})),
+    h("div", null, h("label",null,"기본 공격력"), unitNumInput(state.cmp.item.atk, v=>{state.cmp.item.atk=v; onAnyChange(); render();}))
   ));
   
   const optCount = loc.kind==="mount" ? 1 : 2;
@@ -820,6 +900,95 @@ function renderCompare(){
       gain>0?"✔ 더 강해집니다":(gain<0?"✘ 더 약해집니다":"변화 없음")
     )
   ));
+}
+
+function renderRecommend(){
+  const host = document.getElementById("rec-body");
+  host.innerHTML = "";
+  const cur = currentScore(state);
+  
+  let bestGain = -Infinity, target = null;
+  const iter = [
+    ...state.equips.map((s,i)=>({kind:"equips",idx:i})),
+    ...state.pets.map((s,i)=>({kind:"pets",idx:i})),
+    { kind:"mount", idx:0 },
+  ];
+  for(const loc of iter){
+    const slot = loc.kind==="mount" ? state.mount : state[loc.kind][loc.idx];
+    for(let k=0; k<slot.opts.length; k++){
+      const opt = slot.opts[k];
+      const saveType = opt.type, saveVal = opt.val;
+      let slotBest = -Infinity;
+      try {
+        for(const cand of OPT.filter(o=>o.used && o.id!=="none")){
+          if(cand.id === saveType && cand.max === saveVal) continue;
+          opt.type = cand.id; opt.val = cand.max;
+          const s = powerScore(simulate(buildMe(state), buildEnemy(state)));
+          if(s > slotBest) slotBest = s;
+        }
+      } finally {
+        opt.type = saveType; opt.val = saveVal;
+      }
+      const gain = slotBest - cur;
+      if(gain > bestGain){
+        bestGain = gain;
+        target = { kind:loc.kind, idx:loc.idx, optIdx:k, current:{type:saveType,val:saveVal}, slotBest };
+      }
+    }
+  }
+
+  if(!target){
+    host.append(h("p",null,"슬롯 정보가 부족합니다."));
+    return;
+  }
+
+  const locLabel = (() => {
+    if(target.kind === "equips") return `장비 #${target.idx+1} / 옵션${target.optIdx+1}`;
+    if(target.kind === "pets")   return `펫 #${target.idx+1} / 옵션${target.optIdx+1}`;
+    return `탈것 / 옵션${target.optIdx+1}`;
+  })();
+  const curOpt = target.current;
+  const curOptDef = OPT.find(o=>o.id===curOpt.type);
+  const curOptLabel = curOpt.type==="none" ? "비어있음" : `${curOptDef?.name||curOpt.type} ${curOpt.val}%`;
+
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"교체 가치가 가장 큰 슬롯"),
+    kv("슬롯", locLabel),
+    kv("현재 옵션", curOptLabel),
+  ));
+
+  const out = [];
+  const curSlot = target.kind==="mount" ? state.mount : state[target.kind][target.idx];
+  const optToChange = curSlot.opts[target.optIdx];
+  const saveType2 = optToChange.type, saveVal2 = optToChange.val;
+  try {
+    for(const cand of OPT.filter(o=>o.used && o.id!=="none")){
+      if(cand.id === target.current.type && cand.max === target.current.val) continue;
+      optToChange.type = cand.id; optToChange.val = cand.max;
+      const s = powerScore(simulate(buildMe(state), buildEnemy(state)));
+      out.push({ id:cand.id, name:cand.name, val:cand.max, score:s, gain:s-cur });
+    }
+  } finally {
+    optToChange.type = saveType2; optToChange.val = saveVal2;
+  }
+  out.sort((a,b)=>b.gain-a.gain);
+
+  const table = h("table", null,
+    h("thead",null, h("tr",null, h("th",null,"옵션"), h("th",null,"수치"), h("th",{class:"num"},"전투력 변화"), h("th",{class:"num"},"점수"))),
+    h("tbody",null)
+  );
+  const tbody = table.querySelector("tbody");
+  const denom = Math.max(1, Math.abs(cur));
+  for(const r of out){
+    const pct = (r.gain / denom) * 100;
+    tbody.append(h("tr",null,
+      h("td",null,r.name),
+      h("td",null,`${r.val}%`),
+      h("td",{class:"num "+(r.gain>=0?"pos":"neg")}, `${r.gain>=0?"+":""}${pct.toFixed(2)}%`),
+      h("td",{class:"num"}, r.score.toFixed(0)),
+    ));
+  }
+  host.append(h("div",{class:"slot"}, h("h4",null,"이 슬롯을 13종 최대치로 바꿔본 결과"), table));
 }
 
 /* ==========================================================================
@@ -931,8 +1100,8 @@ function renderForgeMe(){
   host.append(h("div",{class:"slot"},
     h("h4",null,"보유 자원"),
     h("div",{class:"row"},
-      h("div",null,h("label",null,"현재 돈 (원)"), numInput(f.money, v=>{f.money=v;onAnyChange();})),
-      h("div",null,h("label",null,"현재 망치 수"), numInput(f.hammers, v=>{f.hammers=v;onAnyChange();})),
+      h("div",null,h("label",null,"현재 돈 (원)"), unitNumInput(f.money, v=>{f.money=v;onAnyChange();})),
+      h("div",null,h("label",null,"현재 망치 수"), unitNumInput(f.hammers, v=>{f.hammers=v;onAnyChange();})),
       h("div",null,h("label",null,"현재 대장간 레벨"), numInput(f.level, v=>{f.level=Math.max(1,Math.round(v));onAnyChange();})),
       h("div",null,h("label",null,"오늘 획득 망치"), numInput(f.todayDungeonHammers, v=>{f.todayDungeonHammers=v;onAnyChange();})),
     )
@@ -1040,16 +1209,247 @@ function renderForgeResult(){
 }
 
 /* ==========================================================================
-   유틸 및 이벤트
+   디딤돌 로직 / 렌더
+   ========================================================================== */
+function stoneProbUp(step){
+  const up = step.upPass + step.downFail;
+  const dn = step.downPass + step.upFail;
+  const n = up + dn;
+  return (up + 1) / (n + 2);
+}
+function stoneTotalObs(step){
+  return step.upPass + step.upFail + step.downPass + step.downFail;
+}
+function recordStone(stepIdx, choice, passed){
+  const s = state.stones.steps[stepIdx];
+  if(choice==="up")   passed ? s.upPass++   : s.upFail++;
+  else                passed ? s.downPass++ : s.downFail++;
+}
+function stonesPickChoice(stepIdx, choice){
+  const cur = state.stones.current;
+  cur.choices[stepIdx] = choice;
+  cur.step = stepIdx;
+  onAnyChange();
+}
+function stonesResolve(passed){
+  const cur = state.stones.current;
+  const idx = cur.step;
+  const choice = cur.choices[idx];
+  if(!choice){ alert("먼저 위/아래를 선택하세요."); return; }
+  recordStone(idx, choice, passed);
+  if(passed){
+    if(idx === 7){
+      state.stones.history.unshift({ choices: cur.choices.slice(), failedAt: null, success: true, ts: Date.now() });
+      state.stones.current = { step:0, choices:[] };
+      alert("🎉 8단계 통과 성공!");
+    } else {
+      cur.step = idx + 1;
+    }
+  } else {
+    state.stones.history.unshift({ choices: cur.choices.slice(0, idx+1), failedAt: idx, success:false, ts: Date.now() });
+    state.stones.current = { step:0, choices:[] };
+  }
+  saveState();
+  render();
+}
+function stonesReset(){
+  if(!confirm("진행 중인 시도를 버리고 처음으로 돌아갑니다. 계속?")) return;
+  state.stones.current = { step:0, choices:[] };
+  saveState();
+  render();
+}
+function stonesResetAll(){
+  if(!confirm("모든 통계와 기록을 초기화합니다. 계속?")) return;
+  state.stones = defaultState().stones;
+  saveState();
+  render();
+}
+
+function renderStonesPlay(){
+  const host = document.getElementById("stones-play-body");
+  if(!host) return;
+  host.innerHTML = "";
+  const cur = state.stones.current;
+  const step = cur.step;
+  const isWaitingResult = !!cur.choices[step];
+
+  host.append(
+    h("div",{class:"big"}, `${step+1} / 8 단계`),
+    h("div",{class:"lbl-sub"}, isWaitingResult ? `선택: ${cur.choices[step]==="up"?"▲ 위":"▼ 아래"} — 결과 입력 대기` : "위/아래를 골라 진행")
+  );
+
+  const s = state.stones.steps[step];
+  const pUp = stoneProbUp(s);
+  const n = stoneTotalObs(s);
+  const rec = pUp === 0.5 ? "동률" : (pUp > 0.5 ? "▲ 위 추천" : "▼ 아래 추천");
+  host.append(h("div",{class:"slot"},
+    h("h4",null,`${step+1}단계 확률 (관측 ${n}회)`),
+    kv("▲ 위가 정답일 확률", `${(pUp*100).toFixed(1)}%`),
+    kv("▼ 아래가 정답일 확률", `${((1-pUp)*100).toFixed(1)}%`),
+    kv("추천", rec),
+  ));
+
+  const upBtn = h("button",{class:"btn"+(cur.choices[step]==="up"?"":" alt"),
+    style:"flex:1;padding:16px",
+    onclick:()=>stonesPickChoice(step, "up")
+  }, `▲ 위 (${(pUp*100).toFixed(0)}%)`);
+  const dnBtn = h("button",{class:"btn"+(cur.choices[step]==="down"?"":" alt"),
+    style:"flex:1;padding:16px",
+    onclick:()=>stonesPickChoice(step, "down")
+  }, `▼ 아래 (${((1-pUp)*100).toFixed(0)}%)`);
+  host.append(h("div",{class:"btnrow",style:"margin-top:10px"}, upBtn, dnBtn));
+
+  const passBtn = h("button",{class:"btn", style:"flex:1;padding:14px", onclick:()=>stonesResolve(true)}, "✔ 통과");
+  const failBtn = h("button",{class:"btn warn", style:"flex:1;padding:14px", onclick:()=>stonesResolve(false)}, "✘ 실패 (처음으로)");
+  host.append(h("div",{class:"btnrow",style:"margin-top:6px"}, passBtn, failBtn));
+
+  if(cur.choices.length > 0){
+    const path = cur.choices.map((c,i)=> `${i+1}:${c==="up"?"▲":"▼"}`).join("  ");
+    host.append(h("div",{class:"muted",style:"margin-top:10px"}, `이번 시도: ${path}`));
+  }
+
+  host.append(h("div",{class:"btnrow",style:"margin-top:8px"},
+    h("button",{class:"btn alt", onclick:stonesReset}, "진행중 시도 초기화")
+  ));
+}
+
+function renderStonesStat(){
+  const host = document.getElementById("stones-stat-body");
+  if(!host) return;
+  host.innerHTML = "";
+  const table = h("table", null,
+    h("thead",null, h("tr",null,
+      h("th",null,"단계"),
+      h("th",{class:"num"},"▲위 정답"),
+      h("th",{class:"num"},"▼아래 정답"),
+      h("th",{class:"num"},"확률(▲)"),
+      h("th",null,"추천"),
+    )),
+    h("tbody",null)
+  );
+  const tbody = table.querySelector("tbody");
+  state.stones.steps.forEach((s,i) => {
+    const upTrue = s.upPass + s.downFail;
+    const dnTrue = s.downPass + s.upFail;
+    const pUp = stoneProbUp(s);
+    const rec = pUp === 0.5 ? "—" : (pUp > 0.5 ? "▲" : "▼");
+    tbody.append(h("tr",null,
+      h("td",null, `${i+1}`),
+      h("td",{class:"num"}, upTrue),
+      h("td",{class:"num"}, dnTrue),
+      h("td",{class:"num"}, `${(pUp*100).toFixed(1)}%`),
+      h("td",null, rec),
+    ));
+  });
+  host.append(table);
+
+  const hist = state.stones.history;
+  const tries = hist.length;
+  const wins = hist.filter(x=>x.success).length;
+  host.append(h("div",{class:"slot",style:"margin-top:10px"},
+    h("h4",null,"누적 성과"),
+    kv("총 시도 횟수", tries),
+    kv("완주(8단계 통과)", wins),
+    kv("성공률", tries>0 ? `${(wins/tries*100).toFixed(1)}%` : "-"),
+  ));
+
+  host.append(h("div",{class:"btnrow",style:"margin-top:10px"},
+    h("button",{class:"btn warn", onclick:stonesResetAll}, "통계·기록 전체 초기화")
+  ));
+}
+
+function renderStonesHistory(){
+  const host = document.getElementById("stones-history-body");
+  if(!host) return;
+  host.innerHTML = "";
+  const hist = state.stones.history;
+  if(hist.length === 0){
+    host.append(h("p",{class:"muted"},"아직 시도 기록이 없습니다."));
+    return;
+  }
+  const table = h("table",null,
+    h("thead",null, h("tr",null,
+      h("th",null,"#"),
+      h("th",null,"경로"),
+      h("th",null,"결과"),
+    )),
+    h("tbody",null)
+  );
+  const tbody = table.querySelector("tbody");
+  hist.slice(0,50).forEach((x,idx) => {
+    const pathCells = Array.from({length:8}, (_,i) => {
+      const c = x.choices[i];
+      if(c==null) return "·";
+      const sym = c==="up" ? "▲" : "▼";
+      if(!x.success && x.failedAt===i) return `<span class="neg">${sym}✘</span>`;
+      return `<span class="pos">${sym}</span>`;
+    }).join(" ");
+    tbody.append(h("tr",null,
+      h("td",null, `${hist.length - idx}`),
+      h("td",{html: pathCells}),
+      h("td",{class: x.success?"pos":"neg"}, x.success?"✔ 완주":`✘ ${x.failedAt+1}단계 실패`),
+    ));
+  });
+  host.append(table);
+  if(hist.length > 50) host.append(h("p",{class:"muted"},`최근 50개만 표시 (전체 ${hist.length}개)`));
+}
+
+function renderSave(){
+  const host = document.getElementById("save-body");
+  if(!host) return;
+  host.innerHTML = "";
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"JSON 내보내기/가져오기"),
+    h("p",{class:"lbl-sub",style:"text-align:left"},"기기를 바꾸거나 백업할 때 사용하세요."),
+    h("div",{class:"btnrow"},
+      h("button",{class:"btn", onclick:exportJSON}, "JSON 내보내기"),
+      h("button",{class:"btn alt", onclick:importJSON}, "JSON 가져오기"),
+      h("button",{class:"btn warn", onclick:resetAll}, "전체 초기화"),
+    ),
+    h("textarea", { id:"json-area", style:"width:100%;min-height:160px;margin-top:10px;background:#0c0e13;color:#e8ecf1;border:1px solid #2a2f3a;border-radius:8px;padding:10px;font-family:ui-monospace,monospace;font-size:12px" })
+  ));
+}
+
+function exportJSON(){
+  const txt = JSON.stringify(state, null, 2);
+  const ta = document.getElementById("json-area");
+  ta.value = txt;
+  ta.select();
+  try { navigator.clipboard.writeText(txt); alert("JSON을 클립보드에 복사했어요."); }
+  catch(e){ alert("아래 상자의 텍스트를 복사해 두세요."); }
+}
+function importJSON(){
+  const ta = document.getElementById("json-area");
+  const txt = (ta.value||"").trim();
+  if(!txt){ alert("상자에 JSON을 붙여넣은 뒤 다시 눌러주세요."); return; }
+  try {
+    const s = JSON.parse(txt);
+    state = migrate(s);
+    saveState();
+    render();
+    alert("불러오기 성공.");
+  } catch(e){ alert("JSON 파싱 실패: "+e.message); }
+}
+function resetAll(){
+  if(!confirm("모든 입력값을 초기화합니다. 계속할까요?")) return;
+  state = defaultState();
+  saveState();
+  render();
+}
+
+/* ==========================================================================
+   전체 렌더 & 이벤트
    ========================================================================== */
 function onAnyChange(){
   saveState();
-  renderResult(); renderCompare();
+  renderResult(); renderCompare(); renderRecommend();
   renderForgeResult(); renderForgeClan();
+  renderStonesPlay(); renderStonesStat();
 }
 function render(){
-  renderResult(); renderMe(); renderBuff(); renderEnemy(); renderCompare();
+  renderResult(); renderMe(); renderBuff(); renderEnemy(); renderCompare(); renderRecommend();
   renderForgeMe(); renderForgeResearch(); renderForgeClan(); renderForgeTable(); renderForgeResult();
+  renderStonesPlay(); renderStonesStat(); renderStonesHistory(); renderSave();
 }
 document.getElementById("btn-recalc").addEventListener("click", render);
 document.getElementById("btn-top").addEventListener("click", ()=>window.scrollTo({top:0, behavior:"smooth"}));
