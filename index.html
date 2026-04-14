@@ -428,11 +428,37 @@ function buildMe(st){
   return { isMe: true, totalHp: base.totalHp, totalAtk: base.totalAtk, opts: agg, research: st.research, _rawHp: base.rawHp, _rawAtk: base.rawAtk };
 }
 
-// 상대 스펙을 입력하지 않았을 경우, 내 스탯을 기준으로 하는 가상(섀도우)의 적을 반환하여 점수가 항상 제대로 측정되게 함
-function buildEnemy(st, fallbackHp, fallbackAtk){
+// 상대 스펙을 입력하지 않았을 경우, 혹은 CP 측정을 위한 공통 기준점:
+// 나와 체력/공격력 베이스가 완전히 동일하지만, 옵션은 프리셋 세팅을 한 가상의 적(섀도우)
+function buildPresetEnemy(st, fallbackHp, fallbackAtk){
   let enHp = +st.enemy.hp || 0;
   let enAtk = +st.enemy.atk || 0;
   
+  // 사용자가 적 스펙을 아예 입력하지 않았다면 나와 베이스를 동일하게 세팅 (폴백)
+  if(enHp <= 0) enHp = (fallbackHp || 100000) / 5; 
+  if(enAtk <= 0) enAtk = fallbackAtk || 10000;
+
+  // CP 측정을 위해 상대방의 장비 옵션을 '종결 프리셋'으로 고정 장착
+  const presetDist = { critRate: 7, critDmg: 7, atkSpd: 6, double: 2, lifesteal: 1, dmg: 1, hp: 0, block: 0, ranged: 0, skillDmg: 0, skillCd: 0, hpRegen: 0, melee: 0 };
+  const presetAgg = aggregateFromDist(presetDist);
+
+  return {
+    isMe: false, 
+    totalHp: enHp * 5, 
+    totalAtk: enAtk,
+    opts: presetAgg, // 상대방 옵션을 프리셋으로 강제
+    skills: [
+      { dmg: FIXED_SKILLS.s1.dmg, cd: FIXED_SKILLS.s1.cd }, 
+      { dmg: FIXED_SKILLS.s2.dmg, cd: FIXED_SKILLS.s2.cd }
+    ],
+    research: st.research // 연구 보정도 동일하게 적용
+  };
+}
+
+// 1:1 커스텀 시뮬레이션용 적 생성
+function buildCustomEnemy(st, fallbackHp, fallbackAtk){
+  let enHp = +st.enemy.hp || 0;
+  let enAtk = +st.enemy.atk || 0;
   if(enHp <= 0) enHp = (fallbackHp || 100000) / 5; 
   if(enAtk <= 0) enAtk = fallbackAtk || 10000;
 
@@ -441,7 +467,10 @@ function buildEnemy(st, fallbackHp, fallbackAtk){
     totalHp: enHp * 5, 
     totalAtk: enAtk,
     opts: Object.fromEntries(OPT_IDS_ENEMY.map(k => [k, +st.enemy.opts[k]||0])),
-    skills: [{ dmg: +st.enemy.skills[0].dmg||0, cd: +st.enemy.skills[0].cd||0 }, { dmg: +st.enemy.skills[1].dmg||0, cd: +st.enemy.skills[1].cd||0 }],
+    skills: [
+      { dmg: +st.enemy.skills[0].dmg||0, cd: +st.enemy.skills[0].cd||0 }, 
+      { dmg: +st.enemy.skills[1].dmg||0, cd: +st.enemy.skills[1].cd||0 }
+    ],
     research: { skillDmg:0 }
   };
 }
@@ -463,15 +492,17 @@ function aggregateFromDist(dist){
   return agg;
 }
 
+// 내 현재 점수 (나 vs 프리셋을 장착한 나)
 function currentCPScore(st){
   const me = buildMe(st);
-  const en = buildEnemy(st, me.totalHp, me.totalAtk);
+  const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
   return powerScore(simulate(me, en));
 }
 
+// 기준점 (프리셋을 장착한 나 vs 프리셋을 장착한 나) = 거울전이므로 무조건 5000점(무승부)
 function bestBuildCPScore(st){
   const me = buildMe(st); 
-  const en = buildEnemy(st, me.totalHp, me.totalAtk); // 동일한 적을 상대로 비교
+  const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
 
   const presetDist = { critRate: 7, critDmg: 7, atkSpd: 6, double: 2, lifesteal: 1, dmg: 1, hp: 0, block: 0, ranged: 0, skillDmg: 0, skillCd: 0, hpRegen: 0, melee: 0 };
   const presetAgg = aggregateFromDist(presetDist);
@@ -743,15 +774,15 @@ function renderResult(){
   host.append(
     h("div",{class:"lbl-sub", style:"margin-top:10px"}, `내 현재 전투력 점수`),
     h("div",{class:"big good", style:"color:#fff; margin-bottom:0"}, curCP.toLocaleString(undefined, {maximumFractionDigits:0})),
-    h("div",{class:"lbl-sub", style:"margin-top:4px"}, `표준 프리셋 대비: ${cpRatio.toFixed(1)}%`)
+    h("div",{class:"lbl-sub", style:"margin-top:4px"}, `프리셋 세팅 더미 기준 (1:1 결투): ${cpRatio.toFixed(1)}%`)
   );
 
-  const en = buildEnemy(state, me.totalHp, me.totalAtk);
+  const en = buildCustomEnemy(state, me.totalHp, me.totalAtk);
   const sim = simulate(me, en);
   const isShadow = (+state.enemy.hp||0) <= 0;
 
   let simBox = h("div",{class:"slot"});
-  simBox.append(h("h4",null,`1:1 시뮬레이션 결과 ${isShadow?"(가상 섀도우)":""}`));
+  simBox.append(h("h4",null,`1:1 커스텀 상대 시뮬레이션 결과 ${isShadow?"(가상 섀도우)":""}`));
   simBox.append(
     kv("결과", h("b",{class:sim.winner==="me"?"pos":"neg"}, sim.winner==="me"?"승리 ✔":"패배 ✘")),
     kv("소요 시간", `${sim.t.toFixed(1)} 초${sim.timeout?" (타임아웃)":""}`),
