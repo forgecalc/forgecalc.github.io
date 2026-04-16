@@ -71,6 +71,24 @@
   .gear-card .opt-chip{background:#0c1118;border:1px solid var(--border);border-radius:6px;padding:2px 5px;font-size:10px;color:var(--good);font-weight:600;white-space:nowrap}
   .gear-card .opt-chip.empty{color:var(--muted);background:transparent;border-style:dashed}
   .gear-card .basestat{font-size:9px;color:var(--muted);text-align:center;margin-top:3px;font-variant-numeric:tabular-nums}
+  .log-tick{padding:8px 10px;border-bottom:1px dashed #222}
+  .log-tick:last-child{border-bottom:0}
+  .log-time{font-size:11px;color:var(--muted);margin-bottom:4px;font-variant-numeric:tabular-nums}
+  .log-sides{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .log-side{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .log-side.en{text-align:right}
+  .hpbar{height:8px;background:#0c0e13;border:1px solid var(--border);border-radius:3px;overflow:hidden;position:relative}
+  .hpfill{height:100%;transition:width .2s}
+  .hpfill.me{background:linear-gradient(90deg,#3bb37e,#6ee7b7);margin-right:auto}
+  .hpfill.en{background:linear-gradient(90deg,#fbbf24,#f87171);margin-left:auto}
+  .log-side.en .hpbar{transform:scaleX(-1)}
+  .hplabel{font-size:10px;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .log-evt{font-size:11px;color:var(--text);line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .log-evt.crit{color:var(--warn);font-weight:600}
+  .log-evt.block{color:var(--muted)}
+  .log-evt.buff{color:var(--accent);font-weight:700}
+  .log-evt.heal{color:var(--good);font-size:10px}
+  .log-evt.skill{color:var(--accent)}
   @media (min-width:600px){.row{grid-template-columns:1fr 1fr 1fr 1fr}}
 </style>
 </head>
@@ -140,11 +158,14 @@ const OPT = [
 ];
 const OPT_IDS_ENEMY = OPT.filter(o => o.id !== "none").map(o => o.id);
 
-const FIXED_SKILLS = {
-  s1:   { dmg: 18200000, duration: 8, cd: 8 },
-  s2:   { dmg: 17100000, duration: 0, cd: 10 },
-  buff: { hp: 60500000, atk: 7570000, duration: 8, cd: 8 }
+const FIXED_SKILLS_DEFAULT = {
+  s1:   { dmg: 18200000, duration: 8, cd: 8, startTime: 3.05 },
+  s2:   { dmg: 17100000, duration: 0, cd: 10, startTime: 3.05 },
+  buff: { hp: 60500000, atk: 7570000, duration: 8, cd: 8, startTime: 3.05 },
+  autoAnchor: 1.88 // 첫 평타 시점(초, 공속 무관). 이후는 공속주기만큼 간격
 };
+let FIXED_SKILLS = JSON.parse(JSON.stringify(FIXED_SKILLS_DEFAULT));
+function syncFixedSkills(){ if(state && state.fixedSkills) FIXED_SKILLS = state.fixedSkills; }
 
 const GEAR_GRID_LABELS = [
   { type: "equips", idx: 0, icon: "🪖", name: "투구" },
@@ -181,15 +202,24 @@ const ENEMY_LABELS = {
    대장간 데이터
    ========================================================================== */
 const FORGE_PERSONAL_MILESTONES = [
-  { score:10000,  hammer:100 }, { score:50000,  hammer:140 },
-  { score:100000, hammer:200 }, { score:200000, hammer:280 },
-  { score:300000, hammer:380 }, { score:400000, hammer:550 },
-  { score:500000, hammer:750 },
+  { score:10000,  hammer:100, money:0 },
+  { score:20000,  hammer:0,   money:5000 },
+  { score:50000,  hammer:140, money:7000 },
+  { score:75000,  hammer:0,   money:9800 },
+  { score:100000, hammer:200, money:13700 },
+  { score:150000, hammer:0,   money:19000 },
+  { score:200000, hammer:280, money:27000 },
+  { score:300000, hammer:380, money:0 },
+  { score:400000, hammer:550, money:0 },
+  { score:500000, hammer:750, money:0 },
 ];
 const FORGE_TIER_REWARDS = {
-  S: { win:8400, lose:4200 }, A: { win:5900, lose:3000 },
-  B: { win:4000, lose:2000 }, C: { win:2900, lose:1400 },
-  D: { win:2000, lose:1000 }, E: { win:1400, lose: 700 },
+  S: { hammerWin:8400, hammerLose:4200, moneyWin:280000, moneyLose:140000 },
+  A: { hammerWin:5900, hammerLose:3000, moneyWin:196000, moneyLose: 98000 },
+  B: { hammerWin:4000, hammerLose:2000, moneyWin:140000, moneyLose: 70000 },
+  C: { hammerWin:2900, hammerLose:1400, moneyWin: 96000, moneyLose: 48000 },
+  D: { hammerWin:2000, hammerLose:1000, moneyWin: 67000, moneyLose: 33000 },
+  E: { hammerWin:1400, hammerLose: 700, moneyWin: 47000, moneyLose: 24000 },
 };
 const FORGE_DEFAULT_TABLE = [
   { cost: 400, time: 300 },       { cost: 700, time: 900 },
@@ -226,6 +256,7 @@ function defaultState(){
     pets:   Array.from({length:3}, () => emptySlot(2)),
     petInventory: Array.from({length:3}, () => emptySlot(2)),
     mount:  emptySlot(1),
+    mountInventory: Array.from({length:3}, () => emptySlot(1)),
     buff:   { hpFlat:0, atkFlat:0 },
     research: { skillDmg:0, petAtk:0, petHp:0, mountAtk:0, mountHp:0, equips: Array.from({length:8}, ()=>({atk:0, hp:0})) },
     enemy: { hp:0, atk:0, opts: Object.fromEntries(OPT_IDS_ENEMY.map(k => [k,0])), skills: [{dmg:0, cd:0}, {dmg:0, cd:0}] },
@@ -235,17 +266,22 @@ function defaultState(){
       research: { moneyRate:0, hammerRate:0, cost:0, time:0 },
       clan: { personalScore:0, tier:"B", win:true, claimed:false },
       table: FORGE_DEFAULT_TABLE.map(r => ({ cost:r.cost, time:r.time })),
+      upgrading: { active:false, remainingSec:0 },
+      hammerSaveChance: 13,
     },
     stones: {
       steps: Array.from({length:8}, () => ({ upPass:0, upFail:0, downPass:0, downFail:0 })),
       history: [], current: { step:0, choices:[] },
     },
+    fixedSkills: JSON.parse(JSON.stringify(FIXED_SKILLS_DEFAULT)),
+    skins: [{ dmg:0, hp:0 }, { dmg:0, hp:0 }, { dmg:0, hp:0 }],
     _activeTab: "combat",
   };
 }
 
 const LS_KEY = "combatCalcState";
 let state = loadState() || defaultState();
+syncFixedSkills();
 
 function loadState(){
   try {
@@ -261,17 +297,22 @@ function migrate(s){
   if(!Array.isArray(s.petInventory) || s.petInventory.length!==3) s.petInventory = d.petInventory;
   if(!s.mount || !Array.isArray(s.mount.opts)) s.mount = d.mount;
   else s.mount.opts = s.mount.opts.slice(0,1).concat(s.mount.opts.length===0?[emptyOpt()]:[]);
-  
+  if(!Array.isArray(s.mountInventory) || s.mountInventory.length!==3) s.mountInventory = d.mountInventory;
+  else s.mountInventory = s.mountInventory.map(m => {
+    if(!m || !Array.isArray(m.opts)) return emptySlot(1);
+    return { hp: m.hp||0, atk: m.atk||0, opts: m.opts.slice(0,1).concat(m.opts.length===0?[emptyOpt()]:[]) };
+  });
+
   s.buff = Object.assign({}, d.buff, s.buff||{});
   s.research = Object.assign({}, d.research, s.research||{});
   if(!Array.isArray(s.research.equips) || s.research.equips.length!==8) s.research.equips = d.research.equips;
-  
+
   s.enemy = Object.assign({}, d.enemy, s.enemy||{});
   s.enemy.opts = Object.assign({}, d.enemy.opts, s.enemy.opts||{});
   s.enemy.skills = Array.isArray(s.enemy.skills) && s.enemy.skills.length===2 ? s.enemy.skills : d.enemy.skills;
-  
+
   if(!s.cmp || typeof s.cmp.slot !== "string" || !s.cmp.item) s.cmp = d.cmp;
-  
+
   s.forge = Object.assign({}, d.forge, s.forge||{});
   s.forge.research = Object.assign({}, d.forge.research, s.forge.research||{});
   if(s.forge.research.moneyRate === undefined) {
@@ -280,7 +321,9 @@ function migrate(s){
   }
   s.forge.clan = Object.assign({}, d.forge.clan, s.forge.clan||{});
   if(!Array.isArray(s.forge.table) || s.forge.table.length !== FORGE_DEFAULT_TABLE.length) s.forge.table = d.forge.table;
-  
+  s.forge.upgrading = Object.assign({ active:false, remainingSec:0 }, s.forge.upgrading||{});
+  if(s.forge.hammerSaveChance === undefined) s.forge.hammerSaveChance = 13;
+
   s._activeTab = s._activeTab || "combat";
   if(!s.stones || !Array.isArray(s.stones.steps) || s.stones.steps.length!==8) s.stones = d.stones;
   else {
@@ -288,6 +331,15 @@ function migrate(s){
     s.stones.current = s.stones.current || { step:0, choices:[] };
     s.stones.current.choices = Array.isArray(s.stones.current.choices) ? s.stones.current.choices : [];
   }
+  s.fixedSkills = s.fixedSkills || d.fixedSkills;
+  s.fixedSkills.s1   = Object.assign({ startTime: 3.05 }, d.fixedSkills.s1,   s.fixedSkills.s1||{});
+  s.fixedSkills.s2   = Object.assign({ startTime: 3.05 }, d.fixedSkills.s2,   s.fixedSkills.s2||{});
+  s.fixedSkills.buff = Object.assign({ startTime: 3.05 }, d.fixedSkills.buff, s.fixedSkills.buff||{});
+  if(s.fixedSkills.autoAnchor === undefined) s.fixedSkills.autoAnchor = 1.88;
+  // 과거 값(3.03: 두 번째 평타 앵커)을 새 정의(첫 평타 = 1.88)로 자동 교체
+  if(Math.abs((s.fixedSkills.autoAnchor||0) - 3.03) < 0.01) s.fixedSkills.autoAnchor = 1.88;
+  if(!Array.isArray(s.skins) || s.skins.length !== 3) s.skins = d.skins;
+  else s.skins = s.skins.map(x => Object.assign({dmg:0, hp:0}, x||{}));
   return s;
 }
 function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
@@ -314,76 +366,132 @@ function realCd(baseCd, skillCdSum){
 
 function computeBase(st, agg){
   const r = st.research;
-  const equipHp = st.equips.reduce((sum, eq, i) => sum + (+eq.hp||0) * (1 + (r.equips[i]?.hp||0)/100), 0);
-  const equipAtk = st.equips.reduce((sum, eq, i) => sum + (+eq.atk||0) * (1 + (r.equips[i]?.atk||0)/100), 0);
-  const petHp    = st.pets.reduce((sum, eq) => sum + (+eq.hp||0), 0)  * (1 + r.petHp/100);
-  const petAtk   = st.pets.reduce((sum, eq) => sum + (+eq.atk||0), 0) * (1 + r.petAtk/100);
-  const mntHp    = (+st.mount.hp||0)  * (1 + r.mountHp/100);
-  const mntAtk   = (+st.mount.atk||0) * (1 + r.mountAtk/100);
+  // 스킨 합산 (피해%, 체력%) — 장비 합계에만 곱해짐
+  const skins = Array.isArray(st.skins) ? st.skins : [];
+  const skinDmgPct = skins.reduce((s,x)=> s + (+x.dmg||0), 0);
+  const skinHpPct  = skins.reduce((s,x)=> s + (+x.hp||0), 0);
+
+  // 장비: 부위별 연구 + 전체 연구(r.equipHp, r.equipAtk) + 스킨 %
+  const equipHpRaw  = st.equips.reduce((sum, eq, i) => sum + (+eq.hp||0)  * (1 + (r.equips[i]?.hp||0)/100), 0);
+  const equipAtkRaw = st.equips.reduce((sum, eq, i) => sum + (+eq.atk||0) * (1 + (r.equips[i]?.atk||0)/100), 0);
+  const equipHp  = equipHpRaw  * (1 + (r.equipHp||0)/100)  * (1 + skinHpPct/100);
+  const equipAtk = equipAtkRaw * (1 + (r.equipAtk||0)/100) * (1 + skinDmgPct/100);
+
+  const petHp  = st.pets.reduce((sum, eq) => sum + (+eq.hp||0), 0)  * (1 + (r.petHp||0)/100);
+  const petAtk = st.pets.reduce((sum, eq) => sum + (+eq.atk||0), 0) * (1 + (r.petAtk||0)/100);
+  const mntHp  = (+st.mount.hp||0)  * (1 + (r.mountHp||0)/100);
+  const mntAtk = (+st.mount.atk||0) * (1 + (r.mountAtk||0)/100);
 
   const rawHp  = equipHp + petHp + mntHp;
   const rawAtk = equipAtk + petAtk + mntAtk;
 
   const buffWaitCd = realCd(FIXED_SKILLS.buff.cd, agg.skillCd);
   const buffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + buffWaitCd);
-  const avgBuffHp = FIXED_SKILLS.buff.hp * buffUptime;
-  const avgBuffAtk = FIXED_SKILLS.buff.atk * buffUptime;
 
-  const totalHp_noArena = rawHp * (1 + agg.hp/100) + (+st.buff.hpFlat||0) + avgBuffHp;
-  const totalHp = totalHp_noArena * 5; 
-  const totalAtk = rawAtk + (+st.buff.atkFlat||0) + avgBuffAtk;
+  // 버프 OFF 기본값 (시뮬은 이 상태로 시작, 2.2초에 버프 발동)
+  const totalHp_OFF_noArena = rawHp * (1 + agg.hp/100) + (+st.buff.hpFlat||0);
+  const totalHp_OFF = totalHp_OFF_noArena * 5;
 
-  return { totalHp, totalAtk, rawHp, rawAtk };
+  // 평타 공식: base = atkCore × (1+dmg)(1+ranged) + atkBuff
+  // atkCore는 "배수 곱하는 쪽" = rawAtk만 포함
+  // atkBuff는 "그대로 더하는 쪽" = buff.atkFlat(상시) + 버프스킬 추가분(동적)
+  const totalAtkCore = rawAtk;
+  const buffAtkFlat = (+st.buff.atkFlat||0); // 상시
+
+  // 버프스킬 발동 시 추가
+  const buffHpBonus = (FIXED_SKILLS.buff.hp||0) * 5; // 결투장 ×5 반영
+  const buffAtkBonus = (FIXED_SKILLS.buff.atk||0);
+
+  // 평균 (공식·UI용)
+  const avgAtkBuff = buffAtkFlat + buffAtkBonus * buffUptime;
+  const totalHp = totalHp_OFF + buffHpBonus * buffUptime;
+  const totalAtk = totalAtkCore + avgAtkBuff;
+
+  return { totalHp, totalAtk, totalAtkCore, totalAtkBuff: avgAtkBuff, rawHp, rawAtk,
+           equipHp, equipAtk, petHp, petAtk, mntHp, mntAtk,
+           totalHp_OFF, buffAtkFlat, buffHpBonus, buffAtkBonus, buffUptime };
 }
 
 function attackPeriod(atkSpd){
   const v = Math.max(0, +atkSpd||0);
-  const t = [[7.1,1.7],[15.4,1.6],[25,1.5],[36.4,1.4],[50,1.3],[66.7,1.2],[87.5,1.1],[114,1.0],[150,0.9],[200,0.8],[275,0.7],[400,0.6]];
-  for(const [th,sec] of t){ if(v < th) return sec; }
+  // 구간 경계점: [공속%, 해당 공속에서의 공격 주기(초)]
+  // 범위 내에서는 선형 보간으로 세분화됨
+  const t = [
+    [0, 1.7], [7.1, 1.6], [15.4, 1.5], [25, 1.4], [36.4, 1.3], [50, 1.2],
+    [66.7, 1.1], [87.5, 1.0], [114, 0.9], [150, 0.8], [200, 0.7], [275, 0.6], [400, 0.5]
+  ];
+  if(v <= t[0][0]) return t[0][1];
+  if(v >= t[t.length-1][0]) return t[t.length-1][1];
+  for(let i=0; i<t.length-1; i++){
+    const [lowX, lowT] = t[i];
+    const [highX, highT] = t[i+1];
+    if(v >= lowX && v <= highX){
+      const ratio = (v - lowX) / (highX - lowX);
+      return lowT + (highT - lowT) * ratio;
+    }
+  }
   return 0.5;
 }
 
-function getAutoDmg(atk, opts, oppBlock, isDeterministic = false){
+// 단일 타격: 블록 롤 → 치명 롤. detail 반환.
+function rollOneHitDetail(base, cr, cd, blk){
+  if (Math.random() < blk) return { dmg: 0, crit: false, blocked: true };
+  const crit = Math.random() < cr;
+  return { dmg: crit ? base * cd : base, crit, blocked: false };
+}
+
+function getAutoDmg(atkCore, atkBuff, opts, oppBlock, isDeterministic = false, hitList = null){
   const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
   const cd = (120 + (opts.critDmg||0))/100;
   const db = Math.max(0, Math.min(100, opts.double||0))/100;
   const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
-  const base = atk * (1 + (opts.dmg||0)/100) * (1 + (opts.ranged||0)/100);
+  // 평타: core는 dmg/ranged 곱 적용, buff는 그대로 더함 (게임 실측 기준)
+  const base = atkCore * (1 + (opts.dmg||0)/100) * (1 + (opts.ranged||0)/100) + (atkBuff||0);
 
   if (isDeterministic) {
     return base * ((1-cr)*1 + cr*cd) * (1+db) * (1-blk);
-  } else {
-    let mult = 1;
-    if (Math.random() < cr) mult *= cd;
-    if (Math.random() < db) mult *= 2;
-    if (Math.random() < blk) mult = 0; 
-    return base * mult;
   }
+  const hit1 = rollOneHitDetail(base, cr, cd, blk);
+  if(hitList) hitList.push(hit1);
+  let total = hit1.dmg;
+  if (Math.random() < db) {
+    const hit2 = rollOneHitDetail(base, cr, cd, blk);
+    hit2.double = true;
+    if(hitList) hitList.push(hit2);
+    total += hit2.dmg;
+  }
+  return total;
 }
 
-function getSkillFlatDmg(flatBase, opts, oppBlock, researchSkillDmg, isDeterministic = false){
-  const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
-  const cd = (120 + (opts.critDmg||0))/100;
-  const db = Math.max(0, Math.min(100, opts.double||0))/100;
+// 스킬 전용 타격: 치명 없음, 블록만 적용
+function rollSkillHitDetail(base, blk){
+  if (Math.random() < blk) return { dmg: 0, crit: false, blocked: true };
+  return { dmg: base, crit: false, blocked: false };
+}
+
+function getSkillFlatDmg(flatBase, opts, oppBlock, researchSkillDmg, isDeterministic = false, hitList = null){
+  // 스킬은 치명·더블 모두 미적용. 블록만 적용. (1타 고정)
   const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
   const base = flatBase * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (researchSkillDmg||0))/100);
 
   if (isDeterministic) {
-    return base * ((1-cr)*1 + cr*cd) * (1+db) * (1-blk);
-  } else {
-    let mult = 1;
-    if (Math.random() < cr) mult *= cd;
-    if (Math.random() < db) mult *= 2;
-    if (Math.random() < blk) mult = 0;
-    return base * mult;
+    return base * (1 - blk);
   }
+  const hit = rollSkillHitDetail(base, blk);
+  if(hitList) hitList.push(hit);
+  return hit.dmg;
 }
 
-function simulate(me, en, isDeterministic = false){
+function simulate(me, en, isDeterministic = false, collectLog = false){
   const dtMs = 100;
   const tMaxMs = 120000;
-  let myHp = me.totalHp, enHp = en.totalHp;
-  const myMax = myHp, enMax = enHp;
+  // 버프 OFF 상태로 시작. 2.2초에 버프 발동 시 HP/ATK 증가
+  let myMax = me.totalHp_OFF || me.totalHp;
+  let enMax = en.totalHp_OFF || en.totalHp;
+  let myHp = myMax, enHp = enMax;
+  // 상시 buff.atkFlat는 기본값, 버프스킬 발동 시 buffAtkBonus 추가
+  let myCurrAtkBuff = (me.buffAtkFlat||0);
+  let enCurrAtkBuff = (en.buffAtkFlat||0);
 
   const myAutoP = attackPeriod(me.opts.atkSpd);
   const enAutoP = attackPeriod(en.opts.atkSpd);
@@ -408,92 +516,190 @@ function simulate(me, en, isDeterministic = false){
   const enS1DmgBase = en.isMe ? FIXED_SKILLS.s1.dmg : (en.skills?.[0]?.dmg||0);
   const enS2DmgBase = en.isMe ? FIXED_SKILLS.s2.dmg : (en.skills?.[1]?.dmg||0);
 
-  let myNextAuto = myAutoMs > 0 ? myAutoMs : Infinity;
-  let enNextAuto = enAutoMs > 0 ? enAutoMs : Infinity;
-  
-  let myNextS1 = myS1DmgBase > 0 && myS1Cd !== Infinity ? Math.max(50, Math.round(myS1Cycle * 1000)) : Infinity;
-  let myNextS2 = myS2DmgBase > 0 && myS2Cd !== Infinity ? Math.max(50, Math.round(myS2Cycle * 1000)) : Infinity;
-  let enNextS1 = enS1DmgBase > 0 && enS1Cd !== Infinity ? Math.max(50, Math.round(enS1Cycle * 1000)) : Infinity;
-  let enNextS2 = enS2DmgBase > 0 && enS2Cd !== Infinity ? Math.max(50, Math.round(enS2Cycle * 1000)) : Infinity;
+  // 첫 auto 시점 = autoAnchor (공속과 무관한 고정 시각). 이후 += autoMs.
+  const autoAnchorMs = Math.max(0, Math.round((FIXED_SKILLS.autoAnchor||1.88) * 1000));
+  let myNextAuto = myAutoMs > 0 ? autoAnchorMs : Infinity;
+  let enNextAuto = enAutoMs > 0 ? autoAnchorMs : Infinity;
+
+  // 첫 스킬 발동 = 전투 시작 후 startTime(초) 고정 시점 (공속과 무관)
+  const s1StartMs = Math.max(50, Math.round((FIXED_SKILLS.s1.startTime||2.2) * 1000));
+  const s2StartMs = Math.max(50, Math.round((FIXED_SKILLS.s2.startTime||2.2) * 1000));
+  const buffStartMs = Math.max(50, Math.round((FIXED_SKILLS.buff.startTime||2.2) * 1000));
+  let myNextS1 = myS1DmgBase > 0 && myS1Cd !== Infinity ? s1StartMs : Infinity;
+  let myNextS2 = myS2DmgBase > 0 && myS2Cd !== Infinity ? s2StartMs : Infinity;
+  let enNextS1 = enS1DmgBase > 0 && enS1Cd !== Infinity ? s1StartMs : Infinity;
+  let enNextS2 = enS2DmgBase > 0 && enS2Cd !== Infinity ? s2StartMs : Infinity;
+
+  // 버프스킬: 고정 시점 첫 발동, 지속 duration초, 쿨타임 cd초 (skillCd 옵션 반영)
+  const buffDurMs = (FIXED_SKILLS.buff.duration||0) * 1000;
+  const myBuffCdSec = realCd(FIXED_SKILLS.buff.cd, me.opts.skillCd);
+  const enBuffCdSec = realCd(FIXED_SKILLS.buff.cd, en.opts.skillCd);
+  const myBuffCdMs = myBuffCdSec === Infinity ? Infinity : Math.max(50, Math.round(myBuffCdSec * 1000));
+  const enBuffCdMs = enBuffCdSec === Infinity ? Infinity : Math.max(50, Math.round(enBuffCdSec * 1000));
+  const myHasBuff = (me.buffHpBonus||0) > 0 || (me.buffAtkBonus||0) > 0;
+  const enHasBuff = (en.buffHpBonus||0) > 0 || (en.buffAtkBonus||0) > 0;
+  let myNextBuff = myHasBuff ? buffStartMs : Infinity;
+  let enNextBuff = enHasBuff ? buffStartMs : Infinity;
+  let myBuffEndMs = -1, enBuffEndMs = -1;
 
   let myTotalDealt = 0;
   let enTotalDealt = 0;
+  const log = [];
 
   let tMs = 0;
   while(tMs < tMaxMs){
     tMs += dtMs;
     let myDealtThisTick = 0, enDealtThisTick = 0;
     let myAutoDealt = 0, enAutoDealt = 0;
+    let myS1Dealt = 0, myS2Dealt = 0, enS1Dealt = 0, enS2Dealt = 0;
+
+    // 타격 디테일 수집(로그 수집 시에만)
+    const myAutoHits = collectLog ? [] : null;
+    const myS1Hits = collectLog ? [] : null;
+    const myS2Hits = collectLog ? [] : null;
+    const enAutoHits = collectLog ? [] : null;
+    const enS1Hits = collectLog ? [] : null;
+    const enS2Hits = collectLog ? [] : null;
+    let myBuffStarted = false, myBuffEnded = false, enBuffStarted = false, enBuffEnded = false;
+
+    // 버프 발동/종료 (공격 처리 전)
+    if(myNextBuff !== Infinity && tMs >= myNextBuff){
+      myMax += (me.buffHpBonus||0);
+      myHp += (me.buffHpBonus||0);
+      myCurrAtkBuff = (me.buffAtkFlat||0) + (me.buffAtkBonus||0);
+      myBuffEndMs = tMs + buffDurMs;
+      myNextBuff = Infinity;
+      myBuffStarted = true;
+    }
+    if(myBuffEndMs > 0 && tMs >= myBuffEndMs){
+      myMax = Math.max(0, myMax - (me.buffHpBonus||0));
+      myHp = Math.min(myHp, myMax);
+      myCurrAtkBuff = (me.buffAtkFlat||0);
+      myBuffEndMs = -1;
+      myNextBuff = (myBuffCdMs === Infinity) ? Infinity : tMs + myBuffCdMs;
+      myBuffEnded = true;
+    }
+    if(enNextBuff !== Infinity && tMs >= enNextBuff){
+      enMax += (en.buffHpBonus||0);
+      enHp += (en.buffHpBonus||0);
+      enCurrAtkBuff = (en.buffAtkFlat||0) + (en.buffAtkBonus||0);
+      enBuffEndMs = tMs + buffDurMs;
+      enNextBuff = Infinity;
+      enBuffStarted = true;
+    }
+    if(enBuffEndMs > 0 && tMs >= enBuffEndMs){
+      enMax = Math.max(0, enMax - (en.buffHpBonus||0));
+      enHp = Math.min(enHp, enMax);
+      enCurrAtkBuff = (en.buffAtkFlat||0);
+      enBuffEndMs = -1;
+      enNextBuff = (enBuffCdMs === Infinity) ? Infinity : tMs + enBuffCdMs;
+      enBuffEnded = true;
+    }
 
     if(tMs >= myNextAuto){
-      const dmg = getAutoDmg(me.totalAtk, me.opts, en.opts.block, isDeterministic);
+      const dmg = getAutoDmg(me.totalAtkCore, myCurrAtkBuff, me.opts, en.opts.block, isDeterministic, myAutoHits);
       myAutoDealt += dmg; myDealtThisTick += dmg;
       myNextAuto += myAutoMs;
     }
     if(tMs >= myNextS1){
-      myDealtThisTick += getSkillFlatDmg(myS1DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic);
+      const d = getSkillFlatDmg(myS1DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic, myS1Hits);
+      myS1Dealt += d; myDealtThisTick += d;
       myNextS1 += Math.max(50, Math.round(myS1Cycle * 1000));
     }
     if(tMs >= myNextS2){
-      myDealtThisTick += getSkillFlatDmg(myS2DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic);
+      const d = getSkillFlatDmg(myS2DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic, myS2Hits);
+      myS2Dealt += d; myDealtThisTick += d;
       myNextS2 += Math.max(50, Math.round(myS2Cycle * 1000));
     }
 
     if(tMs >= enNextAuto){
-      const dmg = getAutoDmg(en.totalAtk, en.opts, me.opts.block, isDeterministic);
+      const dmg = getAutoDmg(en.totalAtkCore, enCurrAtkBuff, en.opts, me.opts.block, isDeterministic, enAutoHits);
       enAutoDealt += dmg; enDealtThisTick += dmg;
       enNextAuto += enAutoMs;
     }
     if(tMs >= enNextS1){
-      enDealtThisTick += getSkillFlatDmg(enS1DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic);
+      const d = getSkillFlatDmg(enS1DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic, enS1Hits);
+      enS1Dealt += d; enDealtThisTick += d;
       enNextS1 += Math.max(50, Math.round(enS1Cycle * 1000));
     }
     if(tMs >= enNextS2){
-      enDealtThisTick += getSkillFlatDmg(enS2DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic);
+      const d = getSkillFlatDmg(enS2DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic, enS2Hits);
+      enS2Dealt += d; enDealtThisTick += d;
       enNextS2 += Math.max(50, Math.round(enS2Cycle * 1000));
     }
 
     enHp -= myDealtThisTick;
     myHp -= enDealtThisTick;
-    
+
     myTotalDealt += myDealtThisTick;
     enTotalDealt += enDealtThisTick;
 
-    if(myAutoDealt > 0) myHp = Math.min(myMax, myHp + myAutoDealt * myLife);
-    if(enAutoDealt > 0) enHp = Math.min(enMax, enHp + enAutoDealt * enLife);
+    const myHeal = myAutoDealt > 0 ? myAutoDealt * myLife : 0;
+    const enHeal = enAutoDealt > 0 ? enAutoDealt * enLife : 0;
+    if(myHeal > 0) myHp = Math.min(myMax, myHp + myHeal);
+    if(enHeal > 0) enHp = Math.min(enMax, enHp + enHeal);
+
+    if(collectLog && (myDealtThisTick > 0 || enDealtThisTick > 0 || myBuffStarted || myBuffEnded || enBuffStarted || enBuffEnded)){
+      log.push({ t:tMs/1000,
+                 myAuto:myAutoDealt, myS1:myS1Dealt, myS2:myS2Dealt, myHeal,
+                 enAuto:enAutoDealt, enS1:enS1Dealt, enS2:enS2Dealt, enHeal,
+                 myAutoHits, myS1Hits, myS2Hits, enAutoHits, enS1Hits, enS2Hits,
+                 myBuffStarted, myBuffEnded, enBuffStarted, enBuffEnded,
+                 myHp:Math.max(0,myHp), enHp:Math.max(0,enHp),
+                 myMaxTick: myMax, enMaxTick: enMax });
+    }
 
     const meDead = myHp <= 0, enDead = enHp <= 0;
-    if(meDead && enDead) return { winner:"draw", myHp:0, enHp:0, t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt };
-    if(enDead) return { winner:"me", myHp:Math.max(0,myHp), enHp:0, t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt };
-    if(meDead) return { winner:"en", myHp:0, enHp:Math.max(0,enHp), t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt };
+    if(meDead && enDead) return { winner:"draw", myHp:0, enHp:0, t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt, log };
+    if(enDead) return { winner:"me", myHp:Math.max(0,myHp), enHp:0, t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt, log };
+    if(meDead) return { winner:"en", myHp:0, enHp:Math.max(0,enHp), t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt, log };
   }
   const myFrac = myHp/myMax, enFrac = enHp/enMax;
-  return { winner: myFrac>enFrac?"me":(myFrac<enFrac?"en":"draw"), myHp:Math.max(0,myHp), enHp:Math.max(0,enHp), t:tMaxMs/1000, myMax, enMax, timeout:true, myTotalDealt, enTotalDealt };
+  return { winner: myFrac>enFrac?"me":(myFrac<enFrac?"en":"draw"), myHp:Math.max(0,myHp), enHp:Math.max(0,enHp), t:tMaxMs/1000, myMax, enMax, timeout:true, myTotalDealt, enTotalDealt, log };
 }
 
 function buildMe(st){
   const agg = aggregateOptions(st);
   const base = computeBase(st, agg);
-  return { isMe: true, totalHp: base.totalHp, totalAtk: base.totalAtk, opts: agg, research: st.research, _rawHp: base.rawHp, _rawAtk: base.rawAtk };
+  return { isMe: true, totalHp: base.totalHp, totalAtk: base.totalAtk,
+           totalAtkCore: base.totalAtkCore, totalAtkBuff: base.totalAtkBuff,
+           totalHp_OFF: base.totalHp_OFF,
+           buffAtkFlat: base.buffAtkFlat,
+           buffHpBonus: base.buffHpBonus, buffAtkBonus: base.buffAtkBonus,
+           opts: agg, research: st.research,
+           _rawHp: base.rawHp, _rawAtk: base.rawAtk,
+           _equipHp: base.equipHp, _equipAtk: base.equipAtk };
 }
 
 function buildPresetEnemy(st, fallbackHp, fallbackAtk){
   let enHp = +st.enemy.hp || 0;
   let enAtk = +st.enemy.atk || 0;
-  
-  if(enHp <= 0) enHp = (fallbackHp || 100000) / 5; 
+
+  if(enHp <= 0) enHp = (fallbackHp || 100000) / 5;
   if(enAtk <= 0) enAtk = fallbackAtk || 10000;
 
   const presetDist = { critRate: 7, critDmg: 7, atkSpd: 6, double: 2, lifesteal: 1, dmg: 1, hp: 0, block: 0, ranged: 0, skillDmg: 0, skillCd: 0, hpRegen: 0, melee: 0 };
   const presetAgg = aggregateFromDist(presetDist);
 
+  // 적도 버프스킬 사용 (내 FIXED_SKILLS와 동일)
+  const presetBuffCdSec = realCd(FIXED_SKILLS.buff.cd, presetAgg.skillCd||0);
+  const presetBuffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + presetBuffCdSec);
+  const presetBuffHpBonus = (FIXED_SKILLS.buff.hp||0) * 5;
+  const presetBuffAtkBonus = (FIXED_SKILLS.buff.atk||0);
+
   return {
-    isMe: false, 
-    totalHp: enHp * 5, 
-    totalAtk: enAtk,
-    opts: presetAgg, 
+    isMe: false,
+    totalHp: enHp * 5 + presetBuffHpBonus * presetBuffUptime,
+    totalHp_OFF: enHp * 5,
+    totalAtk: enAtk + presetBuffAtkBonus * presetBuffUptime,
+    totalAtkCore: enAtk,
+    totalAtkBuff: presetBuffAtkBonus * presetBuffUptime,
+    buffAtkFlat: 0,
+    buffHpBonus: presetBuffHpBonus,
+    buffAtkBonus: presetBuffAtkBonus,
+    opts: presetAgg,
     skills: [
-      { dmg: FIXED_SKILLS.s1.dmg, cd: FIXED_SKILLS.s1.cd }, 
+      { dmg: FIXED_SKILLS.s1.dmg, cd: FIXED_SKILLS.s1.cd },
       { dmg: FIXED_SKILLS.s2.dmg, cd: FIXED_SKILLS.s2.cd }
     ],
     research: st.research
@@ -503,16 +709,29 @@ function buildPresetEnemy(st, fallbackHp, fallbackAtk){
 function buildCustomEnemy(st, fallbackHp, fallbackAtk){
   let enHp = +st.enemy.hp || 0;
   let enAtk = +st.enemy.atk || 0;
-  if(enHp <= 0) enHp = (fallbackHp || 100000) / 5; 
+  if(enHp <= 0) enHp = (fallbackHp || 100000) / 5;
   if(enAtk <= 0) enAtk = fallbackAtk || 10000;
 
+  // 커스텀 적도 버프스킬 사용 (내 FIXED_SKILLS와 동일)
+  const customAgg = Object.fromEntries(OPT_IDS_ENEMY.map(k => [k, +st.enemy.opts[k]||0]));
+  const customBuffCdSec = realCd(FIXED_SKILLS.buff.cd, customAgg.skillCd||0);
+  const customBuffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + customBuffCdSec);
+  const customBuffHpBonus = (FIXED_SKILLS.buff.hp||0) * 5;
+  const customBuffAtkBonus = (FIXED_SKILLS.buff.atk||0);
+
   return {
-    isMe: false, 
-    totalHp: enHp * 5, 
-    totalAtk: enAtk,
-    opts: Object.fromEntries(OPT_IDS_ENEMY.map(k => [k, +st.enemy.opts[k]||0])),
+    isMe: false,
+    totalHp: enHp * 5 + customBuffHpBonus * customBuffUptime,
+    totalHp_OFF: enHp * 5,
+    totalAtk: enAtk + customBuffAtkBonus * customBuffUptime,
+    totalAtkCore: enAtk,
+    totalAtkBuff: customBuffAtkBonus * customBuffUptime,
+    buffAtkFlat: 0,
+    buffHpBonus: customBuffHpBonus,
+    buffAtkBonus: customBuffAtkBonus,
+    opts: customAgg,
     skills: [
-      { dmg: +st.enemy.skills[0].dmg||0, cd: +st.enemy.skills[0].cd||0 }, 
+      { dmg: +st.enemy.skills[0].dmg||0, cd: +st.enemy.skills[0].cd||0 },
       { dmg: +st.enemy.skills[1].dmg||0, cd: +st.enemy.skills[1].cd||0 }
     ],
     research: { skillDmg:0 }
@@ -536,30 +755,84 @@ function aggregateFromDist(dist){
   return agg;
 }
 
-function simulateAverageScore(me, en, runs=1000){
-  let totalScore = 0;
-  for(let i=0; i<runs; i++){
-    totalScore += powerScore(simulate(me, en, false)); // 1,000번 모두 실제 주사위(RNG) 굴림
+// 공식 기반 전투력 계산: 내 DPS × 내 생존시간
+// - DPS = auto + 스킬1 + 스킬2 (치명/더블/블록 기댓값 반영)
+// - 흡혈 = 내 auto DPS × lifesteal% → 상대 DPS 상쇄 → 생존시간 증가
+// - 예: 흡혈 10/초로 상대 DPS 100 → 실효 90 → HP 1000이면 11.11초 생존
+function cpFormula(me, en){
+  const myAutoP = attackPeriod(me.opts.atkSpd);
+  const enAutoP = attackPeriod(en.opts.atkSpd);
+
+  const myAutoDmg = getAutoDmg(me.totalAtkCore, me.totalAtkBuff, me.opts, en.opts.block, true);
+  const enAutoDmg = getAutoDmg(en.totalAtkCore, en.totalAtkBuff, en.opts, me.opts.block, true);
+  const myAutoDPS = myAutoP > 0 ? myAutoDmg / myAutoP : 0;
+  const enAutoDPS = enAutoP > 0 ? enAutoDmg / enAutoP : 0;
+
+  const skillDPS = (side, oppBlock) => {
+    let dps = 0;
+    for(let i=0; i<2; i++){
+      const key = "s"+(i+1);
+      const dmgBase = side.isMe ? FIXED_SKILLS[key].dmg : (side.skills?.[i]?.dmg||0);
+      if(dmgBase <= 0) continue;
+      const cdBase  = side.isMe ? FIXED_SKILLS[key].cd  : (side.skills?.[i]?.cd||0);
+      const cdReal  = realCd(cdBase, side.opts.skillCd);
+      if(cdReal === Infinity) continue;
+      const duration = side.isMe ? FIXED_SKILLS[key].duration : 0;
+      const cycle = duration + cdReal;
+      if(cycle <= 0) continue;
+      dps += getSkillFlatDmg(dmgBase, side.opts, oppBlock, side.research?.skillDmg||0, true) / cycle;
+    }
+    return dps;
+  };
+  const mySkillDPS = skillDPS(me, en.opts.block);
+  const enSkillDPS = skillDPS(en, me.opts.block);
+
+  const myDPS = myAutoDPS + mySkillDPS;
+  const enDPS = enAutoDPS + enSkillDPS;
+
+  // 흡혈은 일반공격에만 적용 → 상대 DPS 상쇄
+  const myLife = Math.max(0, +(me.opts.lifesteal||0))/100;
+  const enLife = Math.max(0, +(en.opts.lifesteal||0))/100;
+  const myHealRate = myAutoDPS * myLife;
+  const enHealRate = enAutoDPS * enLife;
+
+  const effEnDPS = Math.max(0.01, enDPS - myHealRate);
+  const effMyDPS = Math.max(0.01, myDPS - enHealRate);
+  const mySurvivalSec = me.totalHp / effEnDPS;
+  const enKillTime = en.totalHp / effMyDPS; // 내가 상대를 죽이는 데 걸리는 시간
+
+  // 전투력: 실제 전투 종료 시점까지만 DPS 유효 (초과 생존시간은 의미 없음)
+  // - 승리: 상대 HP 다 깎음 + 여유시간 × 내 DPS 추가
+  // - 패배: 내가 죽기 전까지 준 총 피해 = myDPS × mySurvivalSec
+  let score;
+  let winner;
+  if(mySurvivalSec >= enKillTime){
+    winner = "me";
+    score = en.totalHp + myDPS * (mySurvivalSec - enKillTime);
+  } else {
+    winner = "en";
+    score = myDPS * mySurvivalSec;
   }
-  return totalScore / runs;
+  return { score, winner, myDPS, enDPS, myAutoDPS, enAutoDPS, mySkillDPS, enSkillDPS, myHealRate, enHealRate, mySurvivalSec, enKillTime };
 }
 
 function currentCPScore(st){
   const me = buildMe(st);
   const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
-  return simulateAverageScore(me, en, 1000);
+  return cpFormula(me, en).score;
 }
 
 function bestBuildCPScore(st){
-  const me = buildMe(st); 
+  const me = buildMe(st);
   const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
 
   const presetDist = { critRate: 7, critDmg: 7, atkSpd: 6, double: 2, lifesteal: 1, dmg: 1, hp: 0, block: 0, ranged: 0, skillDmg: 0, skillCd: 0, hpRegen: 0, melee: 0 };
   const presetAgg = aggregateFromDist(presetDist);
   const presetBase = computeBase(st, presetAgg);
-  const presetMe = { isMe: true, totalHp: presetBase.totalHp, totalAtk: presetBase.totalAtk, opts: presetAgg, research: st.research };
-  
-  return simulateAverageScore(presetMe, en, 1000);
+  const presetMe = { isMe: true, totalHp: presetBase.totalHp, totalAtk: presetBase.totalAtk,
+                     totalAtkCore: presetBase.totalAtkCore, totalAtkBuff: presetBase.totalAtkBuff,
+                     opts: presetAgg, research: st.research };
+  return cpFormula(presetMe, en).score;
 }
 
 /* ==========================================================================
@@ -596,7 +869,7 @@ function unitNumInput(value, onchange, opts={}){
    if (d > 0 && d >= 1e9 && d % 1e7 === 0) { d /= 1e9; u = 1e9; }
    else if (d > 0 && d >= 1e6 && d % 1e4 === 0) { d /= 1e6; u = 1e6; }
    else if (d > 0 && d >= 1e3 && d % 1e1 === 0) { d /= 1e3; u = 1e3; }
-   
+
    const inp = h("input", { type:"number", inputmode:"decimal", step:"any", value: d===0?"":d, placeholder: opts.placeholder||"0" });
    const sel = h("select", { style:"width:65px; margin-left:6px; padding:0 4px; border-radius:8px;" },
       h("option", {value:1, selected: u===1}, "-"),
@@ -664,7 +937,7 @@ function renderGearEditor(key){
   const [kind, idxStr] = key.split("-");
   const idx = +idxStr;
   let slot = null, label = null;
-  
+
   if (kind === "equips" || kind === "mount") {
      slot = kind==="mount" ? state.mount : state.equips[idx];
      label = GEAR_GRID_LABELS.find(l => l.type === kind && l.idx === idx);
@@ -674,9 +947,12 @@ function renderGearEditor(key){
   } else if (kind === "petInv") {
      slot = state.petInventory[idx];
      label = {icon:"💤", name:`보관함 펫 ${idx+1}`};
+  } else if (kind === "mountInv") {
+     slot = state.mountInventory[idx];
+     label = {icon:"🐴", name:`보관함 탈것 ${idx+1}`};
   }
   if(!slot) return h("div");
-  
+
   const body = h("div",{class:"slot", style:"border-color:var(--accent)"});
   body.append(h("h4", null, `${label.icon} ${label.name} — 상세 편집`));
   body.append(h("div",{class:"row"},
@@ -691,15 +967,25 @@ function renderGearEditor(key){
   }
 
   if (kind === "petInv") {
+    const swapResult = h("div",{id:"pet-swap-result"});
+    const buttonGroup = h("div", {style:"display:grid;grid-template-columns:repeat(3,1fr);gap:8px"});
+    for(let i=0; i<3; i++){
+      buttonGroup.append(h("div", {style:"display:flex;flex-direction:column;gap:6px"},
+        h("button",{class:"btn", onclick:function(){ simulatePetSwap(i, idx, swapResult, this); }}, `⚡ 펫${i+1}과 전투`),
+        h("button",{class:"btn alt", onclick:()=>{
+          const temp = state.pets[i];
+          state.pets[i] = state.petInventory[idx];
+          state.petInventory[idx] = temp;
+          state._selectedSlot = `pets-${i}`;
+          onAnyChange(); renderMe();
+        }}, `✅ 펫${i+1} 장착`)
+      ));
+    }
     body.append(h("div", {class:"slot", style:"margin-top:10px"},
-      h("h4",null,"이 펫을 본 슬롯에 장착하기"),
-      h("div",{class:"btnrow"}, ...[0,1,2].map(i => h("button",{class:"btn alt", onclick:()=>{
-           const temp = state.pets[i];
-           state.pets[i] = state.petInventory[idx];
-           state.petInventory[idx] = temp;
-           state._selectedSlot = `pets-${i}`;
-           onAnyChange(); renderMe();
-        }}, `펫 ${i+1} 장착`)))
+      h("h4",null,"본 슬롯 펫과 비교/장착"),
+      h("p",{class:"muted",style:"margin:4px 0 8px"},"장착 전에 각 펫 자리와 1:1 시뮬로 누가 이기는지 먼저 확인할 수 있습니다."),
+      buttonGroup,
+      swapResult
     ));
   } else if (kind === "pets") {
     body.append(h("div", {class:"slot", style:"margin-top:10px"},
@@ -712,8 +998,56 @@ function renderGearEditor(key){
            onAnyChange(); renderMe();
         }}, `보관 ${i+1} 이동`)))
     ));
+  } else if (kind === "mountInv") {
+    const swapResult = h("div",{id:"mount-swap-result"});
+    body.append(h("div", {class:"slot", style:"margin-top:10px"},
+      h("h4",null,"현재 탈것과 비교/장착"),
+      h("p",{class:"muted",style:"margin:4px 0 8px"},"장착 전에 현재 탈것과 1:1 시뮬로 누가 이기는지 확인 가능."),
+      h("div",{class:"btnrow"},
+        h("button",{class:"btn", onclick:function(){ simulateMountSwap(idx, swapResult, this); }}, "⚡ 현재 탈것과 전투"),
+        h("button",{class:"btn alt", onclick:()=>{
+           const temp = state.mount;
+           state.mount = state.mountInventory[idx];
+           state.mountInventory[idx] = temp;
+           state._selectedSlot = `mount-0`;
+           onAnyChange(); renderMe();
+        }}, "✅ 탈것 장착")
+      ),
+      swapResult
+    ));
   }
   return body;
+}
+
+async function simulateMountSwap(invIdx, resultDiv, btn){
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = "계산 중…";
+  resultDiv.innerHTML = "";
+  await new Promise(r=>setTimeout(r, 30));
+  try {
+    const meA = buildMe(state);
+    const origMount = state.mount;
+    const origInv = state.mountInventory[invIdx];
+    let meB;
+    try {
+      state.mount = origInv;
+      state.mountInventory[invIdx] = origMount;
+      meB = buildMe(state);
+    } finally {
+      state.mount = origMount;
+      state.mountInventory[invIdx] = origInv;
+    }
+    const labelA = "현재 탈것";
+    const labelB = `보관${invIdx+1}`;
+    const scoreA = cpAgainstPreset(meA);
+    const scoreB = cpAgainstPreset(meB);
+    const result = await runBattleRepeats(meA, meB, 1000, btn);
+    resultDiv.append(renderWinRateBox(`⚡ 탈것 교체 비교`, labelA, labelB, result, scoreA, scoreB));
+    const logEl = renderCombatLog(result.sampleSim, labelA, labelB);
+    if(logEl) resultDiv.append(logEl);
+  } finally {
+    btn.disabled = false; btn.textContent = origText;
+  }
 }
 
 function renderMe(){
@@ -738,12 +1072,32 @@ function renderMe(){
   state.pets.forEach((s,i)=> pGrid.append(gearCard(s, PET_LABELS[i], `pets-${i}`, selected===`pets-${i}`)));
   host.append(pGrid);
 
-  host.append(h("div",{class:"gear-sec-title"}, "펫 보관함 (장착 전 비교용)"));
-  const invGrid = h("div",{class:"gear-grid pets"});
-  state.petInventory.forEach((s,i)=> invGrid.append(gearCard(s, {icon:"💤", name:`보관 ${i+1}`}, `petInv-${i}`, selected===`petInv-${i}`)));
-  host.append(invGrid);
+  // 펫 보관함 (접기). 보관함 슬롯 선택 시 편집 패널도 보관함 안에 위치 → 접으면 같이 숨음
+  const isPetInvSelected = selected.startsWith("petInv-");
+  const petInvDet = h("details", { style:"margin-top:10px" });
+  if(isPetInvSelected) petInvDet.setAttribute("open", "");
+  petInvDet.append(h("summary",{class:"gear-sec-title",style:"cursor:pointer;margin:0;padding:8px 4px"},"💤 펫 보관함 (장착 전 비교용)"));
+  const petInvGrid = h("div",{class:"gear-grid pets",style:"margin-top:6px"});
+  state.petInventory.forEach((s,i)=> petInvGrid.append(gearCard(s, {icon:"💤", name:`보관 ${i+1}`}, `petInv-${i}`, selected===`petInv-${i}`)));
+  petInvDet.append(petInvGrid);
+  if(isPetInvSelected) petInvDet.append(renderGearEditor(selected));
+  host.append(petInvDet);
 
-  host.append(renderGearEditor(selected));
+  // 탈것 보관함 (접기). 동일 원리.
+  const isMntInvSelected = selected.startsWith("mountInv-");
+  const mntInvDet = h("details", { style:"margin-top:10px" });
+  if(isMntInvSelected) mntInvDet.setAttribute("open", "");
+  mntInvDet.append(h("summary",{class:"gear-sec-title",style:"cursor:pointer;margin:0;padding:8px 4px"},"💤 탈것 보관함"));
+  const mntInvGrid = h("div",{class:"gear-grid pets",style:"margin-top:6px"});
+  state.mountInventory.forEach((s,i)=> mntInvGrid.append(gearCard(s, {icon:"🐴", name:`보관 ${i+1}`}, `mountInv-${i}`, selected===`mountInv-${i}`)));
+  mntInvDet.append(mntInvGrid);
+  if(isMntInvSelected) mntInvDet.append(renderGearEditor(selected));
+  host.append(mntInvDet);
+
+  // 보관함이 아닌 슬롯만 메인 편집 패널 표시
+  if(!isPetInvSelected && !isMntInvSelected){
+    host.append(renderGearEditor(selected));
+  }
 }
 
 function renderBuff(){
@@ -772,13 +1126,61 @@ function renderBuff(){
     ));
   });
   host.append(gearResearchGrid);
+  // 스킨 3개 (피해%/체력%)
+  const skinBox = h("div",{class:"slot"}, h("h4",null,"스킨 보너스 (3개, 각 피해 % · 체력 %)"));
+  for(let i=0; i<3; i++){
+    if(!state.skins[i]) state.skins[i] = {dmg:0, hp:0};
+    skinBox.append(h("div",{class:"row3", style:"margin-bottom:6px; align-items:center"},
+      h("div", {class:"lbl-sub", style:"text-align:left;margin:0"}, `👗 스킨 ${i+1}`),
+      h("div", null, h("label",{class:"lbl-sub",style:"margin:0"},"피해 %"),
+        numInput(state.skins[i].dmg, v=>{state.skins[i].dmg=v;onAnyChange();})),
+      h("div", null, h("label",{class:"lbl-sub",style:"margin:0"},"체력 %"),
+        numInput(state.skins[i].hp, v=>{state.skins[i].hp=v;onAnyChange();}))
+    ));
+  }
+  host.append(skinBox);
+
   host.append(h("div",{class:"slot"},
-    h("h4",null,"펫 및 탈것 연구 (%)"),
+    h("h4",null,"펫 · 탈것 · 스킬 연구 (%)"),
     h("div",{class:"row"},
       h("div",null,h("label",null,"펫 체력 %"), numInput(state.research.petHp, v=>{state.research.petHp=v;onAnyChange();})),
       h("div",null,h("label",null,"펫 공격력 %"), numInput(state.research.petAtk, v=>{state.research.petAtk=v;onAnyChange();})),
       h("div",null,h("label",null,"탈것 체력 %"), numInput(state.research.mountHp, v=>{state.research.mountHp=v;onAnyChange();})),
-      h("div",null,h("label",null,"탈것 공격력 %"), numInput(state.research.mountAtk, v=>{state.research.mountAtk=v;onAnyChange();}))
+      h("div",null,h("label",null,"탈것 공격력 %"), numInput(state.research.mountAtk, v=>{state.research.mountAtk=v;onAnyChange();})),
+      h("div",null,h("label",null,"스킬 피해 %"), numInput(state.research.skillDmg, v=>{state.research.skillDmg=v;onAnyChange();}))
+    )
+  ));
+
+  // 고정 스킬 수치 편집 (게임 실측에 맞게 조정)
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"고정 스킬 수치 (게임 실측에 맞게 조정)"),
+    h("p",{class:"muted",style:"margin:4px 0 8px"},"평타·크리 실측과 어긋나면 여기서 조정하세요. 특히 버프 공격력/체력 증가치."),
+    h("div",{class:"gear-sec-title",style:"margin-top:4px"},"딜스킬 1"),
+    h("div",{class:"row"},
+      h("div",null,h("label",null,"피해량(고정)"), unitNumInput(FIXED_SKILLS.s1.dmg, v=>{FIXED_SKILLS.s1.dmg=v;onAnyChange();})),
+      h("div",null,h("label",null,"첫 발동(초)"), numInput(FIXED_SKILLS.s1.startTime, v=>{FIXED_SKILLS.s1.startTime=v;onAnyChange();})),
+      h("div",null,h("label",null,"지속(초)"), numInput(FIXED_SKILLS.s1.duration, v=>{FIXED_SKILLS.s1.duration=v;onAnyChange();})),
+      h("div",null,h("label",null,"쿨타임(초)"), numInput(FIXED_SKILLS.s1.cd, v=>{FIXED_SKILLS.s1.cd=v;onAnyChange();}))
+    ),
+    h("div",{class:"gear-sec-title",style:"margin-top:10px"},"딜스킬 2"),
+    h("div",{class:"row"},
+      h("div",null,h("label",null,"피해량(고정)"), unitNumInput(FIXED_SKILLS.s2.dmg, v=>{FIXED_SKILLS.s2.dmg=v;onAnyChange();})),
+      h("div",null,h("label",null,"첫 발동(초)"), numInput(FIXED_SKILLS.s2.startTime, v=>{FIXED_SKILLS.s2.startTime=v;onAnyChange();})),
+      h("div",null,h("label",null,"지속(초)"), numInput(FIXED_SKILLS.s2.duration, v=>{FIXED_SKILLS.s2.duration=v;onAnyChange();})),
+      h("div",null,h("label",null,"쿨타임(초)"), numInput(FIXED_SKILLS.s2.cd, v=>{FIXED_SKILLS.s2.cd=v;onAnyChange();}))
+    ),
+    h("div",{class:"gear-sec-title",style:"margin-top:10px"},"버프스킬"),
+    h("div",{class:"row"},
+      h("div",null,h("label",null,"체력 증가"), unitNumInput(FIXED_SKILLS.buff.hp, v=>{FIXED_SKILLS.buff.hp=v;onAnyChange();})),
+      h("div",null,h("label",null,"공격력 증가"), unitNumInput(FIXED_SKILLS.buff.atk, v=>{FIXED_SKILLS.buff.atk=v;onAnyChange();})),
+      h("div",null,h("label",null,"첫 발동(초)"), numInput(FIXED_SKILLS.buff.startTime, v=>{FIXED_SKILLS.buff.startTime=v;onAnyChange();})),
+      h("div",null,h("label",null,"지속(초)"), numInput(FIXED_SKILLS.buff.duration, v=>{FIXED_SKILLS.buff.duration=v;onAnyChange();})),
+      h("div",null,h("label",null,"쿨타임(초)"), numInput(FIXED_SKILLS.buff.cd, v=>{FIXED_SKILLS.buff.cd=v;onAnyChange();}))
+    ),
+    h("div",{class:"gear-sec-title",style:"margin-top:10px"},"공통 타이밍"),
+    h("div",{class:"row"},
+      h("div",null,h("label",null,"첫 평타 시점(초)"), numInput(FIXED_SKILLS.autoAnchor, v=>{FIXED_SKILLS.autoAnchor=v;onAnyChange();})),
+      h("div",null,h("p",{class:"muted",style:"margin:0;font-size:11px"},"※ 첫 auto는 공속과 무관한 고정 시점. 이후 공격부터 공속 주기에 따라 간격이 벌어짐."))
     )
   ));
 }
@@ -809,6 +1211,136 @@ function renderEnemy(){
       )
     ));
   }
+
+  const simResultDiv = h("div",{id:"enemy-sim-result"});
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"⚔️ 입력한 상대와 전투 시뮬"),
+    h("p",{class:"muted",style:"margin:4px 0 8px"},"위에 입력한 상대 스펙으로 1:1 전투를 즉시 실행합니다 (RNG 1회)."),
+    h("div",{class:"btnrow"}, h("button",{class:"btn", onclick:function(){simulateVsCustom(this);}}, "🎯 전투 시작")),
+    simResultDiv
+  ));
+}
+
+// 1000회 시뮬 공통 헬퍼 — 첫 1회만 로그 수집
+async function runBattleRepeats(meA, meB, runs, btn){
+  let aWin=0, bWin=0, draw=0;
+  let sampleSim = null;
+  for(let i=0; i<runs; i++){
+    const sim = simulate(meA, meB, false, i === 0);
+    if(sim.winner === "me") aWin++;
+    else if(sim.winner === "en") bWin++;
+    else draw++;
+    if(i === 0) sampleSim = sim;
+    if(i > 0 && i % 50 === 0){
+      if(btn) btn.textContent = `계산 중 ${i}/${runs}`;
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+  return { aWin, bWin, draw, sampleSim, runs };
+}
+
+function renderWinRateBox(title, aLabel, bLabel, r, scoreA, scoreB){
+  const aPct = (r.aWin/r.runs*100).toFixed(1);
+  const bPct = (r.bWin/r.runs*100).toFixed(1);
+  const drawPct = (r.draw/r.runs*100).toFixed(1);
+  const winner = r.aWin > r.bWin ? "a" : (r.bWin > r.aWin ? "b" : "tie");
+  const winLabel = winner === "a" ? `${aLabel} ✔` : (winner === "b" ? `${bLabel} ✔` : "접전");
+  const diff = (scoreA!=null && scoreB!=null) ? scoreB - scoreA : null;
+  const diffPct = (diff!=null && Math.abs(scoreA)>1) ? (diff/Math.abs(scoreA)*100) : null;
+
+  const box = h("div",{class:"slot",style:"margin-top:10px"},
+    h("h4",null,title + ` (${r.runs}회 시뮬)`),
+    kv("우세", h("b",{class:winner==="a"?"pos":(winner==="b"?"neg":"")}, winLabel))
+  );
+  if(scoreA!=null && scoreB!=null){
+    box.append(
+      kv(`${aLabel} 전투력`, Math.round(scoreA).toLocaleString()),
+      kv(`${bLabel} 전투력`, Math.round(scoreB).toLocaleString() + (diffPct!=null ? `  (${diff>=0?"+":""}${diffPct.toFixed(2)}%)` : ""))
+    );
+  }
+  box.append(
+    kv(`${aLabel} 승`, `${r.aWin}회 (${aPct}%)`),
+    kv(`${bLabel} 승`, `${r.bWin}회 (${bPct}%)`),
+    kv("무승부", `${r.draw}회 (${drawPct}%)`),
+    h("p",{class:"muted",style:"margin-top:8px"},
+      winner==="b" ? `→ ${bLabel}이(가) 더 강합니다.` :
+      winner==="a" ? `→ ${aLabel}이(가) 더 강합니다.` :
+      "→ 거의 대등합니다."
+    )
+  );
+  return box;
+}
+
+// 프리셋 더미 기준 전투력 점수 (표준 지표)
+function cpAgainstPreset(me){
+  const en = buildPresetEnemy(state, me.totalHp, me.totalAtk);
+  return cpFormula(me, en).score;
+}
+
+// 보관함 펫과 장착 펫 교체 시, 두 빌드를 서로 싸우게 해 승자 판정
+async function simulatePetSwap(petIdx, invIdx, resultDiv, btn){
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = "계산 중…";
+  resultDiv.innerHTML = "";
+  await new Promise(r=>setTimeout(r, 30));
+  try {
+    const meA = buildMe(state);
+    const origPet = state.pets[petIdx];
+    const origInv = state.petInventory[invIdx];
+    let meB;
+    try {
+      state.pets[petIdx] = origInv;
+      state.petInventory[invIdx] = origPet;
+      meB = buildMe(state);
+    } finally {
+      state.pets[petIdx] = origPet;
+      state.petInventory[invIdx] = origInv;
+    }
+    const labelA = `현재(펫${petIdx+1})`;
+    const labelB = `교체(보관${invIdx+1})`;
+    const scoreA = cpAgainstPreset(meA);
+    const scoreB = cpAgainstPreset(meB);
+    const result = await runBattleRepeats(meA, meB, 1000, btn);
+    resultDiv.append(renderWinRateBox(`⚡ 펫${petIdx+1} 자리 교체 비교`, labelA, labelB, result, scoreA, scoreB));
+    const logEl = renderCombatLog(result.sampleSim, labelA, labelB);
+    if(logEl) resultDiv.append(logEl);
+  } finally {
+    btn.disabled = false; btn.textContent = origText;
+  }
+}
+
+function simulateVsCustom(btn){
+  const resultDiv = document.getElementById("enemy-sim-result");
+  if(!resultDiv) return;
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = "계산 중…";
+  resultDiv.innerHTML = "";
+  setTimeout(()=>{
+    try {
+      const me = buildMe(state);
+      const isShadow = (+state.enemy.hp||0) <= 0 && (+state.enemy.atk||0) <= 0;
+      if(isShadow){
+        resultDiv.append(h("p",{class:"neg",style:"padding:10px"},"상대 체력과 공격력을 먼저 입력해주세요."));
+        return;
+      }
+      const en = buildCustomEnemy(state, me.totalHp, me.totalAtk);
+      const sim = simulate(me, en, false, true);
+      resultDiv.append(h("div",{class:"slot",style:"margin-top:10px"},
+        h("h4",null,"결과"),
+        kv("승패", h("b",{class:sim.winner==="me"?"pos":(sim.winner==="en"?"neg":"")},
+          sim.winner==="me"?"승리 ✔":(sim.winner==="en"?"패배 ✘":"무승부"))),
+        kv("소요 시간", `${sim.t.toFixed(1)} 초${sim.timeout?" (타임아웃)":""}`),
+        kv("내 남은 체력", `${Math.round(sim.myHp).toLocaleString()} / ${Math.round(sim.myMax).toLocaleString()}`),
+        kv("적 남은 체력", `${Math.round(sim.enHp).toLocaleString()} / ${Math.round(sim.enMax).toLocaleString()}`),
+        kv("내 가한 총 피해", Math.round(sim.myTotalDealt).toLocaleString()),
+        kv("적 가한 총 피해", Math.round(sim.enTotalDealt).toLocaleString())
+      ));
+      const logEl = renderCombatLog(sim, "나", "적");
+      if(logEl) resultDiv.append(logEl);
+    } finally {
+      btn.disabled = false; btn.textContent = origText;
+    }
+  }, 30);
 }
 
 function renderResult(){
@@ -823,14 +1355,14 @@ function renderResult(){
 
   host.append(
     h("div",{class:"lbl-sub", style:"margin-top:10px"}, `내 현재 전투력 점수`),
-    h("p", {class:"muted", style:"margin:0 0 4px; line-height:1.4"}, "※ 전투력 점수는 오차를 줄이고 완벽한 통계를 위해 내부적으로 1,000회 실제 확률(RNG) 시뮬레이션을 돌려 평균값을 사용합니다."),
+    h("p", {class:"muted", style:"margin:0 0 4px; line-height:1.4"}, "※ 전투력 = 승리 시: 상대 HP + (생존 여유 × 내 DPS) / 패배 시: 내 DPS × 생존시간. 치명/더블/블록/흡혈을 공식으로 반영하되 '상대 죽이는 시간'으로 cap해 초과 생존시간이 과대평가되지 않습니다."),
     h("div",{class:"big good", style:"color:#fff; margin-bottom:0"}, curCP.toLocaleString(undefined, {maximumFractionDigits:0})),
     h("div",{class:"lbl-sub", style:"margin-top:4px"}, `표준 프리셋(100%) 더미 기준: ${cpRatio.toFixed(1)}%`)
   );
 
   const isShadow = (+state.enemy.hp||0) <= 0;
   const enFight = isShadow ? buildPresetEnemy(state, me.totalHp, me.totalAtk) : buildCustomEnemy(state, me.totalHp, me.totalAtk);
-  const simCustom = simulate(me, enFight, false); 
+  const simCustom = simulate(me, enFight, false, true);
 
   let customBox = h("div",{class:"slot"});
   customBox.append(h("h4",null,`⚔️ 1:1 단일 전투 시뮬레이션 결과 ${isShadow?"(vs 표준 프리셋 더미)":"(vs 커스텀 상대)"}`));
@@ -850,6 +1382,72 @@ function renderResult(){
     kv("내 평균 실측 DPS", Math.round(simCustom.myTotalDealt / simCustom.t).toLocaleString()),
     kv(`적 평균 실측 DPS`, Math.round(simCustom.enTotalDealt / simCustom.t).toLocaleString())
   ));
+
+  // 내 스탯 요약: 버프 OFF (게임 UI) / ON 최대 / 전투 평균 / 결투장 체력 분리
+  const myAtkP = attackPeriod(me.opts.atkSpd);
+  const myS1CdReal = realCd(FIXED_SKILLS.s1.cd, me.opts.skillCd);
+  const myS2CdReal = realCd(FIXED_SKILLS.s2.cd, me.opts.skillCd);
+  const myBuffCdReal = realCd(FIXED_SKILLS.buff.cd, me.opts.skillCd);
+  const buffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + myBuffCdReal);
+  const formula = cpFormula(me, enFight);
+
+  const aggMe = me.opts;
+  const dmgMult = (1 + (aggMe.dmg||0)/100) * (1 + (aggMe.ranged||0)/100);
+  // 체력: 스킨·연구·옵션·buff.hpFlat 반영 (게임 UI와 일치)
+  const hpNoBuff = me._rawHp * (1 + (aggMe.hp||0)/100) + (+state.buff.hpFlat||0);
+  const hpBuffOn = hpNoBuff + FIXED_SKILLS.buff.hp;
+  const hpAvg = hpNoBuff + FIXED_SKILLS.buff.hp * buffUptime;
+  // 공격력 UI: rawAtk × (1+dmg)(1+ranged) + buff.atkFlat (게임 UI와 일치)
+  const atkNoBuff = me._rawAtk * dmgMult + (+state.buff.atkFlat||0);
+  const atkBuffOn = atkNoBuff + FIXED_SKILLS.buff.atk;
+  const atkAvg = atkNoBuff + FIXED_SKILLS.buff.atk * buffUptime;
+
+  // 장비만 기준 (펫/탈것 제외) — 게임 UI의 "장비" 수치와 비교용
+  const equipHpUI = me._equipHp + (+state.buff.hpFlat||0);
+  const equipAtkUI = me._equipAtk * dmgMult + (+state.buff.atkFlat||0);
+
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"내 최종 스탯"),
+    kv("평소 체력 (버프 OFF, 게임 UI)", Math.round(hpNoBuff).toLocaleString()),
+    kv("└ 장비만 체력 (펫·탈것 제외)", Math.round(equipHpUI).toLocaleString()),
+    kv("버프 ON 최대 체력", Math.round(hpBuffOn).toLocaleString()),
+    kv(`전투 평균 체력 (버프 가동률 ${(buffUptime*100).toFixed(0)}%)`, Math.round(hpAvg).toLocaleString()),
+    kv("결투장 체력 (×5, 시뮬용)", Math.round(me.totalHp).toLocaleString()),
+    kv("평소 공격력 (버프 OFF)", Math.round(atkNoBuff).toLocaleString()),
+    kv("└ 장비만 공격력 (펫·탈것 제외)", Math.round(equipAtkUI).toLocaleString()),
+    kv("버프 ON 최대 공격력", Math.round(atkBuffOn).toLocaleString()),
+    kv("전투 평균 공격력 (시뮬용)", Math.round(me.totalAtk).toLocaleString()),
+    h("p",{class:"muted", style:"margin:8px 0 0"},
+      `※ 게임 UI 체력(${Math.round(hpNoBuff/1e6*10)/10}m)은 버프 OFF 평소값입니다. 시뮬은 버프 가동률 ${(buffUptime*100).toFixed(0)}% 반영한 평균값으로 돌아갑니다.`)
+  ));
+
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"공격 주기 · 스킬 실쿨"),
+    kv("일반공격 주기", `${myAtkP.toFixed(2)} 초 (첫 auto ${myAtkP.toFixed(1)}s · 두 번째 ${(myAtkP*2).toFixed(1)}s)`),
+    kv("스킬1 실쿨타임", `${myS1CdReal.toFixed(2)} 초 (첫 발동 ${(+FIXED_SKILLS.s1.startTime||2.2).toFixed(1)}s 고정)`),
+    kv("스킬2 실쿨타임", `${myS2CdReal.toFixed(2)} 초 (첫 발동 ${(+FIXED_SKILLS.s2.startTime||2.2).toFixed(1)}s 고정)`),
+    kv("버프스킬 가동률", `${(buffUptime*100).toFixed(1)}% (${FIXED_SKILLS.buff.duration}s on / ${myBuffCdReal.toFixed(1)}s 대기)`),
+    kv("내 기댓값 DPS (auto)", Math.round(formula.myAutoDPS).toLocaleString()),
+    kv("내 기댓값 DPS (스킬)", Math.round(formula.mySkillDPS).toLocaleString()),
+    kv("내 기댓값 DPS (합계)", Math.round(formula.myDPS).toLocaleString()),
+    kv("흡혈 회복률 /초", Math.round(formula.myHealRate).toLocaleString())
+  ));
+
+  // 합산 옵션 표시
+  const optBox = h("div",{class:"slot"}, h("h4",null,"합산 옵션치"));
+  const optRow = h("div",{class:"row"});
+  for(const [k,v] of Object.entries(me.opts)){
+    if(v === 0) continue;
+    optRow.append(h("div",{style:"padding:4px 0"},
+      h("span",{class:"muted",style:"font-size:11px"}, ENEMY_LABELS[k]||k),
+      h("div",{style:"font-weight:700"}, `${v.toFixed(1)}%`)
+    ));
+  }
+  optBox.append(optRow);
+  host.append(optBox);
+
+  const log = renderCombatLog(simCustom, "나", "적");
+  if(log) host.append(log);
 }
 
 function kv(label, val){
@@ -858,6 +1456,86 @@ function kv(label, val){
   const b = h("b"); b.append(val && val.nodeType ? val : String(val));
   row.append(b);
   return row;
+}
+
+function fmtN(n){
+  n = Math.round(n);
+  if(Math.abs(n) >= 1e9) return (n/1e9).toFixed(2)+"b";
+  if(Math.abs(n) >= 1e6) return (n/1e6).toFixed(2)+"m";
+  if(Math.abs(n) >= 1e3) return (n/1e3).toFixed(1)+"k";
+  return n.toLocaleString();
+}
+
+function hitTag(hit){
+  if(hit.blocked) return "BLOCK";
+  if(hit.crit) return "치명";
+  return "일반";
+}
+function hitEventEl(hit, action, i, totalHits, heal, firstMark){
+  const isDbl = !!hit.double;
+  const idx = totalHits > 1 ? (isDbl ? "[더블]" : "[1타]") : "";
+  const tag = hitTag(hit);
+  const dmg = fmtN(hit.dmg);
+  let cls = "log-evt";
+  if(hit.blocked) cls += " block";
+  else if(hit.crit) cls += " crit";
+  if(action.startsWith("스킬")) cls += " skill";
+  const mark = (i===0 && firstMark) ? " ★" : "";
+  const healStr = (i===0 && heal>0 && !hit.blocked && action==="일반공격") ? ` +${fmtN(heal)}흡` : "";
+  return h("div",{class:cls}, `${action}${idx} ${tag} ${dmg}${healStr}${mark}`);
+}
+
+function renderSideEvents(e, side, firsts){
+  const container = h("div",{class:"log-side"+(side==="en"?" en":"")});
+  const hp = side==="me" ? e.myHp : e.enHp;
+  const hpMax = side==="me" ? (e.myMaxSnap||e.myHp) : (e.enMaxSnap||e.enHp);
+  const ratio = Math.max(0, Math.min(1, hp/Math.max(1,hpMax)));
+  const barWrap = h("div",{class:"hpbar"});
+  barWrap.append(h("div",{class:"hpfill "+side, style:`width:${(ratio*100).toFixed(1)}%`}));
+  container.append(barWrap);
+  container.append(h("div",{class:"hplabel"}, `${side==="me"?"나":"적"} ${fmtN(hp)} / ${fmtN(hpMax)}`));
+
+  // 이벤트들
+  if(side==="me"){
+    if(e.myBuffStarted) container.append(h("div",{class:"log-evt buff"}, "★ 버프스킬 발동 (8초)"));
+    if(e.myBuffEnded) container.append(h("div",{class:"log-evt buff"}, "☆ 버프스킬 종료"));
+    if(e.myAuto>0) (e.myAutoHits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"일반공격",i,arr.length,e.myHeal,false)));
+    if(e.myS1>0){ (e.myS1Hits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"스킬1",i,arr.length,0,firsts.s1&&i===0))); if(firsts.s1) firsts.s1=false; }
+    if(e.myS2>0){ (e.myS2Hits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"스킬2",i,arr.length,0,firsts.s2&&i===0))); if(firsts.s2) firsts.s2=false; }
+  } else {
+    if(e.enBuffStarted) container.append(h("div",{class:"log-evt buff"}, "★ 버프스킬 발동 (8초)"));
+    if(e.enBuffEnded) container.append(h("div",{class:"log-evt buff"}, "☆ 버프스킬 종료"));
+    if(e.enAuto>0) (e.enAutoHits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"일반공격",i,arr.length,e.enHeal,false)));
+    if(e.enS1>0){ (e.enS1Hits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"스킬1",i,arr.length,0,firsts.es1&&i===0))); if(firsts.es1) firsts.es1=false; }
+    if(e.enS2>0){ (e.enS2Hits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"스킬2",i,arr.length,0,firsts.es2&&i===0))); if(firsts.es2) firsts.es2=false; }
+  }
+  return container;
+}
+
+function renderCombatLog(sim, labelMe, labelEn){
+  if(!sim.log || sim.log.length === 0) return null;
+  // 각 tick의 myMaxTick/enMaxTick 사용 (버프 발동 시 max 변화 반영)
+  sim.log.forEach(e => {
+    e.myMaxSnap = e.myMaxTick || sim.myMax;
+    e.enMaxSnap = e.enMaxTick || sim.enMax;
+  });
+
+  const det = h("details",{style:"margin-top:10px;background:var(--panel2)"});
+  det.append(h("summary",{style:"padding:10px 12px;font-size:13px;color:var(--muted)"},
+    `📜 전투 로그 (${sim.log.length}개 tick, 총 ${sim.t.toFixed(1)}초)`));
+  const wrap = h("div",{style:"max-height:480px;overflow:auto;border-top:1px solid var(--border);background:#0c0e13"});
+  const firsts = { s1:true, s2:true, es1:true, es2:true };
+  for(const e of sim.log){
+    const tick = h("div",{class:"log-tick"});
+    tick.append(h("div",{class:"log-time"}, `[${e.t.toFixed(1)}s]`));
+    const sides = h("div",{class:"log-sides"});
+    sides.append(renderSideEvents(e, "me", firsts));
+    sides.append(renderSideEvents(e, "en", firsts));
+    tick.append(sides);
+    wrap.append(tick);
+  }
+  det.append(wrap);
+  return det;
 }
 
 function gearOptions(){
@@ -873,7 +1551,7 @@ function renderCompare(){
   host.innerHTML = "";
   const slots = gearOptions();
   const slotSel = selectUI(slots, state.cmp.slot, v=>{ state.cmp.slot=v; onAnyChange(); render(); });
-  
+
   host.append(h("div",{class:"slot"}, h("h4",null,"교체해볼 부위 (기존 장비 vs 새 장비)"), slotSel));
 
   const loc = slots.find(s=>s.id===state.cmp.slot) || slots[0];
@@ -885,7 +1563,7 @@ function renderCompare(){
     h("div", null, h("label",null,"기본 체력"), unitNumInput(state.cmp.item.hp, v=>{state.cmp.item.hp=v; onAnyChange(); render();})),
     h("div", null, h("label",null,"기본 공격력"), unitNumInput(state.cmp.item.atk, v=>{state.cmp.item.atk=v; onAnyChange(); render();}))
   ));
-  
+
   const optCount = loc.kind==="mount" ? 1 : 2;
   for(let i=0; i<optCount; i++){
     if(!state.cmp.item.opts[i]) state.cmp.item.opts[i] = emptyOpt();
@@ -910,7 +1588,7 @@ function renderCompare(){
 
   host.append(h("div",{class:"slot"},
     h("h4",null,"교체 시 전투력 점수 변화"),
-    h("p",{class:"muted",style:"margin-top:0"},"※ 정확한 값을 위해 1,000회 시뮬레이션을 수행합니다."),
+    h("p",{class:"muted",style:"margin-top:0"},"※ 전투력 공식(DPS × 생존시간)으로 즉시 계산됩니다."),
     kv("현재 점수", baseScore.toFixed(0)),
     kv("새 장비 착용 시", newScore.toFixed(0)),
     (()=>{
@@ -919,73 +1597,172 @@ function renderCompare(){
     })(),
     h("div",{class:"lbl-sub",style:"text-align:left;margin-top:6px"}, gain>0?"✔ 더 강해집니다":(gain<0?"✘ 더 약해집니다":"변화 없음"))
   ));
+
+  const fightResult = h("div",{id:"gear-swap-fight"});
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"⚔️ 기존 장비 vs 새 장비 직접 전투"),
+    h("p",{class:"muted",style:"margin:4px 0 8px"},"두 빌드(교체 전 / 교체 후)를 서로 싸우게 해 누가 이기는지 확인합니다. 전투 로그 포함."),
+    h("div",{class:"btnrow"}, h("button",{class:"btn", onclick:function(){ simulateGearSwap(loc, fightResult, this); }}, "⚡ 전투 시작")),
+    fightResult
+  ));
 }
 
-function renderRecommend(){
+async function simulateGearSwap(loc, resultDiv, btn){
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = "계산 중…";
+  resultDiv.innerHTML = "";
+  await new Promise(r=>setTimeout(r, 30));
+  try {
+    const meA = buildMe(state);
+    const slot = loc.kind==="mount" ? state.mount : state[loc.kind][loc.idx];
+    const backup = JSON.stringify(slot);
+    let meB;
+    try {
+      Object.assign(slot, JSON.parse(JSON.stringify(state.cmp.item)));
+      if(loc.kind==="mount") slot.opts = [slot.opts[0]];
+      meB = buildMe(state);
+    } finally {
+      Object.assign(slot, JSON.parse(backup));
+    }
+    const labelA = "현재 장비";
+    const labelB = "새 장비";
+    const scoreA = cpAgainstPreset(meA);
+    const scoreB = cpAgainstPreset(meB);
+    const result = await runBattleRepeats(meA, meB, 1000, btn);
+    resultDiv.append(renderWinRateBox(`⚔️ 장비 교체 비교`, labelA, labelB, result, scoreA, scoreB));
+    const logEl = renderCombatLog(result.sampleSim, labelA, labelB);
+    if(logEl) resultDiv.append(logEl);
+  } finally {
+    btn.disabled = false; btn.textContent = origText;
+  }
+}
+
+/* --- 추천 섹션: 버튼으로 트리거, onAnyChange/render에서 자동 호출 안 함 --- */
+function renderRecommendPlaceholder(){
   const host = document.getElementById("rec-body");
   if(!host) return;
   host.innerHTML = "";
-  const cur = currentCPScore(state);
-  let bestGain = -Infinity, target = null;
-  const iter = [...state.equips.map((s,i)=>({kind:"equips",idx:i})), ...state.pets.map((s,i)=>({kind:"pets",idx:i})), { kind:"mount", idx:0 }];
-  
-  for(const loc of iter){
-    const slot = loc.kind==="mount" ? state.mount : state[loc.kind][loc.idx];
-    for(let k=0; k<slot.opts.length; k++){
-      const opt = slot.opts[k];
-      const saveType = opt.type, saveVal = opt.val;
-      let slotBest = -Infinity;
-      try {
-        for(const cand of OPT.filter(o=>o.used && o.id!=="none")){
-          if(cand.id === saveType && cand.max === saveVal) continue;
-          opt.type = cand.id; opt.val = cand.max;
-          const s = currentCPScore(state);
-          if(s > slotBest) slotBest = s;
-        }
-      } finally { opt.type = saveType; opt.val = saveVal; }
-      const gain = slotBest - cur;
-      if(gain > bestGain){ bestGain = gain; target = { kind:loc.kind, idx:loc.idx, optIdx:k, current:{type:saveType,val:saveVal}, slotBest }; }
-    }
-  }
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"⑤ 최대 효율 옵션 추천"),
+    h("p",{class:"muted", style:"margin:4px 0 10px; line-height:1.5"},
+      "모든 슬롯·옵션 조합에 대해 전투력 공식(DPS × 생존시간)으로 계산해 교체 가치가 가장 큰 슬롯을 찾습니다. 공식이라 몇 초 안에 완료됩니다.")
+  ));
+  const btn = h("button",{class:"btn", onclick:function(){ runRecommend(this); }}, "🔍 추천 계산 시작");
+  host.append(h("div",{class:"btnrow"}, btn));
+}
 
-  if(!target){ host.append(h("p",null,"슬롯 정보가 부족합니다.")); return; }
-
-  const locLabel = (() => {
-    if(target.kind === "equips") return `장비 #${target.idx+1} / 옵션${target.optIdx+1}`;
-    if(target.kind === "pets")   return `펫 #${target.idx+1} / 옵션${target.optIdx+1}`;
-    return `탈것 / 옵션${target.optIdx+1}`;
-  })();
-  const curOpt = target.current;
-  const curOptDef = OPT.find(o=>o.id===curOpt.type);
-  const curOptLabel = curOpt.type==="none" ? "비어있음" : `${curOptDef?.name||curOpt.type} ${curOpt.val}%`;
-
-  host.append(h("div",{class:"slot"}, h("h4",null,"교체 가치가 가장 큰 슬롯"), kv("슬롯", locLabel), kv("현재 옵션", curOptLabel)));
-
-  const out = [];
-  const curSlot = target.kind==="mount" ? state.mount : state[target.kind][target.idx];
-  const optToChange = curSlot.opts[target.optIdx];
-  const saveType2 = optToChange.type, saveVal2 = optToChange.val;
+let _recBusy = false;
+async function runRecommend(btn){
+  if(_recBusy) return;
+  _recBusy = true;
+  btn.disabled = true;
+  const origText = btn.textContent;
+  btn.textContent = "계산 중…";
+  // 한 프레임 yield 후 실행 (UI가 텍스트 업데이트 반영하도록)
+  await new Promise(r => setTimeout(r, 30));
   try {
-    for(const cand of OPT.filter(o=>o.used && o.id!=="none")){
-      if(cand.id === target.current.type && cand.max === target.current.val) continue;
-      optToChange.type = cand.id; optToChange.val = cand.max;
-      const s = currentCPScore(state);
-      out.push({ id:cand.id, name:cand.name, val:cand.max, score:s, gain:s-cur });
-    }
-  } finally { optToChange.type = saveType2; optToChange.val = saveVal2; }
-  out.sort((a,b)=>b.gain-a.gain);
+    const cur = currentCPScore(state);
+    let bestGain = -Infinity, target = null;
+    const iter = [
+      ...state.equips.map((s,i)=>({kind:"equips",idx:i})),
+      ...state.pets.map((s,i)=>({kind:"pets",idx:i})),
+      { kind:"mount", idx:0 }
+    ];
+    const usedCands = OPT.filter(o=>o.used && o.id!=="none");
+    const totalSlots = iter.reduce((n,l)=> n + (l.kind==="mount" ? state.mount.opts.length : 2), 0);
+    let slotDone = 0;
 
-  const table = h("table", null, h("thead",null, h("tr",null, h("th",null,"옵션"), h("th",null,"수치"), h("th",{class:"num"},"점수 변화"), h("th",{class:"num"},"최종 점수"))), h("tbody",null));
-  const tbody = table.querySelector("tbody");
-  const denom = Math.max(1, Math.abs(cur));
-  for(const r of out){
-    const pct = (r.gain / denom) * 100;
-    tbody.append(h("tr",null,
-      h("td",null,r.name), h("td",null,`${r.val}%`),
-      h("td",{class:"num "+(r.gain>=0?"pos":"neg")}, `${r.gain>=0?"+":""}${pct.toFixed(2)}%`), h("td",{class:"num"}, r.score.toFixed(0))
+    for(const loc of iter){
+      const slot = loc.kind==="mount" ? state.mount : state[loc.kind][loc.idx];
+      for(let k=0; k<slot.opts.length; k++){
+        const opt = slot.opts[k];
+        const saveType = opt.type, saveVal = opt.val;
+        let slotBest = -Infinity;
+        try {
+          for(const cand of usedCands){
+            if(cand.id === saveType && cand.max === saveVal) continue;
+            opt.type = cand.id; opt.val = cand.max;
+            const s = currentCPScore(state);
+            if(s > slotBest) slotBest = s;
+          }
+        } finally { opt.type = saveType; opt.val = saveVal; }
+        const gain = slotBest - cur;
+        if(gain > bestGain){
+          bestGain = gain;
+          target = { kind:loc.kind, idx:loc.idx, optIdx:k, current:{type:saveType,val:saveVal}, slotBest };
+        }
+        slotDone++;
+        btn.textContent = `탐색 중 ${slotDone}/${totalSlots}`;
+        await new Promise(r => setTimeout(r, 0)); // UI yield
+      }
+    }
+
+    if(!target){
+      const host = document.getElementById("rec-body");
+      host.innerHTML = "";
+      host.append(h("p",null,"슬롯 정보가 부족합니다."));
+      return;
+    }
+
+    const locLabel = (() => {
+      if(target.kind === "equips") return `장비 #${target.idx+1} / 옵션${target.optIdx+1}`;
+      if(target.kind === "pets")   return `펫 #${target.idx+1} / 옵션${target.optIdx+1}`;
+      return `탈것 / 옵션${target.optIdx+1}`;
+    })();
+    const curOpt = target.current;
+    const curOptDef = OPT.find(o=>o.id===curOpt.type);
+    const curOptLabel = curOpt.type==="none" ? "비어있음" : `${curOptDef?.name||curOpt.type} ${curOpt.val}%`;
+
+    // 최적 슬롯 13종 랭킹
+    btn.textContent = "랭킹 산출 중…";
+    await new Promise(r => setTimeout(r, 0));
+    const out = [];
+    const curSlot = target.kind==="mount" ? state.mount : state[target.kind][target.idx];
+    const optToChange = curSlot.opts[target.optIdx];
+    const saveType2 = optToChange.type, saveVal2 = optToChange.val;
+    try {
+      for(const cand of usedCands){
+        if(cand.id === target.current.type && cand.max === target.current.val) continue;
+        optToChange.type = cand.id; optToChange.val = cand.max;
+        const s = currentCPScore(state);
+        out.push({ id:cand.id, name:cand.name, val:cand.max, score:s, gain:s-cur });
+        await new Promise(r => setTimeout(r, 0));
+      }
+    } finally { optToChange.type = saveType2; optToChange.val = saveVal2; }
+    out.sort((a,b)=>b.gain-a.gain);
+
+    const host = document.getElementById("rec-body");
+    host.innerHTML = "";
+    host.append(h("div",{class:"slot"}, h("h4",null,"교체 가치가 가장 큰 슬롯"),
+      kv("슬롯", locLabel), kv("현재 옵션", curOptLabel),
+      kv("현재 점수", cur.toFixed(0))
     ));
+
+    const table = h("table", null,
+      h("thead",null, h("tr",null, h("th",null,"옵션"), h("th",null,"수치"), h("th",{class:"num"},"점수 변화"), h("th",{class:"num"},"최종 점수"))),
+      h("tbody",null)
+    );
+    const tbody = table.querySelector("tbody");
+    const denom = Math.max(1, Math.abs(cur));
+    for(const r of out){
+      const pct = (r.gain / denom) * 100;
+      tbody.append(h("tr",null,
+        h("td",null,r.name), h("td",null,`${r.val}%`),
+        h("td",{class:"num "+(r.gain>=0?"pos":"neg")}, `${r.gain>=0?"+":""}${pct.toFixed(2)}%`),
+        h("td",{class:"num"}, r.score.toFixed(0))
+      ));
+    }
+    host.append(h("div",{class:"slot"}, h("h4",null,"이 슬롯을 13종 최대치로 바꿔본 결과"), table));
+    host.append(h("div",{class:"btnrow"},
+      h("button",{class:"btn alt", onclick:function(){ runRecommend(this); }}, "🔄 다시 계산")
+    ));
+  } catch(e){
+    alert("계산 실패: " + e.message);
+    btn.textContent = origText;
+    btn.disabled = false;
+  } finally {
+    _recBusy = false;
   }
-  host.append(h("div",{class:"slot"}, h("h4",null,"이 슬롯을 13종 최대치로 바꿔본 결과"), table));
 }
 
 /* ==========================================================================
@@ -1003,18 +1780,25 @@ function forgeIncomePerSec(f){
 function forgeUpgradeInfo(f){
   const i = Math.max(0, Math.min(FORGE_DEFAULT_TABLE.length-1, (f.level||1)-1));
   const row = f.table[i] || FORGE_DEFAULT_TABLE[i];
+  const saveChance = Math.max(0, Math.min(100, +f.hammerSaveChance||0))/100;
   return {
     level: f.level,
-    effCost: Math.max(0, Math.round(row.cost * (1 - (f.research.cost||0)/100))),
+    effCost: Math.max(0, Math.round(row.cost * (1 - (f.research.cost||0)/100) * (1 - saveChance))),
     effTime: Math.max(0, Math.round(row.time / (1 + ((f.research.time||0)*2)/100)))
   };
 }
 function calcClanReward(clan){
-  let h = 0;
-  for(const m of FORGE_PERSONAL_MILESTONES){ if((+clan.personalScore||0) >= m.score) h += m.hammer; }
+  let hammer = 0, money = 0;
+  for(const m of FORGE_PERSONAL_MILESTONES){
+    if((+clan.personalScore||0) >= m.score){
+      hammer += m.hammer||0;
+      money += m.money||0;
+    }
+  }
   const tier = FORGE_TIER_REWARDS[clan.tier] || FORGE_TIER_REWARDS.B;
-  h += clan.win ? tier.win : tier.lose;
-  return { hammer: h, moneyEquiv: h * HAMMER_TO_MONEY };
+  hammer += clan.win ? tier.hammerWin : tier.hammerLose;
+  money  += clan.win ? tier.moneyWin  : tier.moneyLose;
+  return { hammer, money, moneyEquiv: money + hammer * HAMMER_TO_MONEY };
 }
 function nextMondayAt8(fromDate){
   const d = new Date(fromDate);
@@ -1062,11 +1846,85 @@ function forgeTimeToUpgrade(state){
   return { asset, need, costTimeSec, upgradeSec: up.effTime, totalSec, doneAt: new Date(now.getTime() + totalSec*1000) };
 }
 
+// 현재 레벨부터 테이블 끝까지 누적 타임라인 계산
+function forgeTimelineAll(state){
+  const f = state.forge;
+  const inc = forgeIncomePerSec(f);
+  const nowDate = new Date();
+  const monday = nextMondayAt8(nowDate);
+  const mondaySec = monday ? (monday - nowDate)/1000 : Infinity;
+  const clanReward = (!f.clan.claimed) ? calcClanReward(f.clan).moneyEquiv : 0;
+
+  let asset = (+f.money||0) + (+f.hammers||0) * HAMMER_TO_MONEY;
+  let elapsed = 0;
+  let clanApplied = !!f.clan.claimed;
+
+  const rows = [];
+  const upgrading = f.upgrading || {};
+  const startIdx = (f.level||1) - 1;
+  const saveChance = Math.max(0, Math.min(100, +f.hammerSaveChance||0))/100;
+  for(let i = startIdx; i < f.table.length; i++){
+    const tableRow = f.table[i] || FORGE_DEFAULT_TABLE[i];
+    let effCost = Math.max(0, Math.round(tableRow.cost * (1 - (f.research.cost||0)/100) * (1 - saveChance)));
+    let effTime = Math.max(0, Math.round(tableRow.time / (1 + ((f.research.time||0)*2)/100)));
+    // 첫 레벨이 "강화 중"이면 비용은 이미 지불됐고 남은 시간만 소요
+    if(i === startIdx && upgrading.active){
+      effCost = 0;
+      effTime = Math.max(0, Math.round(+upgrading.remainingSec||0));
+    }
+
+    let costTime = 0;
+    let clanAppliedThisRow = false;
+    if(asset >= effCost){
+      asset -= effCost;
+    } else {
+      if(!clanApplied){
+        const untilM = Math.max(0, mondaySec - elapsed);
+        const tToFull = (effCost - asset) / Math.max(1e-9, inc.moneyEquivPerSec);
+        if(tToFull <= untilM){
+          costTime = tToFull; asset = 0;
+        } else {
+          const assetAtMonday = asset + inc.moneyEquivPerSec * untilM + clanReward;
+          if(assetAtMonday >= effCost){
+            costTime = untilM;
+            asset = assetAtMonday - effCost;
+          } else {
+            costTime = untilM + (effCost - assetAtMonday) / Math.max(1e-9, inc.moneyEquivPerSec);
+            asset = 0;
+          }
+          clanApplied = true; clanAppliedThisRow = true;
+        }
+      } else {
+        costTime = (effCost - asset) / Math.max(1e-9, inc.moneyEquivPerSec);
+        asset = 0;
+      }
+    }
+    // 업그레이드 소요 시간 동안도 자원 수급
+    const upgradeAdd = inc.moneyEquivPerSec * effTime;
+    asset += upgradeAdd;
+    const rowEnd = elapsed + costTime + effTime;
+    if(!clanApplied && rowEnd > mondaySec){
+      asset += clanReward; clanApplied = true; clanAppliedThisRow = true;
+    }
+    rows.push({
+      from: i+1, to: i+2,
+      effCost, effTime, costTime,
+      cumSec: rowEnd, clanAppliedThisRow,
+      doneAt: new Date(nowDate.getTime() + rowEnd*1000)
+    });
+    elapsed = rowEnd;
+    if(rows.length >= 20) break; // 최대 20레벨까지만
+  }
+  return { rows, inc };
+}
+
 function renderForgeMe(){
   const host = document.getElementById("forge-me-body");
   if(!host) return;
   host.innerHTML = "";
   const f = state.forge;
+  if(!f.upgrading) f.upgrading = { active:false, remainingSec:0 };
+
   host.append(h("div",{class:"slot"},
     h("h4",null,"보유 자원"),
     h("div",{class:"row"},
@@ -1076,6 +1934,64 @@ function renderForgeMe(){
       h("div",null,h("label",null,"오늘 던전 획득 망치"), numInput(f.todayDungeonHammers, v=>{f.todayDungeonHammers=v;onAnyChange();}))
     )
   ));
+
+  // 강화 중 상태
+  const upChk = h("input",{type:"checkbox", id:"forge-upgrading-chk", style:"width:auto;min-height:auto;margin-right:6px",
+    onchange:(e)=>{ f.upgrading.active = e.target.checked; onAnyChange(); renderForgeMe(); }});
+  if(f.upgrading.active) upChk.checked = true;
+
+  const upBox = h("div",{class:"slot"});
+  upBox.append(h("h4",null,"⚙️ 강화 진행 상태"));
+  upBox.append(h("label",{for:"forge-upgrading-chk", style:"display:flex;align-items:center;margin:4px 0 8px;cursor:pointer"},
+    upChk, h("span",null, `${f.level} → ${f.level+1} 강화 중 (체크 시 남은 시간 입력)`)
+  ));
+
+  if(f.upgrading.active){
+    // 분/초 입력
+    let rem = +f.upgrading.remainingSec || 0;
+    const days = Math.floor(rem/86400); rem -= days*86400;
+    const hours = Math.floor(rem/3600); rem -= hours*3600;
+    const mins = Math.floor(rem/60);
+    const secs = rem - mins*60;
+    const daysInp = numInput(days, v=>{
+      const cur = parseRemaining();
+      f.upgrading.remainingSec = (+v||0)*86400 + cur.h*3600 + cur.m*60 + cur.s;
+      onAnyChange();
+    });
+    const hoursInp = numInput(hours, v=>{
+      const cur = parseRemaining();
+      f.upgrading.remainingSec = cur.d*86400 + (+v||0)*3600 + cur.m*60 + cur.s;
+      onAnyChange();
+    });
+    const minsInp = numInput(mins, v=>{
+      const cur = parseRemaining();
+      f.upgrading.remainingSec = cur.d*86400 + cur.h*3600 + (+v||0)*60 + cur.s;
+      onAnyChange();
+    });
+    const secsInp = numInput(secs, v=>{
+      const cur = parseRemaining();
+      f.upgrading.remainingSec = cur.d*86400 + cur.h*3600 + cur.m*60 + (+v||0);
+      onAnyChange();
+    });
+    function parseRemaining(){
+      const total = +f.upgrading.remainingSec||0;
+      const d = Math.floor(total/86400);
+      const h = Math.floor((total-d*86400)/3600);
+      const m = Math.floor((total-d*86400-h*3600)/60);
+      const s = total - d*86400 - h*3600 - m*60;
+      return { d, h, m, s };
+    }
+    upBox.append(h("div",{class:"row"},
+      h("div",null, h("label",null,"남은 일"), daysInp),
+      h("div",null, h("label",null,"시간"), hoursInp),
+      h("div",null, h("label",null,"분"), minsInp),
+      h("div",null, h("label",null,"초"), secsInp)
+    ));
+    upBox.append(h("p",{class:"muted",style:"margin:6px 0 0"},
+      `현재 남은 시간: ${formatDuration(+f.upgrading.remainingSec||0)} → 타임라인에 반영됨 (비용은 이미 지불된 것으로 계산)`
+    ));
+  }
+  host.append(upBox);
 }
 function renderForgeResearch(){
   const host = document.getElementById("forge-research-body");
@@ -1090,6 +2006,18 @@ function renderForgeResearch(){
     return wrap;
   };
   host.append(mkRng("moneyRate", "돈 수급량 증가", 1, 25), mkRng("hammerRate", "망치 수급량 증가", 1, 25), mkRng("cost", "업그레이드 비용 감소", 1, 25), mkRng("time", "대장간 타이머 속도 증가", 2, 50));
+
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"기타"),
+    h("div",{class:"row"},
+      h("div",null,
+        h("label",null,"망치 소모 안 함 확률 (%)"),
+        numInput(f.hammerSaveChance, v=>{f.hammerSaveChance=v;onAnyChange();})
+      ),
+      h("div",null, h("p",{class:"muted",style:"margin:0;font-size:11px;line-height:1.4"},
+        "기본값 13%. 업그레이드 시 이 확률로 망치가 소모되지 않음 → 기대 비용 × (1 − 확률%)"))
+    )
+  ));
 }
 function renderForgeClan(){
   const host = document.getElementById("forge-clan-body");
@@ -1122,12 +2050,53 @@ function renderForgeResult(){
   const host = document.getElementById("forge-result-body");
   if(!host) return;
   host.innerHTML = "";
-  const f = state.forge, r = forgeTimeToUpgrade(state);
+  const f = state.forge;
+  const { rows, inc } = forgeTimelineAll(state);
+  const asset = (+f.money||0) + (+f.hammers||0) * HAMMER_TO_MONEY;
+
   host.append(
-    h("div",{class:"big good"}, `${f.level} → ${f.level+1}`), h("div",{class:"lbl-sub"},"다음 대장간 레벨"),
-    h("div",{class:"slot"}, h("h4",null,"현재 자산 / 필요 비용"), kv("현재 자산(환산)", formatKRW(r.asset)), kv("필요 비용(감소 적용)", formatKRW(r.need)), kv("부족액", r.asset>=r.need?"없음":formatKRW(r.need-r.asset))),
-    h("div",{class:"slot"}, h("h4",null,"다음 업그레이드 완료 시점"), kv("비용 모으는 시간", formatDuration(r.costTimeSec)), kv("업그레이드 소요 시간", formatDuration(r.upgradeSec)), kv("총 소요", formatDuration(r.totalSec)), kv("완료 예정 시각", formatDateTime(r.doneAt)))
+    h("div",{class:"slot"},
+      h("h4",null,"현재 상태"),
+      kv("현재 대장간 레벨", f.level),
+      kv("현재 자산(환산)", formatKRW(asset)),
+      kv("돈 수급", `${inc.moneyPerSec.toFixed(2)} 원/초 (연구 ${f.research.moneyRate}% 반영)`),
+      kv("망치 수급", `${(inc.hammerPerSec*60).toFixed(3)} 개/분 (연구 ${f.research.hammerRate}% 반영)`),
+      kv("환산 수급률 /초", `${inc.moneyEquivPerSec.toFixed(2)}원`),
+      kv("환산 수급률 /시간", formatKRW(inc.moneyEquivPerSec*3600)),
+      kv("환산 수급률 /일", formatKRW(inc.moneyEquivPerSec*86400))
+    )
   );
+
+  const tbl = h("table", null,
+    h("thead", null, h("tr", null,
+      h("th", null, "레벨"),
+      h("th", {class:"num"}, "비용(할인)"),
+      h("th", {class:"num"}, "모으는 시간"),
+      h("th", {class:"num"}, "업글 시간"),
+      h("th", {class:"num"}, "누적"),
+      h("th", null, "완료 예정")
+    )),
+    h("tbody", null)
+  );
+  const tbody = tbl.querySelector("tbody");
+  for(const r of rows){
+    const clanMark = r.clanAppliedThisRow ? h("span",{class:"muted",style:"font-size:10px",title:"이 구간에 월요일 클랜 보상 수령"}, " ★") : null;
+    const tr = h("tr", null,
+      h("td", null, `${r.from}→${r.to}`),
+      h("td", {class:"num"}, formatKRW(r.effCost)),
+      h("td", {class:"num"}, formatDuration(r.costTime)),
+      h("td", {class:"num"}, formatDuration(r.effTime)),
+      h("td", {class:"num"}, formatDuration(r.cumSec)),
+      h("td", {style:"font-size:11px"}, formatDateTime(r.doneAt))
+    );
+    if(r.clanAppliedThisRow) tr.lastChild.append(clanMark);
+    tbody.append(tr);
+  }
+  host.append(h("div",{class:"slot"},
+    h("h4",null,"레벨별 타임라인"),
+    h("p",{class:"muted",style:"margin:4px 0 8px"},`현재 레벨부터 최대 ${rows.length}단계 연속으로 자산·수급률·월요일 클랜 보상까지 누적 반영. ★는 해당 구간에 클랜 보상 수령 지점.`),
+    tbl
+  ));
 }
 
 /* ==========================================================================
@@ -1192,11 +2161,13 @@ function renderSave(){
    부트스트랩 & 이벤트
    ========================================================================== */
 function onAnyChange(){
-  saveState(); renderResult(); renderCompare(); renderRecommend();
+  saveState(); renderResult(); renderCompare();
   renderForgeResult(); renderForgeClan(); renderStonesPlay(); renderStonesStat();
+  // 추천 섹션은 수동 버튼으로만 실행. 입력이 바뀌면 플레이스홀더로 되돌리지 않고 기존 결과 유지.
 }
 function render(){
-  renderResult(); renderMe(); renderBuff(); renderEnemy(); renderCompare(); renderRecommend();
+  renderResult(); renderMe(); renderBuff(); renderEnemy(); renderCompare();
+  renderRecommendPlaceholder();
   renderForgeMe(); renderForgeResearch(); renderForgeClan(); renderForgeTable(); renderForgeResult();
   renderStonesPlay(); renderStonesStat(); renderStonesHistory(); renderSave();
 }
