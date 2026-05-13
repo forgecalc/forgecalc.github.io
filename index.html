@@ -7,7 +7,7 @@
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --panel2:#1f232c; --border:#2a2f3a;
-    --text:#e8ecf1; --muted:#9aa3b2; --accent:#4cc2faf; --good:#6ee7b7; --bad:#f87171; --warn:#fbbf24;
+    --text:#e8ecf1; --muted:#9aa3b2; --accent:#4cc2ff; --good:#6ee7b7; --bad:#f87171; --warn:#fbbf24;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif}
@@ -100,16 +100,15 @@
   <div class="tabs">
     <div class="tab active" data-tab="combat">⚔️ 전투력</div>
     <div class="tab" data-tab="forge">🔨 대장간</div>
-    <div class="tab" data-tab="stones">🪜 디딤돌</div>
+    <div class="tab" data-tab="ascend">🌟 승천</div>
   </div>
 
   <div class="tab-panel active" id="panel-combat">
-    <details open id="sec-result"><summary>📊 현재 전투력 및 1:1 실측 결과</summary><div class="body" id="result-body"></div></details>
+    <details open id="sec-result"><summary>📊 현재 DPS</summary><div class="body" id="result-body"></div></details>
     <details open id="sec-me"><summary>① 내 장비/펫/탈것 세팅</summary><div class="body" id="me-body"></div></details>
     <details id="sec-buff"><summary>② 연구 보정 및 버프</summary><div class="body" id="buff-body"></div></details>
-    <details id="sec-enemy"><summary>③ 상대 스펙 (1:1 시뮬레이션용)</summary><div class="body" id="enemy-body"></div></details>
-    <details id="sec-compare"><summary>④ 장비 교체 비교</summary><div class="body" id="cmp-body"></div></details>
-    <details id="sec-recommend"><summary>⑤ 최대 효율 옵션 추천</summary><div class="body" id="rec-body"></div></details>
+    <details id="sec-compare"><summary>③ 장비 교체 DPS 비교</summary><div class="body" id="cmp-body"></div></details>
+    <details id="sec-recommend"><summary>④ 최대 DPS 옵션 추천</summary><div class="body" id="rec-body"></div></details>
   </div>
 
   <div class="tab-panel" id="panel-forge">
@@ -120,10 +119,11 @@
     <details open id="sec-forge-result"><summary>⑤ 다음 업그레이드</summary><div class="body" id="forge-result-body"></div></details>
   </div>
 
-  <div class="tab-panel" id="panel-stones">
-    <details open id="sec-stones-play"><summary>① 현재 시도</summary><div class="body" id="stones-play-body"></div></details>
-    <details open id="sec-stones-stat"><summary>② 단계별 통계 & 추천</summary><div class="body" id="stones-stat-body"></div></details>
-    <details id="sec-stones-history"><summary>③ 시도 기록</summary><div class="body" id="stones-history-body"></div></details>
+  <div class="tab-panel" id="panel-ascend">
+    <details open id="sec-ascend-input"><summary>① 현재 재화 / 수급</summary><div class="body" id="ascend-input-body"></div></details>
+    <details open id="sec-ascend-now"><summary>② 지금 승천하면?</summary><div class="body" id="ascend-now-body"></div></details>
+    <details open id="sec-ascend-grade"><summary>③ 등급 도달 예측</summary><div class="body" id="ascend-grade-body"></div></details>
+    <details id="sec-ascend-table"><summary>④ 레벨별 누적 테이블</summary><div class="body" id="ascend-table-body"></div></details>
   </div>
 
   <details id="sec-save"><summary>💾 저장 / 불러오기</summary><div class="body" id="save-body"></div></details>
@@ -245,6 +245,75 @@ const INCOME_MONEY_PER_SEC = 1;
 const INCOME_HAMMER_PER_MIN = 1;
 
 /* ==========================================================================
+   승천 (Ascend) 상수 및 테이블
+   ========================================================================== */
+const ASCEND_SKILL_MULT = 40;
+const ASCEND_PET_MULT = 100;
+const ASCEND_MOUNT_MULT = 50;
+
+function skillNeedAt(lv){
+  if(lv<=10) return 2*lv;
+  if(lv===11) return 30;
+  if(lv===12) return 40;
+  if(lv===13) return 50;
+  if(lv===14) return 60;
+  if(lv===15) return 80;
+  if(lv===16) return 100;
+  return 110; // lv 17+
+}
+function petNeedAt(lv){
+  const tbl = [0, 2,2,3,3,4,4,5,5,6,6,7,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23];
+  if(lv<tbl.length) return tbl[lv];
+  return 23; // lv 28+
+}
+function mountNeedAt(_lv){ return 20; }
+
+const ASCEND_TABLE = (function(){
+  const rows = [];
+  let sCum=0, pCum=0, mCum=0;
+  for(let lv=1; lv<=100; lv++){
+    const sN = skillNeedAt(lv), pN = petNeedAt(lv), mN = mountNeedAt(lv);
+    sCum += sN * ASCEND_SKILL_MULT;
+    pCum += pN * ASCEND_PET_MULT;
+    mCum += mN * ASCEND_MOUNT_MULT;
+    rows.push({ level:lv, skillNeed:sN, skillCum:sCum, petNeed:pN, petCum:pCum, mountNeed:mN, mountCum:mCum });
+  }
+  return rows;
+})();
+
+const ASCEND_GRADES = {
+  skill: [
+    { name:"일반", from:1 },
+    { name:"희귀", from:2 },
+    { name:"서사", from:8 },
+    { name:"전설", from:18 },
+    { name:"궁극", from:39 },
+    { name:"신화", from:68 },
+  ],
+  pet: [
+    { name:"일반", from:1 },
+    { name:"희귀", from:2 },
+    { name:"서사", from:7 },
+    { name:"전설", from:28 },
+    { name:"궁극", from:46 },
+    { name:"신화", from:71 },
+  ],
+  mount: [
+    { name:"일반", from:1 },
+    { name:"희귀", from:2 },
+    { name:"서사", from:22 },
+    { name:"전설", from:38 },
+    { name:"궁극", from:55 },
+    { name:"신화", from:71 },
+  ],
+};
+const ASCEND_CATS = [
+  { key:"skill", label:"스킬", icon:"⚔️", cumKey:"skillCum", needKey:"skillNeed" },
+  { key:"pet",   label:"펫",   icon:"🐾", cumKey:"petCum",   needKey:"petNeed" },
+  { key:"mount", label:"탈것", icon:"🐎", cumKey:"mountCum", needKey:"mountNeed" },
+];
+
+/* ==========================================================================
    기본 상태 및 마이그레이션
    ========================================================================== */
 function emptyOpt(){ return { type:"none", val:0 }; }
@@ -269,9 +338,10 @@ function defaultState(){
       upgrading: { active:false, remainingSec:0 },
       hammerSaveChance: 13,
     },
-    stones: {
-      steps: Array.from({length:8}, () => ({ upPass:0, upFail:0, downPass:0, downFail:0 })),
-      history: [], current: { step:0, choices:[] },
+    ascend: {
+      skill: { level:1, current:0, perDay:0, perWeek:0, costReduction:0 },
+      pet:   { level:1, current:0, perDay:0, perWeek:0, extraDraw:0 },
+      mount: { level:1, current:0, perDay:0, perWeek:0, costReduction:0, extraDraw:0 },
     },
     fixedSkills: JSON.parse(JSON.stringify(FIXED_SKILLS_DEFAULT)),
     skins: [{ dmg:0, hp:0 }, { dmg:0, hp:0 }, { dmg:0, hp:0 }],
@@ -325,11 +395,12 @@ function migrate(s){
   if(s.forge.hammerSaveChance === undefined) s.forge.hammerSaveChance = 13;
 
   s._activeTab = s._activeTab || "combat";
-  if(!s.stones || !Array.isArray(s.stones.steps) || s.stones.steps.length!==8) s.stones = d.stones;
-  else {
-    s.stones.history = Array.isArray(s.stones.history) ? s.stones.history : [];
-    s.stones.current = s.stones.current || { step:0, choices:[] };
-    s.stones.current.choices = Array.isArray(s.stones.current.choices) ? s.stones.current.choices : [];
+  if(s._activeTab === "stones") s._activeTab = "combat";
+  delete s.stones;
+  s.ascend = Object.assign({}, d.ascend, s.ascend||{});
+  for(const k of ["skill","pet","mount"]){
+    s.ascend[k] = Object.assign({level:1, current:0, perDay:0, perWeek:0}, d.ascend[k], s.ascend[k]||{});
+    s.ascend[k].level = Math.max(1, Math.min(100, Math.round(+s.ascend[k].level||1)));
   }
   s.fixedSkills = s.fixedSkills || d.fixedSkills;
   s.fixedSkills.s1   = Object.assign({ startTime: 3.05 }, d.fixedSkills.s1,   s.fixedSkills.s1||{});
@@ -817,9 +888,12 @@ function cpFormula(me, en){
 }
 
 function currentCPScore(st){
+  return currentDPS(st);
+}
+function currentDPS(st){
   const me = buildMe(st);
   const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
-  return cpFormula(me, en).score;
+  return cpFormula(me, en).myDPS;
 }
 
 function bestBuildCPScore(st){
@@ -967,25 +1041,20 @@ function renderGearEditor(key){
   }
 
   if (kind === "petInv") {
-    const swapResult = h("div",{id:"pet-swap-result"});
     const buttonGroup = h("div", {style:"display:grid;grid-template-columns:repeat(3,1fr);gap:8px"});
     for(let i=0; i<3; i++){
-      buttonGroup.append(h("div", {style:"display:flex;flex-direction:column;gap:6px"},
-        h("button",{class:"btn", onclick:function(){ simulatePetSwap(i, idx, swapResult, this); }}, `⚡ 펫${i+1}과 전투`),
-        h("button",{class:"btn alt", onclick:()=>{
-          const temp = state.pets[i];
-          state.pets[i] = state.petInventory[idx];
-          state.petInventory[idx] = temp;
-          state._selectedSlot = `pets-${i}`;
-          onAnyChange(); renderMe();
-        }}, `✅ 펫${i+1} 장착`)
-      ));
+      buttonGroup.append(h("button",{class:"btn alt", onclick:()=>{
+        const temp = state.pets[i];
+        state.pets[i] = state.petInventory[idx];
+        state.petInventory[idx] = temp;
+        state._selectedSlot = `pets-${i}`;
+        onAnyChange(); renderMe();
+      }}, `✅ 펫${i+1} 자리에 장착`));
     }
     body.append(h("div", {class:"slot", style:"margin-top:10px"},
-      h("h4",null,"본 슬롯 펫과 비교/장착"),
-      h("p",{class:"muted",style:"margin:4px 0 8px"},"장착 전에 각 펫 자리와 1:1 시뮬로 누가 이기는지 먼저 확인할 수 있습니다."),
-      buttonGroup,
-      swapResult
+      h("h4",null,"본 슬롯 펫과 장착 교체"),
+      h("p",{class:"muted",style:"margin:4px 0 8px"},"장착 후 상단 'DPS' 패널에서 변화량 확인."),
+      buttonGroup
     ));
   } else if (kind === "pets") {
     body.append(h("div", {class:"slot", style:"margin-top:10px"},
@@ -999,12 +1068,10 @@ function renderGearEditor(key){
         }}, `보관 ${i+1} 이동`)))
     ));
   } else if (kind === "mountInv") {
-    const swapResult = h("div",{id:"mount-swap-result"});
     body.append(h("div", {class:"slot", style:"margin-top:10px"},
-      h("h4",null,"현재 탈것과 비교/장착"),
-      h("p",{class:"muted",style:"margin:4px 0 8px"},"장착 전에 현재 탈것과 1:1 시뮬로 누가 이기는지 확인 가능."),
+      h("h4",null,"현재 탈것과 장착 교체"),
+      h("p",{class:"muted",style:"margin:4px 0 8px"},"장착 후 상단 'DPS' 패널에서 변화량 확인."),
       h("div",{class:"btnrow"},
-        h("button",{class:"btn", onclick:function(){ simulateMountSwap(idx, swapResult, this); }}, "⚡ 현재 탈것과 전투"),
         h("button",{class:"btn alt", onclick:()=>{
            const temp = state.mount;
            state.mount = state.mountInventory[idx];
@@ -1012,8 +1079,7 @@ function renderGearEditor(key){
            state._selectedSlot = `mount-0`;
            onAnyChange(); renderMe();
         }}, "✅ 탈것 장착")
-      ),
-      swapResult
+      )
     ));
   }
   return body;
@@ -1349,60 +1415,29 @@ function renderResult(){
   host.innerHTML = "";
 
   const me = buildMe(state);
-  const curCP = currentCPScore(state);
-  const baseCP = bestBuildCPScore(state);
-  const cpRatio = baseCP<=0 ? 0 : (curCP/baseCP)*100;
+  const enPreset = buildPresetEnemy(state, me.totalHp, me.totalAtk);
+  const formula = cpFormula(me, enPreset);
 
   host.append(
-    h("div",{class:"lbl-sub", style:"margin-top:10px"}, `내 현재 전투력 점수`),
-    h("p", {class:"muted", style:"margin:0 0 4px; line-height:1.4"}, "※ 전투력 = 승리 시: 상대 HP + (생존 여유 × 내 DPS) / 패배 시: 내 DPS × 생존시간. 치명/더블/블록/흡혈을 공식으로 반영하되 '상대 죽이는 시간'으로 cap해 초과 생존시간이 과대평가되지 않습니다."),
-    h("div",{class:"big good", style:"color:#fff; margin-bottom:0"}, curCP.toLocaleString(undefined, {maximumFractionDigits:0})),
-    h("div",{class:"lbl-sub", style:"margin-top:4px"}, `표준 프리셋(100%) 더미 기준: ${cpRatio.toFixed(1)}%`)
+    h("div",{class:"lbl-sub", style:"margin-top:10px"}, `내 현재 DPS (auto + 스킬, 표준 더미 기준)`),
+    h("div",{class:"big good", style:"color:#fff; margin-bottom:0"}, Math.round(formula.myDPS).toLocaleString()),
+    h("p", {class:"muted", style:"margin:6px 0 0; line-height:1.4"},
+      "※ DPS = 일반공격 DPS + 스킬 DPS. 치명/더블/블록 등 확률 옵션을 기댓값으로 반영합니다.")
   );
 
-  const isShadow = (+state.enemy.hp||0) <= 0;
-  const enFight = isShadow ? buildPresetEnemy(state, me.totalHp, me.totalAtk) : buildCustomEnemy(state, me.totalHp, me.totalAtk);
-  const simCustom = simulate(me, enFight, false, true);
-
-  let customBox = h("div",{class:"slot"});
-  customBox.append(h("h4",null,`⚔️ 1:1 단일 전투 시뮬레이션 결과 ${isShadow?"(vs 표준 프리셋 더미)":"(vs 커스텀 상대)"}`));
-  customBox.append(
-    h("p", {class:"muted", style:"margin-top:0"}, "※ 아래는 단일 전투 로그입니다. 매 타격 시 실제 확률(치명, 더블, 블록)이 적용되어 결과가 매번 달라질 수 있습니다."),
-    kv("결과", h("b",{class:simCustom.winner==="me"?"pos":"neg"}, simCustom.winner==="me"?"승리 ✔":"패배 ✘")),
-    kv("소요 시간", `${simCustom.t.toFixed(1)} 초${simCustom.timeout?" (타임아웃)":""}`),
-    kv("내 남은 체력", `${Math.round(simCustom.myHp).toLocaleString()} / ${Math.round(simCustom.myMax).toLocaleString()}`),
-    kv("적 남은 체력", `${Math.round(simCustom.enHp).toLocaleString()} / ${Math.round(simCustom.enMax).toLocaleString()}`)
-  );
-  host.append(customBox);
-
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"시뮬레이션 실측 통계 (RNG 적용)"),
-    kv("내 총 가한 피해량", Math.round(simCustom.myTotalDealt).toLocaleString()),
-    kv("적 총 가한 피해량", Math.round(simCustom.enTotalDealt).toLocaleString()),
-    kv("내 평균 실측 DPS", Math.round(simCustom.myTotalDealt / simCustom.t).toLocaleString()),
-    kv(`적 평균 실측 DPS`, Math.round(simCustom.enTotalDealt / simCustom.t).toLocaleString())
-  ));
-
-  // 내 스탯 요약: 버프 OFF (게임 UI) / ON 최대 / 전투 평균 / 결투장 체력 분리
+  // 내 스탯 요약
   const myAtkP = attackPeriod(me.opts.atkSpd);
   const myS1CdReal = realCd(FIXED_SKILLS.s1.cd, me.opts.skillCd);
   const myS2CdReal = realCd(FIXED_SKILLS.s2.cd, me.opts.skillCd);
   const myBuffCdReal = realCd(FIXED_SKILLS.buff.cd, me.opts.skillCd);
   const buffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + myBuffCdReal);
-  const formula = cpFormula(me, enFight);
 
   const aggMe = me.opts;
   const dmgMult = (1 + (aggMe.dmg||0)/100) * (1 + (aggMe.ranged||0)/100);
-  // 체력: 스킨·연구·옵션·buff.hpFlat 반영 (게임 UI와 일치)
   const hpNoBuff = me._rawHp * (1 + (aggMe.hp||0)/100) + (+state.buff.hpFlat||0);
   const hpBuffOn = hpNoBuff + FIXED_SKILLS.buff.hp;
-  const hpAvg = hpNoBuff + FIXED_SKILLS.buff.hp * buffUptime;
-  // 공격력 UI: rawAtk × (1+dmg)(1+ranged) + buff.atkFlat (게임 UI와 일치)
   const atkNoBuff = me._rawAtk * dmgMult + (+state.buff.atkFlat||0);
   const atkBuffOn = atkNoBuff + FIXED_SKILLS.buff.atk;
-  const atkAvg = atkNoBuff + FIXED_SKILLS.buff.atk * buffUptime;
-
-  // 장비만 기준 (펫/탈것 제외) — 게임 UI의 "장비" 수치와 비교용
   const equipHpUI = me._equipHp + (+state.buff.hpFlat||0);
   const equipAtkUI = me._equipAtk * dmgMult + (+state.buff.atkFlat||0);
 
@@ -1411,25 +1446,20 @@ function renderResult(){
     kv("평소 체력 (버프 OFF, 게임 UI)", Math.round(hpNoBuff).toLocaleString()),
     kv("└ 장비만 체력 (펫·탈것 제외)", Math.round(equipHpUI).toLocaleString()),
     kv("버프 ON 최대 체력", Math.round(hpBuffOn).toLocaleString()),
-    kv(`전투 평균 체력 (버프 가동률 ${(buffUptime*100).toFixed(0)}%)`, Math.round(hpAvg).toLocaleString()),
-    kv("결투장 체력 (×5, 시뮬용)", Math.round(me.totalHp).toLocaleString()),
     kv("평소 공격력 (버프 OFF)", Math.round(atkNoBuff).toLocaleString()),
     kv("└ 장비만 공격력 (펫·탈것 제외)", Math.round(equipAtkUI).toLocaleString()),
-    kv("버프 ON 최대 공격력", Math.round(atkBuffOn).toLocaleString()),
-    kv("전투 평균 공격력 (시뮬용)", Math.round(me.totalAtk).toLocaleString()),
-    h("p",{class:"muted", style:"margin:8px 0 0"},
-      `※ 게임 UI 체력(${Math.round(hpNoBuff/1e6*10)/10}m)은 버프 OFF 평소값입니다. 시뮬은 버프 가동률 ${(buffUptime*100).toFixed(0)}% 반영한 평균값으로 돌아갑니다.`)
+    kv("버프 ON 최대 공격력", Math.round(atkBuffOn).toLocaleString())
   ));
 
   host.append(h("div",{class:"slot"},
-    h("h4",null,"공격 주기 · 스킬 실쿨"),
-    kv("일반공격 주기", `${myAtkP.toFixed(2)} 초 (첫 auto ${myAtkP.toFixed(1)}s · 두 번째 ${(myAtkP*2).toFixed(1)}s)`),
-    kv("스킬1 실쿨타임", `${myS1CdReal.toFixed(2)} 초 (첫 발동 ${(+FIXED_SKILLS.s1.startTime||2.2).toFixed(1)}s 고정)`),
-    kv("스킬2 실쿨타임", `${myS2CdReal.toFixed(2)} 초 (첫 발동 ${(+FIXED_SKILLS.s2.startTime||2.2).toFixed(1)}s 고정)`),
+    h("h4",null,"공격 주기 · 스킬 실쿨 · DPS"),
+    kv("일반공격 주기", `${myAtkP.toFixed(2)} 초`),
+    kv("스킬1 실쿨타임", `${myS1CdReal.toFixed(2)} 초`),
+    kv("스킬2 실쿨타임", `${myS2CdReal.toFixed(2)} 초`),
     kv("버프스킬 가동률", `${(buffUptime*100).toFixed(1)}% (${FIXED_SKILLS.buff.duration}s on / ${myBuffCdReal.toFixed(1)}s 대기)`),
     kv("내 기댓값 DPS (auto)", Math.round(formula.myAutoDPS).toLocaleString()),
     kv("내 기댓값 DPS (스킬)", Math.round(formula.mySkillDPS).toLocaleString()),
-    kv("내 기댓값 DPS (합계)", Math.round(formula.myDPS).toLocaleString()),
+    kv("내 기댓값 DPS (합계)", h("b",{class:"pos"}, Math.round(formula.myDPS).toLocaleString())),
     kv("흡혈 회복률 /초", Math.round(formula.myHealRate).toLocaleString())
   ));
 
@@ -1445,9 +1475,6 @@ function renderResult(){
   }
   optBox.append(optRow);
   host.append(optBox);
-
-  const log = renderCombatLog(simCustom, "나", "적");
-  if(log) host.append(log);
 }
 
 function kv(label, val){
@@ -1572,38 +1599,30 @@ function renderCompare(){
   }
   host.append(editor);
 
-  const baseScore = currentCPScore(state);
+  const baseDPS = currentDPS(state);
   const backup = JSON.stringify(curSlot);
-  let newScore = 0;
+  let newDPS = 0;
   try {
     Object.assign(curSlot, JSON.parse(JSON.stringify(state.cmp.item)));
     if (loc.kind==="mount") curSlot.opts = [curSlot.opts[0]];
-    newScore = currentCPScore(state);
+    newDPS = currentDPS(state);
   } finally {
     Object.assign(curSlot, JSON.parse(backup));
   }
 
-  const gain = newScore - baseScore;
-  const gainPct = (gain / Math.max(1, Math.abs(baseScore))) * 100;
+  const gain = newDPS - baseDPS;
+  const gainPct = (gain / Math.max(1, Math.abs(baseDPS))) * 100;
 
   host.append(h("div",{class:"slot"},
-    h("h4",null,"교체 시 전투력 점수 변화"),
-    h("p",{class:"muted",style:"margin-top:0"},"※ 전투력 공식(DPS × 생존시간)으로 즉시 계산됩니다."),
-    kv("현재 점수", baseScore.toFixed(0)),
-    kv("새 장비 착용 시", newScore.toFixed(0)),
+    h("h4",null,"교체 시 DPS 변화"),
+    h("p",{class:"muted",style:"margin-top:0"},"※ 표준 더미 기준 DPS(auto + 스킬)를 즉시 계산해 비교합니다."),
+    kv("현재 DPS", Math.round(baseDPS).toLocaleString()),
+    kv("새 장비 착용 시 DPS", Math.round(newDPS).toLocaleString()),
     (()=>{
-      const row = h("div",{class:"kv"}); row.append(h("span",null,"증감률"));
-      row.append(h("b",{class:gain>=0?"pos":"neg"},`${gain>=0?"+":""}${gainPct.toFixed(2)}%`)); return row;
+      const row = h("div",{class:"kv"}); row.append(h("span",null,"증감"));
+      row.append(h("b",{class:gain>=0?"pos":"neg"}, `${gain>=0?"+":""}${Math.round(gain).toLocaleString()} (${gain>=0?"+":""}${gainPct.toFixed(2)}%)`)); return row;
     })(),
     h("div",{class:"lbl-sub",style:"text-align:left;margin-top:6px"}, gain>0?"✔ 더 강해집니다":(gain<0?"✘ 더 약해집니다":"변화 없음"))
-  ));
-
-  const fightResult = h("div",{id:"gear-swap-fight"});
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"⚔️ 기존 장비 vs 새 장비 직접 전투"),
-    h("p",{class:"muted",style:"margin:4px 0 8px"},"두 빌드(교체 전 / 교체 후)를 서로 싸우게 해 누가 이기는지 확인합니다. 전투 로그 포함."),
-    h("div",{class:"btnrow"}, h("button",{class:"btn", onclick:function(){ simulateGearSwap(loc, fightResult, this); }}, "⚡ 전투 시작")),
-    fightResult
   ));
 }
 
@@ -1643,9 +1662,9 @@ function renderRecommendPlaceholder(){
   if(!host) return;
   host.innerHTML = "";
   host.append(h("div",{class:"slot"},
-    h("h4",null,"⑤ 최대 효율 옵션 추천"),
+    h("h4",null,"④ 최대 DPS 옵션 추천"),
     h("p",{class:"muted", style:"margin:4px 0 10px; line-height:1.5"},
-      "모든 슬롯·옵션 조합에 대해 전투력 공식(DPS × 생존시간)으로 계산해 교체 가치가 가장 큰 슬롯을 찾습니다. 공식이라 몇 초 안에 완료됩니다.")
+      "모든 슬롯·옵션 조합에 대해 DPS(표준 더미 기준 auto + 스킬 기댓값)로 계산해 교체 가치가 가장 큰 슬롯을 찾습니다.")
   ));
   const btn = h("button",{class:"btn", onclick:function(){ runRecommend(this); }}, "🔍 추천 계산 시작");
   host.append(h("div",{class:"btnrow"}, btn));
@@ -1735,11 +1754,11 @@ async function runRecommend(btn){
     host.innerHTML = "";
     host.append(h("div",{class:"slot"}, h("h4",null,"교체 가치가 가장 큰 슬롯"),
       kv("슬롯", locLabel), kv("현재 옵션", curOptLabel),
-      kv("현재 점수", cur.toFixed(0))
+      kv("현재 DPS", Math.round(cur).toLocaleString())
     ));
 
     const table = h("table", null,
-      h("thead",null, h("tr",null, h("th",null,"옵션"), h("th",null,"수치"), h("th",{class:"num"},"점수 변화"), h("th",{class:"num"},"최종 점수"))),
+      h("thead",null, h("tr",null, h("th",null,"옵션"), h("th",null,"수치"), h("th",{class:"num"},"DPS 증감"), h("th",{class:"num"},"교체 후 DPS"))),
       h("tbody",null)
     );
     const tbody = table.querySelector("tbody");
@@ -1748,8 +1767,8 @@ async function runRecommend(btn){
       const pct = (r.gain / denom) * 100;
       tbody.append(h("tr",null,
         h("td",null,r.name), h("td",null,`${r.val}%`),
-        h("td",{class:"num "+(r.gain>=0?"pos":"neg")}, `${r.gain>=0?"+":""}${pct.toFixed(2)}%`),
-        h("td",{class:"num"}, r.score.toFixed(0))
+        h("td",{class:"num "+(r.gain>=0?"pos":"neg")}, `${r.gain>=0?"+":""}${Math.round(r.gain).toLocaleString()} (${r.gain>=0?"+":""}${pct.toFixed(2)}%)`),
+        h("td",{class:"num"}, Math.round(r.score).toLocaleString())
       ));
     }
     host.append(h("div",{class:"slot"}, h("h4",null,"이 슬롯을 13종 최대치로 바꿔본 결과"), table));
@@ -2100,48 +2119,278 @@ function renderForgeResult(){
 }
 
 /* ==========================================================================
-   디딤돌 & 세이브 로직
+   승천 (Ascend) 로직 & 렌더
+   - ASCEND_TABLE[level-1] = LV level에 도달하기까지의 누적값
+   - spentAt(level) = 그 누적값
+   - 현재 총 누적 재화 = spentAt(level) + 현재 보유
    ========================================================================== */
-function stoneProbUp(step){ const n = step.upPass + step.downFail + step.downPass + step.upFail; return (step.upPass + step.downFail + 1) / (n + 2); }
-function stonesPickChoice(idx, ch){ state.stones.current.choices[idx]=ch; state.stones.current.step=idx; onAnyChange(); }
-function stonesResolve(pass){
-  const cur = state.stones.current, idx = cur.step, ch = cur.choices[idx];
-  if(!ch){ alert("먼저 위/아래를 선택하세요."); return; }
-  const s = state.stones.steps[idx];
-  if(ch==="up") pass ? s.upPass++ : s.upFail++; else pass ? s.downPass++ : s.downFail++;
-  if(pass){
-    if(idx===7){ state.stones.history.unshift({ choices: cur.choices.slice(), failedAt: null, success: true }); state.stones.current = { step:0, choices:[] }; alert("🎉 8단계 통과 성공!"); }
-    else cur.step = idx + 1;
-  } else { state.stones.history.unshift({ choices: cur.choices.slice(0, idx+1), failedAt: idx, success:false }); state.stones.current = { step:0, choices:[] }; }
+function clampLevel(v){ return Math.max(1, Math.min(100, Math.round(+v||1))); }
+function ascendDiscountFactor(slot){
+  const cr = Math.max(0, Math.min(100, +slot.costReduction||0));
+  const ed = Math.max(0, +slot.extraDraw||0);
+  const f = (1 - cr/100) / (1 + ed/100);
+  return Math.max(0.0001, f);
+}
+function ascendSpentAt(cat, level){
+  return ASCEND_TABLE[clampLevel(level) - 1][cat.cumKey];
+}
+function ascendEffectiveCurrent(slot){
+  return (+slot.current||0) / ascendDiscountFactor(slot);
+}
+function ascendTotal(cat, slot){
+  return ascendSpentAt(cat, slot.level) + ascendEffectiveCurrent(slot);
+}
+function ascendReachableLevel(cat, slot){
+  const total = ascendTotal(cat, slot);
+  let lv = clampLevel(slot.level);
+  for(let i=lv-1; i<ASCEND_TABLE.length; i++){
+    if(ASCEND_TABLE[i][cat.cumKey] <= total) lv = ASCEND_TABLE[i].level;
+    else break;
+  }
+  return lv;
+}
+function ascendGradeAt(catKey, level){
+  const grades = ASCEND_GRADES[catKey];
+  let cur = grades[0];
+  for(const g of grades){ if(level >= g.from) cur = g; }
+  return cur;
+}
+function ascendNextRow(cat, slot){
+  const total = ascendTotal(cat, slot);
+  const cl = clampLevel(slot.level);
+  for(let i=cl; i<ASCEND_TABLE.length; i++){
+    if(ASCEND_TABLE[i][cat.cumKey] > total) return ASCEND_TABLE[i];
+  }
+  return null;
+}
+function doAscend(catKey){
+  const label = ASCEND_CATS.find(c=>c.key===catKey)?.label || catKey;
+  if(!confirm(`${label} 승천하시겠습니까?\n현재 레벨이 1로 초기화됩니다. (보유 재화는 그대로 유지)`)) return;
+  state.ascend[catKey].level = 1;
   saveState(); render();
 }
-function stonesReset(){ if(confirm("초기화?")){ state.stones.current = { step:0, choices:[] }; saveState(); render(); } }
-function stonesResetAll(){ if(confirm("통계 초기화?")){ state.stones = defaultState().stones; saveState(); render(); } }
+// 시뮬레이션: 오늘부터 N일 후까지 매일 perDay 추가, 월요일에 perWeek 추가
+// 누적이 target 이상이 되는 최소 일수(N) 반환. 불가능하면 null.
+function ascendDaysToReach(current, perDay, perWeek, target, baseDate){
+  if((+current||0) >= target) return 0;
+  if((+perDay||0) <= 0 && (+perWeek||0) <= 0) return null;
+  // 안전 한계: 50년 (≈ 18,250일)
+  const MAX_DAYS = 365 * 50;
+  let acc = +current || 0;
+  const base = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  for(let n=1; n<=MAX_DAYS; n++){
+    const d = new Date(base.getTime());
+    d.setDate(base.getDate() + n);
+    acc += (+perDay||0);
+    if(d.getDay() === 1) acc += (+perWeek||0);
+    if(acc >= target) return n;
+  }
+  return null;
+}
+function formatAscendDays(days){
+  if(days === 0) return "지금 도달";
+  if(days == null) return "—";
+  const w = Math.floor(days/7), d = days - w*7;
+  if(w === 0) return `${days}일`;
+  if(d === 0) return `${w}주 (${days}일)`;
+  return `${w}주 ${d}일 (${days}일)`;
+}
+function formatAscendDate(days, baseDate){
+  if(days == null) return "";
+  const d = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), day = String(d.getDate()).padStart(2,"0");
+  const wd = ["일","월","화","수","목","금","토"][d.getDay()];
+  return `${y}-${m}-${day}(${wd})`;
+}
 
-function renderStonesPlay(){
-  const host = document.getElementById("stones-play-body");
+function renderAscendInput(){
+  const host = document.getElementById("ascend-input-body");
   if(!host) return;
   host.innerHTML = "";
-  const cur = state.stones.current, step = cur.step, pUp = stoneProbUp(state.stones.steps[step]);
-  host.append(h("div",{class:"big"}, `${step+1} / 8 단계`), h("div",{class:"slot"}, h("h4",null,"확률"), kv("▲ 위 정답 확률", `${(pUp*100).toFixed(1)}%`), kv("▼ 아래 정답 확률", `${((1-pUp)*100).toFixed(1)}%`)));
-  host.append(h("div",{class:"btnrow"}, h("button",{class:"btn"+(cur.choices[step]==="up"?"":" alt"), style:"flex:1", onclick:()=>stonesPickChoice(step, "up")}, "▲ 위"), h("button",{class:"btn"+(cur.choices[step]==="down"?"":" alt"), style:"flex:1", onclick:()=>stonesPickChoice(step, "down")}, "▼ 아래")));
-  host.append(h("div",{class:"btnrow", style:"margin-top:6px"}, h("button",{class:"btn", style:"flex:1", onclick:()=>stonesResolve(true)}, "✔ 통과"), h("button",{class:"btn warn", style:"flex:1", onclick:()=>stonesResolve(false)}, "✘ 실패")));
-  host.append(h("div",{class:"btnrow", style:"margin-top:10px"}, h("button",{class:"btn alt", onclick:stonesReset}, "진행중 시도 초기화")));
+  const a = state.ascend;
+  const today = new Date();
+  const wd = ["일","월","화","수","목","금","토"][today.getDay()];
+  host.append(h("p",{class:"muted",style:"margin:0 2px 8px"},
+    `오늘: ${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}(${wd}) · 주간 수급은 월요일마다 지급된다고 가정합니다.`));
+  for(const cat of ASCEND_CATS){
+    const slot = a[cat.key];
+    const box = h("div",{class:"slot"});
+    box.append(h("h4",null, `${cat.icon} ${cat.label}`));
+    box.append(h("div",{class:"row"},
+      h("div",null, h("label",null,"현재 레벨 (1~100)"), numInput(slot.level, v=>{ slot.level=clampLevel(v); onAnyChange(); })),
+      h("div",null, h("label",null,"보유 재화"), unitNumInput(slot.current, v=>{ slot.current=Math.max(0,+v||0); onAnyChange(); })),
+      h("div",null, h("label",null,"일일 수급"), unitNumInput(slot.perDay, v=>{ slot.perDay=Math.max(0,+v||0); onAnyChange(); })),
+      h("div",null, h("label",null,"주간 수급 (월요일)"), unitNumInput(slot.perWeek, v=>{ slot.perWeek=Math.max(0,+v||0); onAnyChange(); }))
+    ));
+    // 카테고리별 추가 옵션
+    const hasCR = slot.costReduction !== undefined;
+    const hasED = slot.extraDraw !== undefined;
+    if(hasCR || hasED){
+      const optRow = h("div",{class:"row"});
+      if(hasCR){
+        optRow.append(h("div",null,
+          h("label",null,"비용 감소 (%)"),
+          numInput(slot.costReduction, v=>{ slot.costReduction=Math.max(0,Math.min(100,+v||0)); onAnyChange(); })
+        ));
+      }
+      if(hasED){
+        optRow.append(h("div",null,
+          h("label",null,"추가 뽑기 (%)"),
+          numInput(slot.extraDraw, v=>{ slot.extraDraw=Math.max(0,+v||0); onAnyChange(); })
+        ));
+      }
+      box.append(optRow);
+      const factor = ascendDiscountFactor(slot);
+      const eff = (1/factor);
+      box.append(h("p",{class:"muted",style:"margin:6px 2px 0;font-size:11px"},
+        `→ 동일 재화로 ${eff.toFixed(3)}배 효율 (실효 비용 ×${factor.toFixed(3)})`));
+    }
+    host.append(box);
+  }
 }
-function renderStonesStat(){
-  const host = document.getElementById("stones-stat-body");
+
+function renderAscendNow(){
+  const host = document.getElementById("ascend-now-body");
   if(!host) return;
   host.innerHTML = "";
-  const tb = h("table", null, h("thead",null, h("tr",null, h("th",null,"단계"), h("th",{class:"num"},"▲"), h("th",{class:"num"},"▼"), h("th",{class:"num"},"확률(▲)"))), h("tbody",null));
-  state.stones.steps.forEach((s,i) => tb.querySelector("tbody").append(h("tr",null, h("td",null, `${i+1}`), h("td",{class:"num"}, s.upPass+s.downFail), h("td",{class:"num"}, s.downPass+s.upFail), h("td",{class:"num"}, `${(stoneProbUp(s)*100).toFixed(1)}%`))));
-  host.append(tb); host.append(h("div",{class:"btnrow",style:"margin-top:10px"}, h("button",{class:"btn warn", onclick:stonesResetAll}, "통계 전체 초기화")));
+  const a = state.ascend;
+  for(const cat of ASCEND_CATS){
+    const slotData = a[cat.key];
+    const curLv = clampLevel(slotData.level);
+    const curGrade = ascendGradeAt(cat.key, curLv);
+    const reachLv = ascendReachableLevel(cat, slotData);
+    const reachGrade = ascendGradeAt(cat.key, reachLv);
+    const next = ascendNextRow(cat, slotData);
+    const total = ascendTotal(cat, slotData);
+    const factor = ascendDiscountFactor(slotData);
+
+    const slot = h("div",{class:"slot"});
+    slot.append(h("h4",null, `${cat.icon} ${cat.label}`));
+    slot.append(h("div",{class:"big good"}, `LV ${curLv} → LV ${reachLv}`));
+    slot.append(h("div",{class:"lbl-sub"}, `${curGrade.name} → ${reachGrade.name}${curLv===reachLv ? " (변화 없음)" : ""}`));
+    slot.append(kv("현재 레벨", `LV ${curLv} (${curGrade.name})`));
+    slot.append(kv("보유 재화", (+slotData.current||0).toLocaleString()));
+    if(factor < 0.9999 || factor > 1.0001){
+      slot.append(kv("실효 비용 배수", `×${factor.toFixed(3)} (효율 ×${(1/factor).toFixed(3)})`));
+    }
+    slot.append(kv("누적 환산 (실효)", Math.round(total).toLocaleString()));
+    slot.append(kv("지금 승천 시 도달 레벨", `LV ${reachLv}${reachLv>curLv?` (+${reachLv-curLv})`:""}`));
+    if(next){
+      const remainEff = next[cat.cumKey] - total;
+      const remainResources = remainEff * factor;
+      slot.append(kv(`LV ${next.level}까지 부족`, `${Math.round(remainResources).toLocaleString()} 재화 (실효 ${Math.round(remainEff).toLocaleString()})`));
+    } else {
+      slot.append(kv("최대 레벨 도달", "LV 100"));
+    }
+    if(curLv >= 100){
+      slot.append(h("div",{class:"btnrow",style:"margin-top:8px"},
+        h("button",{class:"btn", onclick:()=>doAscend(cat.key)}, `🌟 ${cat.label} 승천하기 (LV 1로 초기화)`)
+      ));
+    }
+    host.append(slot);
+  }
 }
-function renderStonesHistory(){
-  const host = document.getElementById("stones-history-body");
+
+function renderAscendGrade(){
+  const host = document.getElementById("ascend-grade-body");
   if(!host) return;
   host.innerHTML = "";
-  const tb = h("table",null, h("thead",null, h("tr",null, h("th",null,"#"), h("th",null,"경로"), h("th",null,"결과"))), h("tbody",null));
-  state.stones.history.slice(0,30).forEach((x,idx) => tb.querySelector("tbody").append(h("tr",null, h("td",null, `${state.stones.history.length - idx}`), h("td",{html: Array.from({length:8}, (_,i)=>x.choices[i]?(x.choices[i]==="up"?"▲":"▼"):"·").join(" ")}), h("td",{class: x.success?"pos":"neg"}, x.success?"✔ 완주":`✘ ${x.failedAt+1}단계`))));
+  const a = state.ascend;
+  const today = new Date();
+  for(const cat of ASCEND_CATS){
+    const slotData = a[cat.key];
+    const curLv = clampLevel(slotData.level);
+    const total = ascendTotal(cat, slotData);
+    const factor = ascendDiscountFactor(slotData);
+    const effPerDay = (+slotData.perDay||0) / factor;
+    const effPerWeek = (+slotData.perWeek||0) / factor;
+
+    const slot = h("div",{class:"slot"});
+    slot.append(h("h4",null, `${cat.icon} ${cat.label} 등급 도달 (현재 LV ${curLv}${factor!==1?`, 실효 비용 ×${factor.toFixed(3)}`:""})`));
+    const tb = h("table",null,
+      h("thead",null, h("tr",null,
+        h("th",null,"등급"),
+        h("th",null,"시작 LV"),
+        h("th",{class:"num"},"필요 누적"),
+        h("th",{class:"num"},"부족 재화"),
+        h("th",null,"소요"),
+        h("th",null,"도달일")
+      )),
+      h("tbody",null)
+    );
+    const tbody = tb.querySelector("tbody");
+    for(const g of ASCEND_GRADES[cat.key]){
+      const targetRow = ASCEND_TABLE[g.from - 1];
+      const targetCum = targetRow[cat.cumKey];
+      const reached = curLv >= g.from || total >= targetCum;
+      const remainEff = Math.max(0, targetCum - total);
+      const remainResources = remainEff * factor;
+      const days = reached ? 0 : ascendDaysToReach(total, effPerDay, effPerWeek, targetCum, today);
+      const tr = h("tr",null,
+        h("td",{class: reached?"pos":""}, reached ? `✔ ${g.name}` : g.name),
+        h("td",null, `LV ${g.from}`),
+        h("td",{class:"num"}, targetCum.toLocaleString()),
+        h("td",{class:"num"}, reached ? "—" : Math.round(remainResources).toLocaleString()),
+        h("td",null, reached ? "도달" : formatAscendDays(days)),
+        h("td",{class:"muted",style:"font-size:11px"}, reached ? "" : formatAscendDate(days, today))
+      );
+      tbody.append(tr);
+    }
+    slot.append(tb);
+    host.append(slot);
+  }
+  host.append(h("p",{class:"muted",style:"margin:8px 2px 0;font-size:11px"},
+    "※ 필요 누적 = 기술트리 미적용 기준. 부족 재화 = 실제 모아야 하는 재화량(할인 적용). 일일/주간 수급도 같은 효율로 적용."));
+}
+
+function renderAscendTable(){
+  const host = document.getElementById("ascend-table-body");
+  if(!host) return;
+  host.innerHTML = "";
+  const a = state.ascend;
+  const curLvs = { skill:clampLevel(a.skill.level), pet:clampLevel(a.pet.level), mount:clampLevel(a.mount.level) };
+  const tb = h("table",null,
+    h("thead",null, h("tr",null,
+      h("th",null,"LV"),
+      h("th",{class:"num"},"스킬(필요)"),
+      h("th",{class:"num"},"스킬(누적)"),
+      h("th",{class:"num"},"펫(필요)"),
+      h("th",{class:"num"},"펫(누적)"),
+      h("th",{class:"num"},"탈것(필요)"),
+      h("th",{class:"num"},"탈것(누적)"),
+      h("th",null,"비고")
+    )),
+    h("tbody",null)
+  );
+  const tbody = tb.querySelector("tbody");
+  for(const r of ASCEND_TABLE){
+    const notes = [];
+    for(const cat of ASCEND_CATS){
+      for(const g of ASCEND_GRADES[cat.key]){
+        if(g.from === r.level && g.name !== "일반") notes.push(`${cat.label}: ${g.name}`);
+      }
+    }
+    const markCurrent = [];
+    if(curLvs.skill === r.level) markCurrent.push("스킬");
+    if(curLvs.pet === r.level) markCurrent.push("펫");
+    if(curLvs.mount === r.level) markCurrent.push("탈것");
+    const isCurRow = markCurrent.length > 0;
+    const tr = h("tr",null,
+      h("td",null, `${r.level}${isCurRow?" ◀":""}`),
+      h("td",{class:"num"}, r.skillNeed),
+      h("td",{class:"num"}, r.skillCum.toLocaleString()),
+      h("td",{class:"num"}, r.petNeed),
+      h("td",{class:"num"}, r.petCum.toLocaleString()),
+      h("td",{class:"num"}, r.mountNeed),
+      h("td",{class:"num"}, r.mountCum.toLocaleString()),
+      h("td",{class:"muted",style:"font-size:11px"},
+        [notes.join(" / "), markCurrent.length?`[현재: ${markCurrent.join(",")}]`:""].filter(Boolean).join(" "))
+    );
+    if(isCurRow) tr.style.background = "#1d3a52";
+    else if(notes.length) tr.style.background = "#102734";
+    tbody.append(tr);
+  }
   host.append(tb);
 }
 
@@ -2215,14 +2464,16 @@ h("button",{class:"btn alt", onclick:()=>{
    ========================================================================== */
 function onAnyChange(){
   saveState(); renderResult(); renderCompare();
-  renderForgeResult(); renderForgeClan(); renderStonesPlay(); renderStonesStat();
+  renderForgeResult(); renderForgeClan();
+  renderAscendNow(); renderAscendGrade(); renderAscendTable();
   // 추천 섹션은 수동 버튼으로만 실행. 입력이 바뀌면 플레이스홀더로 되돌리지 않고 기존 결과 유지.
 }
 function render(){
-  renderResult(); renderMe(); renderBuff(); renderEnemy(); renderCompare();
+  renderResult(); renderMe(); renderBuff(); renderCompare();
   renderRecommendPlaceholder();
   renderForgeMe(); renderForgeResearch(); renderForgeClan(); renderForgeTable(); renderForgeResult();
-  renderStonesPlay(); renderStonesStat(); renderStonesHistory(); renderSave();
+  renderAscendInput(); renderAscendNow(); renderAscendGrade(); renderAscendTable();
+  renderSave();
 }
 document.getElementById("btn-recalc").addEventListener("click", render);
 document.getElementById("btn-top").addEventListener("click", ()=>window.scrollTo({top:0, behavior:"smooth"}));
