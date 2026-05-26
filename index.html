@@ -54,6 +54,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -19483,6 +19484,12 @@ if (forgeRetroGo) {
       const title = `✓ 과거 제작 기록 복원 완료 (시작 Seed: 0x${startSeed.toString(16).toUpperCase()})`;
       appendOutput(outputBox, renderForgeResults, title, formatted);
 
+      // 시드 상태를 과거로 자동 롤백 적용
+      state.Forge.seed = startSeed;
+      state.Forge.history = [];
+      persist();
+      await refreshAllStatus();
+
     } catch (e) {
       if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 대장간 역산 오류: ${e.message}</span>`);
     }
@@ -19523,6 +19530,14 @@ if (skillRetroGo) {
       const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${startSeed.toString(16).toUpperCase()})`;
       appendOutput(outputBox, renderSkillResults, title, formatted);
 
+      // 상태를 과거로 자동 롤백 적용
+      state.Skill.seed = startSeed;
+      state.Skill.level = startLevel;
+      state.Skill.count = startCount;
+      state.Skill.history = [];
+      persist();
+      await refreshAllStatus();
+
     } catch (e) {
       if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 스킬 역산 오류: ${e.message}</span>`);
     }
@@ -19544,10 +19559,12 @@ if (petRetroGo) {
       
       let foundHistory = null;
       let finalStartSeed = null;
+      let usedDiff = amount;
       
       if (found) {
         foundHistory = found.history;
         finalStartSeed = found.startSeed;
+        usedDiff = Number(state.Pet.seed - finalStartSeed);
       } else {
         // 매칭 실패 시 단순 선형 롤백 및 보너스 무시 강제 1소환 역산 (차선책)
         const startSeed = state.Pet.seed - BigInt(amount);
@@ -19558,6 +19575,7 @@ if (petRetroGo) {
         doPetSummon(tempState, { amount: 1, times: amount }, petData);
         foundHistory = tempState.Pet.history;
         finalStartSeed = startSeed;
+        usedDiff = amount;
       }
 
       const formatted = foundHistory.map((item, idx) => ({
@@ -19567,6 +19585,15 @@ if (petRetroGo) {
 
       const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${finalStartSeed.toString(16).toUpperCase()})`;
       appendOutput(outputBox, renderPetResults, title, formatted);
+
+      // 시드 및 레벨 상태를 과거로 자동 롤백 적용
+      state.Pet.seed = finalStartSeed;
+      const { level, count } = rollbackLevelAndCount("Pet", state.Pet.level, state.Pet.count, usedDiff, petData);
+      state.Pet.level = level;
+      state.Pet.count = count;
+      state.Pet.history = [];
+      persist();
+      await refreshAllStatus();
 
     } catch (e) {
       if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 펫 역산 오류: ${e.message}</span>`);
@@ -19589,10 +19616,12 @@ if (mountRetroGo) {
       
       let foundHistory = null;
       let finalStartSeed = null;
+      let usedDiff = amount;
       
       if (found) {
         foundHistory = found.history;
         finalStartSeed = found.startSeed;
+        usedDiff = Number(state.Mount.seed - finalStartSeed);
       } else {
         // 매칭 실패 시 단순 선형 롤백 및 보너스 무시 강제 1소환 역산 (차선책)
         const startSeed = state.Mount.seed - BigInt(amount);
@@ -19603,6 +19632,7 @@ if (mountRetroGo) {
         doMountSummon(tempState, { amount: 1, times: amount }, mountData);
         foundHistory = tempState.Mount.history;
         finalStartSeed = startSeed;
+        usedDiff = amount;
       }
 
       const formatted = foundHistory.map((item, idx) => ({
@@ -19612,6 +19642,15 @@ if (mountRetroGo) {
 
       const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${finalStartSeed.toString(16).toUpperCase()})`;
       appendOutput(outputBox, renderMountResults, title, formatted);
+
+      // 시드 및 레벨 상태를 과거로 자동 롤백 적용
+      state.Mount.seed = finalStartSeed;
+      const { level, count } = rollbackLevelAndCount("Mount", state.Mount.level, state.Mount.count, usedDiff, mountData);
+      state.Mount.level = level;
+      state.Mount.count = count;
+      state.Mount.history = [];
+      persist();
+      await refreshAllStatus();
 
     } catch (e) {
       if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 탈것 역산 오류: ${e.message}</span>`);
