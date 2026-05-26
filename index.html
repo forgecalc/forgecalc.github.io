@@ -56,6 +56,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -806,6 +807,7 @@ table td.center { text-align: center; }
                     <select id="skill-opt-mode" style="padding:4px;">
                         <option value="stat" selected>특정 등급 저격</option>
                         <option value="skill">특정 스킬명 저격</option>
+                        <option value="both">특정 등급의 특정 스킬 저격</option>
                     </select>
 
                     <span id="skill-opt-tier-wrapper" style="display:inline-flex; align-items: center; gap: 6px;">
@@ -17055,6 +17057,8 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
             isTarget = item.score >= targetScore;
           } else if (mode === 'skill') {
             isTarget = (targetSkill === 'all' || item.skill_name === targetSkill);
+          } else if (mode === 'both') {
+            isTarget = (item.score >= targetScore) && (targetSkill === 'all' || item.skill_name === targetSkill);
           }
 
           if (isTarget) {
@@ -17116,6 +17120,8 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
         isTarget = item.score >= targetScore;
       } else if (mode === 'skill') {
         isTarget = (targetSkill === 'all' || item.skill_name === targetSkill);
+      } else if (mode === 'both') {
+        isTarget = (item.score >= targetScore) && (targetSkill === 'all' || item.skill_name === targetSkill);
       }
 
       const itemRes = {
@@ -19637,8 +19643,8 @@ if (skillOptMode) {
     const tWrapper = $('#skill-opt-tier-wrapper');
     const nWrapper = $('#skill-opt-name-wrapper');
     if (tWrapper && nWrapper) {
-      tWrapper.style.display = e.target.value === 'stat' ? 'inline-flex' : 'none';
-      nWrapper.style.display = e.target.value === 'skill' ? 'inline-flex' : 'none';
+      tWrapper.style.display = (e.target.value === 'stat' || e.target.value === 'both') ? 'inline-flex' : 'none';
+      nWrapper.style.display = (e.target.value === 'skill' || e.target.value === 'both') ? 'inline-flex' : 'none';
     }
   });
 }
