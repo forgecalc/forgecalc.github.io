@@ -52,6 +52,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -17576,7 +17577,7 @@ function findPetPastSeed(state, config, petData) {
     reqStats.push({ name: config.stat2Name, val: parseFloat(config.stat2Val) });
   }
 
-  for (let diff = 1; diff <= 150; diff++) {
+  for (let diff = 1; diff <= 500; diff++) {
     const startSeed = curSeed - BigInt(diff);
     const { level, count } = rollbackLvl(p.level, p.count, diff);
     const lvlData = levels[Math.min(level, levels.length - 1)];
@@ -18012,7 +18013,7 @@ function findMountPastSeed(state, config, mountData) {
     reqStats.push({ name: config.stat2Name, val: parseFloat(config.stat2Val) });
   }
 
-  for (let diff = 1; diff <= 150; diff++) {
+  for (let diff = 1; diff <= 500; diff++) {
     const startSeed = curSeed - BigInt(diff);
     const { level, count } = rollbackLvl(m.level, m.count, diff);
     const lvlData = levels[Math.min(level, levels.length - 1)];
