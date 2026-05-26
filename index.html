@@ -51,6 +51,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -707,6 +708,7 @@ table td.center { text-align: center; }
                 <input type="number" id="forge-times" value="1" style="width:60px;">
                 <button id="forge-go" style="background:#3498db; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">미래시 전개</button>
                 <button id="forge-reset-run" style="background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer;">히스토리 리셋</button>
+                <button id="forge-clear" style="background:#7f8c8d; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; padding:4px 8px; margin-left:5px;">결과 비우기</button>
             </div>
             
             <details class="card" style="margin: 12px 0;">
@@ -775,6 +777,7 @@ table td.center { text-align: center; }
                     <label style="font-size: 13px;">복원할 과거 횟수:</label>
                     <input type="number" id="forge-retro-amount" value="50" style="width:70px; padding:4px; text-align:center;">
                     <button id="forge-retro-go" style="background:#3498db; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 제작 복원</button>
+                    <button id="forge-retro-clear" style="background:#7f8c8d; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">결과 비우기</button>
                 </div>
                 <div id="forge-retro-output" class="output-container" style="margin-top: 12px;"></div>
             </details>
@@ -791,6 +794,7 @@ table td.center { text-align: center; }
                 <input type="number" id="skill-times" value="1" style="width:60px; padding:4px; text-align:center;">
                 <button id="skill-go" style="background:#9b59b6; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">파이썬 시뮬레이션 가동</button>
                 <button id="skill-reset-run" style="background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer;">초기화</button>
+                <button id="skill-clear" style="background:#7f8c8d; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; padding:4px 8px; margin-left:5px;">결과 비우기</button>
             </div>
 
             <!-- 스킬 소환 최단 루트 최적화 (DP) 카드 추가 -->
@@ -825,6 +829,7 @@ table td.center { text-align: center; }
                     </span>
 
                     <button id="skill-opt-go" style="background:#9b59b6; color:white; padding:8px 15px; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">경로 계산</button>
+                    <button id="skill-opt-clear" style="background:#7f8c8d; color:white; padding:8px 15px; border:none; border-radius:4px; font-weight:bold; cursor:pointer; margin-left:5px;">결과 비우기</button>
                 </div>
                 <div id="skill-opt-output" style="margin-top: 15px;"></div>
             </div>
@@ -835,6 +840,7 @@ table td.center { text-align: center; }
                     <label style="font-size: 13px;">복원할 과거 횟수:</label>
                     <input type="number" id="skill-retro-amount" value="50" style="width:70px; padding:4px; text-align:center;">
                     <button id="skill-retro-go" style="background:#9b59b6; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 소환 복원</button>
+                    <button id="skill-retro-clear" style="background:#7f8c8d; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer; margin-left:5px;">결과 비우기</button>
                 </div>
                 <div id="skill-retro-output" class="output-container" style="margin-top: 12px;"></div>
             </details>
@@ -855,6 +861,7 @@ table td.center { text-align: center; }
                 <input type="number" id="pet-times" value="1" style="width:60px; padding:4px; text-align:center;">
                 <button id="pet-go" style="background:#e67e22; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">펫 소환</button>
                 <button id="pet-reset-run" style="background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer;">리셋</button>
+                <button id="pet-clear" style="background:#7f8c8d; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; padding:4px 8px; margin-left:5px;">결과 비우기</button>
             </div>
 
             <details class="card" style="margin: 12px 0;">
@@ -922,6 +929,7 @@ table td.center { text-align: center; }
                     </span>
 
                     <button id="pet-opt-go" style="background:#8e44ad; color:white; padding:8px 15px; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">경로 계산</button>
+                    <button id="pet-opt-clear" style="background:#7f8c8d; color:white; padding:8px 15px; border:none; border-radius:4px; font-weight:bold; cursor:pointer; margin-left:5px;">결과 비우기</button>
                 </div>
                 <div id="pet-opt-output" style="margin-top: 15px;"></div>
             </div>
@@ -932,6 +940,7 @@ table td.center { text-align: center; }
                     <label style="font-size: 13px;">복원할 과거 횟수:</label>
                     <input type="number" id="pet-retro-amount" value="50" style="width:70px; padding:4px; text-align:center;">
                     <button id="pet-retro-go" style="background:#e67e22; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 소환 복원</button>
+                    <button id="pet-retro-clear" style="background:#7f8c8d; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer; margin-left:5px;">결과 비우기</button>
                 </div>
                 <div id="pet-retro-output" class="output-container" style="margin-top: 12px;"></div>
 
@@ -981,6 +990,7 @@ table td.center { text-align: center; }
                     </select>
                     <input type="number" id="pet-scout-s2val" placeholder="수치 %" step="0.1" style="width:60px; padding:2px;">
                     <button id="pet-scout-go" style="background:#8e44ad; color:white; border:none; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">시드 스캔</button>
+                    <button id="pet-scout-clear" style="background:#7f8c8d; color:white; border:none; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer; margin-left:5px;">결과 비우기</button>
                 </div>
                 <div id="pet-scout-output" style="margin-top:10px; font-size:12px;"></div>
             </details>
@@ -1001,6 +1011,7 @@ table td.center { text-align: center; }
                 <input type="number" id="mount-times" value="1" style="width:60px; padding:4px; text-align:center;">
                 <button id="mount-go" style="background:#1abc9c; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">탈것 소환</button>
                 <button id="mount-reset-run" style="background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer;">리셋</button>
+                <button id="mount-clear" style="background:#7f8c8d; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; padding:4px 8px; margin-left:5px;">결과 비우기</button>
             </div>
 
             <details class="card" style="margin: 12px 0;">
@@ -1057,6 +1068,7 @@ table td.center { text-align: center; }
                     </span>
 
                     <button id="mount-opt-go" style="background:#16a085; color:white; padding:8px 15px; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">경로 계산</button>
+                    <button id="mount-opt-clear" style="background:#7f8c8d; color:white; padding:8px 15px; border:none; border-radius:4px; font-weight:bold; cursor:pointer; margin-left:5px;">결과 비우기</button>
                 </div>
                 <div id="mount-opt-output" style="margin-top: 15px;"></div>
             </div>
@@ -1067,6 +1079,7 @@ table td.center { text-align: center; }
                     <label style="font-size: 13px;">복원할 과거 횟수:</label>
                     <input type="number" id="mount-retro-amount" value="50" style="width:70px; padding:4px; text-align:center;">
                     <button id="mount-retro-go" style="background:#1abc9c; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 소환 복원</button>
+                    <button id="mount-retro-clear" style="background:#7f8c8d; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer; margin-left:5px;">결과 비우기</button>
                 </div>
                 <div id="mount-retro-output" class="output-container" style="margin-top: 12px;"></div>
 
@@ -1109,6 +1122,7 @@ table td.center { text-align: center; }
                     </select>
                     <input type="number" id="mount-scout-s2val" placeholder="수치 %" step="0.1" style="width:60px; padding:2px;">
                     <button id="mount-scout-go" style="background:#16a085; color:white; border:none; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">시드 스캔</button>
+                    <button id="mount-scout-clear" style="background:#7f8c8d; color:white; border:none; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer; margin-left:5px;">결과 비우기</button>
                 </div>
                 <div id="mount-scout-output" style="margin-top:10px; font-size:12px;"></div>
             </details>
@@ -17589,7 +17603,7 @@ function findPetPastSeed(state, config, petData) {
 
       let matched = true;
       for (const reqS of reqStats) {
-        const found = detailed.find(s => s.name === reqS.name && Math.abs(s.value - reqS.val) < 0.5);
+        const found = detailed.find(s => s.name === reqS.name && s.value >= reqS.val);
         if (!found) { matched = false; break; }
       }
 
@@ -18022,7 +18036,7 @@ function findMountPastSeed(state, config, mountData) {
 
       let matched = true;
       for (const reqS of reqStats) {
-        const found = detailed.find(s => s.name === reqS.name && Math.abs(s.value - reqS.val) < 0.5);
+        const found = detailed.find(s => s.name === reqS.name && s.value >= reqS.val);
         if (!found) { matched = false; break; }
       }
 
@@ -18456,6 +18470,11 @@ const lastResponse = {
   Pet: null,
   Mount: null
 };
+const accumulatedResponse = {
+  Forge: [],
+  Pet: [],
+  Mount: []
+};
 
 async function initStaticData() {
   try {
@@ -18822,28 +18841,39 @@ function readFilters(mode) {
 }
 
 function applyFilterAndRender(mode) {
-  const data = lastResponse[mode];
-  if (!data || !data.results) return;
-
+  const list = accumulatedResponse[mode];
   const outputBox = $(`#${mode.toLowerCase()}-output`);
   if (!outputBox) return;
 
-  const config = readFilters(mode);
-  const filtered = data.results.filter(item => filterItem(item, config, mode));
-
-  const title = `✓ 연산 결과 출력 완료 (Next Seed: 0x${data.next_seed}) - 매칭: ${filtered.length} / 전체: ${data.results.length}`;
-  const meta = `
-    <div style='margin-bottom:12px; padding:10px; background:#2c3e50; border-radius:4px; font-family:monospace; color:#fff; font-size:13px;'>
-      <span style='color:#2ecc71;'>ForgeMaster_Terminal:</span>~$ ${data.command}
-    </div>`;
-
-  if (mode === 'Forge') {
-    renderForgeResults(outputBox, title, filtered, meta);
-  } else if (mode === 'Pet') {
-    renderPetResults(outputBox, title, filtered, meta);
-  } else if (mode === 'Mount') {
-    renderMountResults(outputBox, title, filtered, meta);
+  if (!list || list.length === 0) {
+    outputBox.innerHTML = '';
+    return;
   }
+
+  const config = readFilters(mode);
+  let combinedHtml = '';
+
+  for (let i = list.length - 1; i >= 0; i--) {
+    const data = list[i];
+    const filtered = data.results.filter(item => filterItem(item, config, mode));
+    const title = `✓ 연산 결과 출력 완료 (Next Seed: 0x${data.next_seed}) - 매칭: ${filtered.length} / 전체: ${data.results.length}`;
+    const meta = `
+      <div style='margin-bottom:12px; padding:10px; background:#2c3e50; border-radius:4px; font-family:monospace; color:#fff; font-size:13px;'>
+        <span style='color:#2ecc71;'>ForgeMaster_Terminal:</span>~$ ${data.command}
+      </div>`;
+
+    const tempDiv = document.createElement('div');
+    if (mode === 'Forge') {
+      renderForgeResults(tempDiv, title, filtered, meta);
+    } else if (mode === 'Pet') {
+      renderPetResults(tempDiv, title, filtered, meta);
+    } else if (mode === 'Mount') {
+      renderMountResults(tempDiv, title, filtered, meta);
+    }
+    combinedHtml += tempDiv.innerHTML;
+  }
+
+  outputBox.innerHTML = combinedHtml;
 }
 
 function clearFilters(mode) {
@@ -18906,10 +18936,7 @@ function initFilters() {
 
 // === ⚒️ 로컬 고정밀 대장간 미래시 (서버리스) ===
 $('#forge-go').addEventListener('click', async () => {
-  const outputBox = $('#forge-output');
   try {
-    if (outputBox) outputBox.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 연산 주사위를 회전하는 중...</div>";
-
     const amount = parseInt($('#forge-amount').value, 10);
     const times = parseInt($('#forge-times').value, 10);
 
@@ -18921,18 +18948,19 @@ $('#forge-go').addEventListener('click', async () => {
     const next_seed = state.Forge.seed.toString(16).toUpperCase();
     const command = `doForge(state, amount=${amount}, times=${times})`;
 
-    lastResponse.Forge = {
+    accumulatedResponse.Forge.push({
       results,
       next_seed,
       command
-    };
+    });
 
     persist();
     applyFilterAndRender('Forge');
     await refreshAllStatus();
 
   } catch (e) {
-    if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 대장간 연산 오류: ${e.message}</span>`;
+    const outputBox = $('#forge-output');
+    if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 대장간 연산 오류: ${e.message}</span>`);
   }
 });
 
@@ -18942,10 +18970,6 @@ $('#skill-go').addEventListener('click', async () => {
   try {
     const amount = parseInt($('#skill-amount').value, 10);
     const times = parseInt($('#skill-times').value, 10);
-
-    if (outputContainer) {
-        outputContainer.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 정밀 시드 주사위를 회전하는 중...</div>";
-    }
 
     if (!skillData) throw new Error("스킬 기획서 데이터가 로드되지 않았습니다.");
 
@@ -18960,25 +18984,20 @@ $('#skill-go').addEventListener('click', async () => {
         <div style='margin-bottom:12px; padding:10px; background:#2c3e50; border-radius:4px; font-family:monospace; color:#fff; font-size:13px;'>
           <span style='color:#2ecc71;'>ForgeMaster_Terminal:</span>~$ ${command}
         </div>`;
-      renderSkillResults(outputContainer, title, results, meta);
+      appendOutput(outputContainer, renderSkillResults, title, results, meta);
       persist();
       await refreshAllStatus();
     }
   } catch (error) {
-    if (outputContainer) outputContainer.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 스킬 연산 오류: ${error.message}</span>`;
+    if (outputContainer) outputContainer.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 스킬 연산 오류: ${error.message}</span>`);
   }
 });
 
 // === 🥚 로컬 고정밀 펫 부화 (서버리스) ===
 $('#pet-go').addEventListener('click', async () => {
-  const outputContainer = $('#pet-output');
   try {
     const amount = parseInt($('#pet-amount').value, 10);
     const times = parseInt($('#pet-times').value, 10);
-
-    if (outputContainer) {
-        outputContainer.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 정밀 펫 난수 시드를 회전하는 중...</div>";
-    }
 
     if (!petData) throw new Error("펫 기획서 데이터가 로드되지 않았습니다.");
 
@@ -18988,30 +19007,26 @@ $('#pet-go').addEventListener('click', async () => {
     const next_seed = state.Pet.seed.toString(16).toUpperCase();
     const command = `doPetSummon(state, amount=${amount}, times=${times})`;
 
-    lastResponse.Pet = {
+    accumulatedResponse.Pet.push({
       results: newResults,
       next_seed,
       command
-    };
+    });
 
     persist();
     applyFilterAndRender('Pet');
     await refreshAllStatus();
   } catch (error) {
-    if (outputContainer) outputContainer.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 펫 연산 오류: ${error.message}</span>`;
+    const outputContainer = $('#pet-output');
+    if (outputContainer) outputContainer.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 펫 연산 오류: ${error.message}</span>`);
   }
 });
 
 // === 🐎 로컬 고정밀 탈것 소환 (서버리스) ===
 $('#mount-go').addEventListener('click', async () => {
-  const outputContainer = $('#mount-output');
   try {
     const amount = parseInt($('#mount-amount').value, 10);
     const times = parseInt($('#mount-times').value, 10);
-
-    if (outputContainer) {
-        outputContainer.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 정밀 탈것 난수 시드를 회전하는 중...</div>";
-    }
 
     if (!mountData) throw new Error("탈것 기획서 데이터가 로드되지 않았습니다.");
 
@@ -19021,17 +19036,18 @@ $('#mount-go').addEventListener('click', async () => {
     const next_seed = state.Mount.seed.toString(16).toUpperCase();
     const command = `doMountSummon(state, amount=${amount}, times=${times})`;
 
-    lastResponse.Mount = {
+    accumulatedResponse.Mount.push({
       results: newResults,
       next_seed,
       command
-    };
+    });
 
     persist();
     applyFilterAndRender('Mount');
     await refreshAllStatus();
   } catch (error) {
-    if (outputContainer) outputContainer.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 탈것 연산 오류: ${error.message}</span>`;
+    const outputContainer = $('#mount-output');
+    if (outputContainer) outputContainer.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 탈것 연산 오류: ${error.message}</span>`);
   }
 });
 
@@ -19289,14 +19305,154 @@ function rollbackLevelAndCount(mode, curLevel, curCount, K, data) {
   return { level, count };
 }
 
+function getUniquePermutations(arr) {
+  const results = [];
+  const permute = (current, remaining) => {
+    if (remaining.length === 0) {
+      results.push(current);
+      return;
+    }
+    const seen = new Set();
+    for (let i = 0; i < remaining.length; i++) {
+      if (seen.has(remaining[i])) continue;
+      seen.add(remaining[i]);
+      permute([...current, remaining[i]], [...remaining.slice(0, i), ...remaining.slice(i + 1)]);
+    }
+  };
+  permute([], arr);
+  return results;
+}
+
+function appendOutput(outputBox, renderFunc, ...args) {
+  if (!outputBox) return;
+  const tempDiv = document.createElement('div');
+  renderFunc(tempDiv, ...args);
+  outputBox.insertAdjacentHTML('afterbegin', tempDiv.innerHTML);
+}
+
+function findComplexRetroHistory(mode, amount, data, state) {
+  const stateData = state[mode];
+  const curSeed = stateData.seed;
+  const curChance = stateData.chance;
+  const isAscended = stateData.isAscended;
+  
+  // S = amount 가 되는 50, 15, 1 조합 파티션들 구하기
+  const partitions = [];
+  for (let n50 = 0; n50 * 50 <= amount; n50++) {
+    for (let n15 = 0; n15 * 15 <= amount - n50 * 50; n15++) {
+      const n1 = amount - n50 * 50 - n15 * 15;
+      partitions.push({ n50, n15, n1 });
+    }
+  }
+  
+  // 1단계: 블록 단위 순열 탐색 (50, 15, 1 블록 순열, 최대 3! = 6가지)
+  for (const part of partitions) {
+    const blocks = [];
+    if (part.n50 > 0) blocks.push({ amount: 50, times: part.n50 });
+    if (part.n15 > 0) blocks.push({ amount: 15, times: part.n15 });
+    if (part.n1 > 0) blocks.push({ amount: 1, times: part.n1 });
+    
+    if (blocks.length === 0) continue;
+    
+    const blockPerms = getUniquePermutations(blocks);
+    
+    for (const perm of blockPerms) {
+      // 보너스 소환 개수 B의 범위는 0 ~ amount
+      const maxB = amount;
+      for (let B = 0; B <= maxB; B++) {
+        const diff = amount + B;
+        const startSeed = curSeed - BigInt(diff);
+        const { level, count } = rollbackLevelAndCount(mode, stateData.level, stateData.count, diff, data);
+        
+        const tempState = {
+          [mode]: {
+            seed: startSeed,
+            level,
+            count,
+            chance: curChance,
+            isAscended,
+            history: []
+          }
+        };
+        
+        try {
+          for (const blk of perm) {
+            if (mode === "Pet") {
+              doPetSummon(tempState, { amount: blk.amount, times: blk.times }, data);
+            } else {
+              doMountSummon(tempState, { amount: blk.amount, times: blk.times }, data);
+            }
+          }
+          
+          if (tempState[mode].seed === curSeed) {
+            return {
+              history: tempState[mode].history,
+              startSeed
+            };
+          }
+        } catch(e) {}
+      }
+    }
+  }
+  
+  // 2단계: 개별 소환 명령 고유 순열 탐색 (버튼 클릭 총 횟수가 8 이하일 때만 수행)
+  for (const part of partitions) {
+    const totalOps = part.n50 + part.n15 + part.n1;
+    if (totalOps > 8) continue;
+    
+    const ops = [];
+    for (let i = 0; i < part.n50; i++) ops.push(50);
+    for (let i = 0; i < part.n15; i++) ops.push(15);
+    for (let i = 0; i < part.n1; i++) ops.push(1);
+    
+    const opPerms = getUniquePermutations(ops);
+    for (const perm of opPerms) {
+      const maxB = amount;
+      for (let B = 0; B <= maxB; B++) {
+        const diff = amount + B;
+        const startSeed = curSeed - BigInt(diff);
+        const { level, count } = rollbackLevelAndCount(mode, stateData.level, stateData.count, diff, data);
+        
+        const tempState = {
+          [mode]: {
+            seed: startSeed,
+            level,
+            count,
+            chance: curChance,
+            isAscended,
+            history: []
+          }
+        };
+        
+        try {
+          for (const amt of perm) {
+            if (mode === "Pet") {
+              doPetSummon(tempState, { amount: amt, times: 1 }, data);
+            } else {
+              doMountSummon(tempState, { amount: amt, times: 1 }, data);
+            }
+          }
+          
+          if (tempState[mode].seed === curSeed) {
+            return {
+              history: tempState[mode].history,
+              startSeed
+            };
+          }
+        } catch(e) {}
+      }
+    }
+  }
+  
+  return null;
+}
+
 // 1. 대장간 역산
 const forgeRetroGo = $('#forge-retro-go');
 if (forgeRetroGo) {
   forgeRetroGo.addEventListener('click', async () => {
     const outputBox = $('#forge-retro-output');
     try {
-      if (outputBox) outputBox.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 대장간 과거 시드를 역산하는 중...</div>";
-      
       const amount = parseInt($('#forge-retro-amount').value, 10);
       if (isNaN(amount) || amount <= 0) throw new Error("올바른 과거 복원 횟수를 입력하세요.");
       if (!forgeData) throw new Error("대장간 기획서 데이터가 로드되지 않았습니다.");
@@ -19323,10 +19479,10 @@ if (forgeRetroGo) {
       }));
 
       const title = `✓ 과거 제작 기록 복원 완료 (시작 Seed: 0x${startSeed.toString(16).toUpperCase()})`;
-      renderForgeResults(outputBox, title, formatted);
+      appendOutput(outputBox, renderForgeResults, title, formatted);
 
     } catch (e) {
-      if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 대장간 역산 오류: ${e.message}</span>`;
+      if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 대장간 역산 오류: ${e.message}</span>`);
     }
   });
 }
@@ -19337,8 +19493,6 @@ if (skillRetroGo) {
   skillRetroGo.addEventListener('click', async () => {
     const outputBox = $('#skill-retro-output');
     try {
-      if (outputBox) outputBox.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 스킬 과거 시드를 역산하는 중...</div>";
-      
       const amount = parseInt($('#skill-retro-amount').value, 10);
       if (isNaN(amount) || amount <= 0) throw new Error("올바른 과거 복원 횟수를 입력하세요.");
       if (!skillData) throw new Error("스킬 기획서 데이터가 로드되지 않았습니다.");
@@ -19365,10 +19519,10 @@ if (skillRetroGo) {
       }));
 
       const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${startSeed.toString(16).toUpperCase()})`;
-      renderSkillResults(outputBox, title, formatted);
+      appendOutput(outputBox, renderSkillResults, title, formatted);
 
     } catch (e) {
-      if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 스킬 역산 오류: ${e.message}</span>`;
+      if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 스킬 역산 오류: ${e.message}</span>`);
     }
   });
 }
@@ -19379,76 +19533,21 @@ if (petRetroGo) {
   petRetroGo.addEventListener('click', async () => {
     const outputBox = $('#pet-retro-output');
     try {
-      if (outputBox) outputBox.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 펫 과거 시드를 탐색 중...</div>";
-      
       const amount = parseInt($('#pet-retro-amount').value, 10);
       if (isNaN(amount) || amount <= 0) throw new Error("올바른 과거 복원 횟수를 입력하세요.");
       if (!petData) throw new Error("펫 기획서 데이터가 로드되지 않았습니다.");
 
-      // 복합 전방 탐색 실행
+      // 복합 3단계 탐색 시도
+      let found = findComplexRetroHistory("Pet", amount, petData, state);
+      
       let foundHistory = null;
       let finalStartSeed = null;
-
-      // 50소환 단위 매칭
-      const B50 = Math.ceil(amount / 50);
-      for (let diff = B50 * 50; diff <= B50 * 85; diff++) {
-        const startSeed = state.Pet.seed - BigInt(diff);
-        const { level, count } = rollbackLevelAndCount("Pet", state.Pet.level, state.Pet.count, diff, petData);
-        const tempState = {
-          Pet: { seed: startSeed, level, count, chance: state.Pet.chance, isAscended: state.Pet.isAscended, history: [] }
-        };
-        try {
-          doPetSummon(tempState, { amount: 50, times: B50 }, petData);
-          if (tempState.Pet.seed === state.Pet.seed) {
-            foundHistory = tempState.Pet.history;
-            finalStartSeed = startSeed;
-            break;
-          }
-        } catch(e) {}
-      }
-
-      // 15소환 단위 매칭
-      if (!foundHistory) {
-        const B15 = Math.ceil(amount / 15);
-        for (let diff = B15 * 15; diff <= B15 * 25; diff++) {
-          const startSeed = state.Pet.seed - BigInt(diff);
-          const { level, count } = rollbackLevelAndCount("Pet", state.Pet.level, state.Pet.count, diff, petData);
-          const tempState = {
-            Pet: { seed: startSeed, level, count, chance: state.Pet.chance, isAscended: state.Pet.isAscended, history: [] }
-          };
-          try {
-            doPetSummon(tempState, { amount: 15, times: B15 }, petData);
-            if (tempState.Pet.seed === state.Pet.seed) {
-              foundHistory = tempState.Pet.history;
-              finalStartSeed = startSeed;
-              break;
-            }
-          } catch(e) {}
-        }
-      }
-
-      // 1소환 단위 매칭
-      if (!foundHistory) {
-        const B1 = amount;
-        for (let diff = B1; diff <= B1 * 2; diff++) {
-          const startSeed = state.Pet.seed - BigInt(diff);
-          const { level, count } = rollbackLevelAndCount("Pet", state.Pet.level, state.Pet.count, diff, petData);
-          const tempState = {
-            Pet: { seed: startSeed, level, count, chance: state.Pet.chance, isAscended: state.Pet.isAscended, history: [] }
-          };
-          try {
-            doPetSummon(tempState, { amount: 1, times: B1 }, petData);
-            if (tempState.Pet.seed === state.Pet.seed) {
-              foundHistory = tempState.Pet.history;
-              finalStartSeed = startSeed;
-              break;
-            }
-          } catch(e) {}
-        }
-      }
-
-      // 매칭 실패 시 단순 선형 롤백 및 보너스 무시 강제 1소환 역산 (차선책)
-      if (!foundHistory) {
+      
+      if (found) {
+        foundHistory = found.history;
+        finalStartSeed = found.startSeed;
+      } else {
+        // 매칭 실패 시 단순 선형 롤백 및 보너스 무시 강제 1소환 역산 (차선책)
         const startSeed = state.Pet.seed - BigInt(amount);
         const { level, count } = rollbackLevelAndCount("Pet", state.Pet.level, state.Pet.count, amount, petData);
         const tempState = {
@@ -19465,10 +19564,10 @@ if (petRetroGo) {
       }));
 
       const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${finalStartSeed.toString(16).toUpperCase()})`;
-      renderPetResults(outputBox, title, formatted);
+      appendOutput(outputBox, renderPetResults, title, formatted);
 
     } catch (e) {
-      if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 펫 역산 오류: ${e.message}</span>`;
+      if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 펫 역산 오류: ${e.message}</span>`);
     }
   });
 }
@@ -19479,76 +19578,21 @@ if (mountRetroGo) {
   mountRetroGo.addEventListener('click', async () => {
     const outputBox = $('#mount-retro-output');
     try {
-      if (outputBox) outputBox.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 탈것 과거 시드를 탐색 중...</div>";
-      
       const amount = parseInt($('#mount-retro-amount').value, 10);
       if (isNaN(amount) || amount <= 0) throw new Error("올바른 과거 복원 횟수를 입력하세요.");
       if (!mountData) throw new Error("탈것 기획서 데이터가 로드되지 않았습니다.");
 
-      // 복합 전방 탐색 실행
+      // 복합 3단계 탐색 시도
+      let found = findComplexRetroHistory("Mount", amount, mountData, state);
+      
       let foundHistory = null;
       let finalStartSeed = null;
-
-      // 50소환 단위 매칭
-      const B50 = Math.ceil(amount / 50);
-      for (let diff = B50 * 50; diff <= B50 * 85; diff++) {
-        const startSeed = state.Mount.seed - BigInt(diff);
-        const { level, count } = rollbackLevelAndCount("Mount", state.Mount.level, state.Mount.count, diff, mountData);
-        const tempState = {
-          Mount: { seed: startSeed, level, count, chance: state.Mount.chance, isAscended: state.Mount.isAscended, history: [] }
-        };
-        try {
-          doMountSummon(tempState, { amount: 50, times: B50 }, mountData);
-          if (tempState.Mount.seed === state.Mount.seed) {
-            foundHistory = tempState.Mount.history;
-            finalStartSeed = startSeed;
-            break;
-          }
-        } catch(e) {}
-      }
-
-      // 15소환 단위 매칭
-      if (!foundHistory) {
-        const B15 = Math.ceil(amount / 15);
-        for (let diff = B15 * 15; diff <= B15 * 25; diff++) {
-          const startSeed = state.Mount.seed - BigInt(diff);
-          const { level, count } = rollbackLevelAndCount("Mount", state.Mount.level, state.Mount.count, diff, mountData);
-          const tempState = {
-            Mount: { seed: startSeed, level, count, chance: state.Mount.chance, isAscended: state.Mount.isAscended, history: [] }
-          };
-          try {
-            doMountSummon(tempState, { amount: 15, times: B15 }, mountData);
-            if (tempState.Mount.seed === state.Mount.seed) {
-              foundHistory = tempState.Mount.history;
-              finalStartSeed = startSeed;
-              break;
-            }
-          } catch(e) {}
-        }
-      }
-
-      // 1소환 단위 매칭
-      if (!foundHistory) {
-        const B1 = amount;
-        for (let diff = B1; diff <= B1 * 2; diff++) {
-          const startSeed = state.Mount.seed - BigInt(diff);
-          const { level, count } = rollbackLevelAndCount("Mount", state.Mount.level, state.Mount.count, diff, mountData);
-          const tempState = {
-            Mount: { seed: startSeed, level, count, chance: state.Mount.chance, isAscended: state.Mount.isAscended, history: [] }
-          };
-          try {
-            doMountSummon(tempState, { amount: 1, times: B1 }, mountData);
-            if (tempState.Mount.seed === state.Mount.seed) {
-              foundHistory = tempState.Mount.history;
-              finalStartSeed = startSeed;
-              break;
-            }
-          } catch(e) {}
-        }
-      }
-
-      // 매칭 실패 시 단순 선형 롤백 및 보너스 무시 강제 1소환 역산 (차선책)
-      if (!foundHistory) {
+      
+      if (found) {
+        foundHistory = found.history;
+        finalStartSeed = found.startSeed;
+      } else {
+        // 매칭 실패 시 단순 선형 롤백 및 보너스 무시 강제 1소환 역산 (차선책)
         const startSeed = state.Mount.seed - BigInt(amount);
         const { level, count } = rollbackLevelAndCount("Mount", state.Mount.level, state.Mount.count, amount, mountData);
         const tempState = {
@@ -19565,10 +19609,10 @@ if (mountRetroGo) {
       }));
 
       const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${finalStartSeed.toString(16).toUpperCase()})`;
-      renderMountResults(outputBox, title, formatted);
+      appendOutput(outputBox, renderMountResults, title, formatted);
 
     } catch (e) {
-      if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 탈것 역산 오류: ${e.message}</span>`;
+      if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 탈것 역산 오류: ${e.message}</span>`);
     }
   });
 }
@@ -19714,6 +19758,7 @@ document.body.addEventListener('click', async (e) => {
 });
 
 // === 🔎 과거 개체 조건 기반 시드 역추적 (스카우터) ===
+// === 🔎 과거 개체 조건 기반 시드 역추적 (스카우터) ===
 const petScoutGo = $('#pet-scout-go');
 if (petScoutGo) {
   petScoutGo.addEventListener('click', async () => {
@@ -19731,46 +19776,28 @@ if (petScoutGo) {
     const stat2Name = $('#pet-scout-s2name').value;
     const stat2Val = parseFloat($('#pet-scout-s2val').value);
 
-    outEl.innerHTML = `<span style="color:#666; font-style:italic;">펫 과거 로그 역스캔 중...</span>`;
-
     try {
       const res = findPetPastSeed(state, { rarity, type, stat1Name, stat1Val, stat2Name, stat2Val }, petData);
       if (!res) {
-        outEl.innerHTML = `<span style="color:red; font-weight:bold;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 150소환)</span>`;
+        outEl.insertAdjacentHTML('afterbegin', `<span style="color:red; font-weight:bold; display:block; margin-bottom:10px;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 150소환)</span>`);
         return;
       }
 
       const subDesc = res.detailed.map(s => `${SUBSTATS_KOR[s.name] || s.name} ${s.value.toFixed(1)}%`).join(', ');
-      outEl.innerHTML = `
-        <div style="background:rgba(46, 204, 113, 0.15); border:1px solid #2ecc71; border-radius:6px; padding:10px; margin-top:10px; color:#2c3e50;">
+      const scoutHtml = `
+        <div style="background:rgba(46, 204, 113, 0.15); border:1px solid #2ecc71; border-radius:6px; padding:10px; margin-top:10px; margin-bottom:10px; color:#2c3e50;">
           <span style="color:#27ae60; font-weight:bold;">🔍 일치하는 과거 시드 발견!</span><br>
           • 현재로부터 약 <span style="font-weight:bold; color:#e67e22;">${res.diff}번 전</span> 소환된 개체입니다.<br>
           • 매치된 펫: [${res.petName}] (${subDesc})<br>
           • 과거 소환 시점 상태: Seed 0x${res.seed} | Level ${res.level+1} (${res.count}) | ${res.isBonus ? '보너스 소환' : '일반 소환'}<br>
-          <button id="pet-scout-apply" style="margin-top:8px; background:#2ecc71; color:white; border:none; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">
+          <button class="scout-apply-btn" data-mode="Pet" data-next-seed="${res.nextState.seed}" data-next-level="${res.nextState.level}" data-next-count="${res.nextState.count}" style="margin-top:8px; background:#2ecc71; color:white; border:none; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">
             이 펫을 뽑은 직후 상태로 롤백 적용하기
           </button>
         </div>
       `;
-
-      const applyBtn = $('#pet-scout-apply');
-      if (applyBtn) {
-        applyBtn.addEventListener('click', async () => {
-          if (confirm('시뮬레이터를 이 펫을 뽑은 직후 상태로 롤백하시겠습니까?')) {
-            state.Pet.seed = BigInt('0x' + res.nextState.seed);
-            state.Pet.level = res.nextState.level;
-            state.Pet.count = res.nextState.count;
-            state.Pet.history = [];
-            persist();
-            await refreshAllStatus();
-            outEl.innerHTML = '';
-            if ($('#pet-output')) $('#pet-output').innerHTML = '';
-            alert('성공적으로 롤백 완료 및 브라우저 세이브 저장되었습니다.');
-          }
-        });
-      }
+      outEl.insertAdjacentHTML('afterbegin', scoutHtml);
     } catch (e) {
-      outEl.innerHTML = `<span style="color:red;">오류 발생: ${e.message}</span>`;
+      outEl.insertAdjacentHTML('afterbegin', `<span style="color:red; display:block; margin-bottom:10px;">오류 발생: ${e.message}</span>`);
     }
   });
 }
@@ -19791,49 +19818,96 @@ if (mountScoutGo) {
     const stat2Name = $('#mount-scout-s2name').value;
     const stat2Val = parseFloat($('#mount-scout-s2val').value);
 
-    outEl.innerHTML = `<span style="color:#666; font-style:italic;">탈것 과거 로그 역스캔 중...</span>`;
-
     try {
       const res = findMountPastSeed(state, { rarity, stat1Name, stat1Val, stat2Name, stat2Val }, mountData);
       if (!res) {
-        outEl.innerHTML = `<span style="color:red; font-weight:bold;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 150소환)</span>`;
+        outEl.insertAdjacentHTML('afterbegin', `<span style="color:red; font-weight:bold; display:block; margin-bottom:10px;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 150소환)</span>`);
         return;
       }
 
       const subDesc = res.detailed.map(s => `${SUBSTATS_KOR[s.name] || s.name} ${s.value.toFixed(1)}%`).join(', ');
-      outEl.innerHTML = `
-        <div style="background:rgba(46, 204, 113, 0.15); border:1px solid #2ecc71; border-radius:6px; padding:10px; margin-top:10px; color:#2c3e50;">
+      const scoutHtml = `
+        <div style="background:rgba(46, 204, 113, 0.15); border:1px solid #2ecc71; border-radius:6px; padding:10px; margin-top:10px; margin-bottom:10px; color:#2c3e50;">
           <span style="color:#27ae60; font-weight:bold;">🔍 일치하는 과거 시드 발견!</span><br>
           • 현재로부터 약 <span style="font-weight:bold; color:#e67e22;">${res.diff}번 전</span> 소환된 개체입니다.<br>
           • 매치된 옵션: (${subDesc})<br>
           • 과거 소환 시점 상태: Seed 0x${res.seed} | Level ${res.level+1} (${res.count}) | ${res.isBonus ? '보너스 소환' : '일반 소환'}<br>
-          <button id="mount-scout-apply" style="margin-top:8px; background:#2ecc71; color:white; border:none; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">
+          <button class="scout-apply-btn" data-mode="Mount" data-next-seed="${res.nextState.seed}" data-next-level="${res.nextState.level}" data-next-count="${res.nextState.count}" style="margin-top:8px; background:#2ecc71; color:white; border:none; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">
             이 탈것을 뽑은 직후 상태로 롤백 적용하기
           </button>
         </div>
       `;
-
-      const applyBtn = $('#mount-scout-apply');
-      if (applyBtn) {
-        applyBtn.addEventListener('click', async () => {
-          if (confirm('시뮬레이터를 이 탈것을 뽑은 직후 상태로 롤백하시겠습니까?')) {
-            state.Mount.seed = BigInt('0x' + res.nextState.seed);
-            state.Mount.level = res.nextState.level;
-            state.Mount.count = res.nextState.count;
-            state.Mount.history = [];
-            persist();
-            await refreshAllStatus();
-            outEl.innerHTML = '';
-            if ($('#mount-output')) $('#mount-output').innerHTML = '';
-            alert('성공적으로 롤백 완료 및 브라우저 세이브 저장되었습니다.');
-          }
-        });
-      }
+      outEl.insertAdjacentHTML('afterbegin', scoutHtml);
     } catch (e) {
-      outEl.innerHTML = `<span style="color:red;">오류 발생: ${e.message}</span>`;
+      outEl.insertAdjacentHTML('afterbegin', `<span style="color:red; display:block; margin-bottom:10px;">오류 발생: ${e.message}</span>`);
     }
   });
 }
+
+// === 🖱️ scout-apply-btn 위임 리스너 ===
+document.body.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.scout-apply-btn');
+  if (!btn) return;
+  
+  const mode = btn.dataset.mode;
+  const seedStr = btn.dataset.nextSeed;
+  const levelStr = btn.dataset.nextLevel;
+  const countStr = btn.dataset.nextCount;
+
+  if (confirm(`시뮬레이터를 이 개체를 뽑은 직후 상태로 롤백하시겠습니까?`)) {
+    try {
+      state[mode].seed = BigInt('0x' + seedStr);
+      state[mode].level = parseInt(levelStr, 10);
+      state[mode].count = parseInt(countStr, 10);
+      state[mode].history = [];
+      persist();
+      await refreshAllStatus();
+      
+      const outBox = $(`#${mode.toLowerCase()}-scout-output`);
+      if (outBox) outBox.innerHTML = '';
+      const mainOut = $(`#${mode.toLowerCase()}-output`);
+      if (mainOut) mainOut.innerHTML = '';
+      
+      // 누적 변수 초기화
+      accumulatedResponse[mode] = [];
+      
+      alert('성공적으로 롤백 완료 및 브라우저 세이브 저장되었습니다.');
+    } catch (err) {
+      alert('롤백 적용 중 오류 발생: ' + err.message);
+    }
+  }
+});
+
+// === 🖱️ 결과창 비우기 버튼 매핑 바인딩 ===
+const clearMapping = {
+  'forge-clear': '#forge-output',
+  'forge-retro-clear': '#forge-retro-output',
+  'skill-clear': '#skill-output',
+  'skill-opt-clear': '#skill-opt-output',
+  'skill-retro-clear': '#skill-retro-output',
+  'pet-clear': '#pet-output',
+  'pet-opt-clear': '#pet-opt-output',
+  'pet-retro-clear': '#pet-retro-output',
+  'pet-scout-clear': '#pet-scout-output',
+  'mount-clear': '#mount-output',
+  'mount-opt-clear': '#mount-opt-output',
+  'mount-retro-clear': '#mount-retro-output',
+  'mount-scout-clear': '#mount-scout-output',
+};
+
+Object.entries(clearMapping).forEach(([btnId, targetId]) => {
+  const btn = $('#' + btnId);
+  if (btn) {
+    btn.addEventListener('click', () => {
+      const target = $(targetId);
+      if (target) target.innerHTML = '';
+      // 소환 미래시 결과의 경우, 누적 데이터 배열도 초기화한다
+      if (btnId === 'forge-clear') accumulatedResponse.Forge = [];
+      if (btnId === 'pet-clear') accumulatedResponse.Pet = [];
+      if (btnId === 'mount-clear') accumulatedResponse.Mount = [];
+    });
+  }
+});
 
 initFilters();
 showInitOrTabs();
