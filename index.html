@@ -47,6 +47,7 @@
 <!-- MIRAESEE_ERROR_TRACKER_END -->
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -608,6 +609,14 @@ table td.center { text-align: center; }
   }
 }
 
+.clickable-row {
+  transition: background-color 0.15s ease;
+}
+.clickable-row:hover {
+  background-color: rgba(52, 152, 219, 0.15) !important;
+  cursor: pointer;
+}
+
 /* === MIRAESEE INJECTED CSS END === */
 </style>
 </head>
@@ -780,6 +789,43 @@ table td.center { text-align: center; }
                 <button id="skill-go" style="background:#9b59b6; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">파이썬 시뮬레이션 가동</button>
                 <button id="skill-reset-run" style="background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer;">초기화</button>
             </div>
+
+            <!-- 스킬 소환 최단 루트 최적화 (DP) 카드 추가 -->
+            <div class="card" style="margin: 12px 0;">
+                <h3 style="margin-top:0; color: #9b59b6;">🎯 최단 루트 소환 최적화 (DP 스나이퍼)</h3>
+                <p style="font-size: 12px; color: var(--muted); margin: -5px 0 12px 0;">
+                    75회, 150회, 300회 소환의 시드 변화를 DP로 계산하여 최소 소환으로 목표 등급이나 스킬을 달성하는 최적의 빌드를 계산합니다.
+                </p>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="font-size: 13px;">총 소환 예산:</label>
+                    <input type="number" id="skill-opt-budget" value="300" style="width:70px; padding:4px; text-align:center;">
+                    
+                    <label style="font-size: 13px;">목표 모드:</label>
+                    <select id="skill-opt-mode" style="padding:4px;">
+                        <option value="stat" selected>특정 등급 저격</option>
+                        <option value="skill">특정 스킬명 저격</option>
+                    </select>
+
+                    <span id="skill-opt-tier-wrapper" style="display:inline-flex; align-items: center; gap: 6px;">
+                        <label style="font-size: 13px;">저격 등급:</label>
+                        <select id="skill-opt-tier" style="padding:4px;">
+                            <option value="Mythic" selected>신화 이상</option>
+                            <option value="Ultimate">궁극 이상</option>
+                            <option value="Legendary">전설 이상</option>
+                            <option value="Epic">서사 이상</option>
+                        </select>
+                    </span>
+
+                    <span id="skill-opt-name-wrapper" style="display:none; align-items: center; gap: 6px;">
+                        <label style="font-size: 13px;">저격 스킬명:</label>
+                        <input type="text" id="skill-opt-name" value="" placeholder="스킬명 입력" style="width:120px; padding:4px;">
+                    </span>
+
+                    <button id="skill-opt-go" style="background:#9b59b6; color:white; padding:8px 15px; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">경로 계산</button>
+                </div>
+                <div id="skill-opt-output" style="margin-top: 15px;"></div>
+            </div>
+
             <details class="card" style="margin: 12px 0;">
                 <summary style="cursor: pointer; font-weight: bold; color: #9b59b6; user-select: none;">⏳ 과거 소환 기록 역산 복원 (Retroactive History)</summary>
                 <div style="margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
@@ -16660,6 +16706,7 @@ function doForge(state, { amount, times }, forgeData) {
       ageCounts[res.Age]++;
       if (res.IsFree) freeCount++;
       res.index = f.history.length + 1;
+      res.nextSeed = (curSeed + 1n).toString(16).toUpperCase();
       f.history.push(res);
       results.push(res);
     }
@@ -16806,6 +16853,10 @@ function doSkillSummon(state, params, skillData) {
         }
         
         current_seed = (current_seed + 1n) & 0xFFFFFFFFFFFFFFFFn;
+
+        res.nextSeed = current_seed.toString(16).toUpperCase();
+        res.nextLevel = current_level;
+        res.nextCount = current_count;
     }
 
     // 전역 세이브 갱신
@@ -16853,6 +16904,186 @@ function doSkillSearch(state, { rarity }) {
 
   out.sort((a, b) => b.count - a.count);
   return out;
+}
+
+function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', targetSkill = 'all' }, skillData, onProgress) {
+  const s_state = state.Skill;
+  const startSeed = BigInt(s_state.seed);
+  const startLevel = s_state.level;
+  const startCount = s_state.count;
+  const targetScore = RARITY_SCORE[tier] || 0;
+
+  const levels_config = skillData.Levels || skillData;
+  let skills_by_rarity = { Common: [], Rare: [], Epic: [], Legendary: [], Ultimate: [], Mythic: [] };
+  for (let key of Object.keys(skillData.Library || skillData)) {
+    const item = (skillData.Library ? skillData.Library[key] : skillData[key]);
+    const r_type = item.Rarity;
+    if (skills_by_rarity[r_type]) skills_by_rarity[r_type].push(key);
+  }
+
+  const cache = new Map();
+  function evalSeed(seedOffset, lvlData) {
+    const key = `${seedOffset}_${lvlData.LevelIndex || 0}`;
+    if (cache.has(key)) return cache.get(key);
+
+    const pcg = new MetaplayPCG((startSeed + BigInt(seedOffset)) & 0xFFFFFFFFFFFFFFFFn);
+    pcg._next_pcg32();
+    const rarity_roll_raw = pcg._next_pcg32();
+    
+    let accumulated_raw = 0;
+    let rolled_rarity = "Common";
+    const rarities = ["Common", "Rare", "Epic", "Legendary", "Ultimate", "Mythic"];
+    for (let rarity of rarities) {
+      let rate = lvlData[rarity] || 0.0;
+      accumulated_raw += Number(BigInt(Math.round(rate * 4294967296)));
+      if (rarity_roll_raw < accumulated_raw) {
+        rolled_rarity = rarity;
+        break;
+      }
+    }
+    const chosen_skill = pcg.choice(skills_by_rarity[rolled_rarity]);
+    const result = {
+      score: RARITY_SCORE[rolled_rarity],
+      rarity_name: rolled_rarity,
+      skill_name: chosen_skill
+    };
+    cache.set(key, result);
+    return result;
+  }
+
+  const dp = new Array(amount + 1);
+  for (let i = 0; i <= amount; i++) dp[i] = new Map();
+  dp[amount].set(0, { score: 0, path: [], level: startLevel, count: startCount });
+
+  for (let rem = amount; rem > 0; rem--) {
+    if (dp[rem].size === 0) continue;
+    let entries = [...dp[rem].entries()];
+    if (entries.length > 500) {
+      entries.sort((a, b) => b[1].score - a[1].score);
+      entries = entries.slice(0, 500);
+    }
+    if (onProgress) onProgress((amount - rem) / amount);
+
+    for (const [idx, st] of entries) {
+      for (const cost of [75, 150, 300]) {
+        if (cost > rem) continue;
+        const nxtRem = rem - cost;
+        let cIdx = idx, stepScore = 0;
+        let curLevel = st.level;
+        let curCount = st.count;
+
+        for (let i = 0; i < cost; i++) {
+          const lvlData = levels_config[Math.min(curLevel, levels_config.length - 1)];
+          const item = evalSeed(cIdx, lvlData);
+          
+          let isTarget = false;
+          if (mode === 'stat') {
+            isTarget = item.score >= targetScore;
+          } else if (mode === 'skill') {
+            isTarget = (targetSkill === 'all' || item.skill_name === targetSkill);
+          }
+
+          if (isTarget) {
+            stepScore += 1000000 + (item.score * 1000);
+          }
+
+          curCount += 1;
+          const req = lvlData.SummonsRequired || 9999;
+          if (curCount >= req) {
+            curCount -= req;
+            curLevel += 1;
+          }
+          cIdx++;
+        }
+
+        const nxtIdx = cIdx;
+        const nxtScore = st.score + stepScore;
+        const cur = dp[nxtRem].get(nxtIdx);
+        if (!cur || nxtScore > cur.score || (nxtScore === cur.score && nxtIdx < cur.idx_total_cost)) {
+          dp[nxtRem].set(nxtIdx, {
+            score: nxtScore,
+            path: [...st.path, cost],
+            level: curLevel,
+            count: curCount
+          });
+        }
+      }
+    }
+  }
+
+  let best = null;
+  for (const [, val] of dp[0]) {
+    if (!best || val.score > best.score || (val.score === best.score && val.path.reduce((a,b)=>a+b, 0) < best.path.reduce((a,b)=>a+b, 0))) {
+      best = val;
+    }
+  }
+  if (!best) return null;
+
+  const compressed = [];
+  if (best.path.length) {
+    let curB = best.path[0], cnt = 1;
+    for (const b of best.path.slice(1)) {
+      if (b === curB) cnt++;
+      else { compressed.push(`${curB}소환(${cnt}번)`); curB = b; cnt = 1; }
+    }
+    compressed.push(`${curB}소환(${cnt}번)`);
+  }
+
+  let targetResults = [];
+  let cS = startSeed, cLv = startLevel, cCt = startCount;
+  let simIdx = s_state.history.length + 1;
+  for (const cost of best.path) {
+    for (let i = 0; i < cost; i++) {
+      const lvlData = levels_config[Math.min(cLv, levels_config.length - 1)];
+      const item = evalSeed(Number(cS - startSeed), lvlData);
+      
+      let isTarget = false;
+      if (mode === 'stat') {
+        isTarget = item.score >= targetScore;
+      } else if (mode === 'skill') {
+        isTarget = (targetSkill === 'all' || item.skill_name === targetSkill);
+      }
+
+      const itemRes = {
+        index: simIdx,
+        rarity_name: item.rarity_name,
+        skill_name: item.skill_name,
+        nextSeed: ((cS + 1n) & 0xFFFFFFFFFFFFFFFFn).toString(16).toUpperCase(),
+        nextLevel: cCt + 1 >= (lvlData.SummonsRequired || 9999) ? cLv + 1 : cLv,
+        nextCount: cCt + 1 >= (lvlData.SummonsRequired || 9999) ? cCt + 1 - (lvlData.SummonsRequired || 9999) : cCt + 1
+      };
+
+      if (isTarget) {
+        targetResults.push(itemRes);
+      }
+
+      cCt += 1;
+      const req = lvlData.SummonsRequired || 9999;
+      if (cCt >= req) {
+        cCt -= req;
+        cLv += 1;
+      }
+      cS = (cS + 1n) & 0xFFFFFFFFFFFFFFFFn;
+      simIdx++;
+    }
+  }
+
+  return {
+    amount,
+    mode,
+    tier,
+    targetSkill,
+    estimatedAcquired: amount,
+    bonusCount: 0,
+    statScore: best.score,
+    route: compressed.join(' ➔ '),
+    targetResults,
+    finalState: {
+      seed: cS.toString(16).toUpperCase(),
+      level: cLv,
+      count: cCt
+    }
+  };
 }
 
 /* === FILE: pet.js === */
@@ -16943,6 +17174,12 @@ function doPetSummon(state, { amount, times }, petData) {
       const req = lvlData.SummonsRequired ?? 9999;
       if (curCount >= req) { curCount -= req; curLevel += 1; }
       curSeed += 1n;
+      
+      const historyItem = p.history[p.history.length - 1];
+      historyItem.nextSeed = curSeed.toString(16).toUpperCase();
+      historyItem.nextLevel = curLevel;
+      historyItem.nextCount = curCount;
+
       pullIdx++;
     }
     totalAcquired += totalTarget;
@@ -17284,6 +17521,12 @@ function doMountSummon(state, { amount, times }, mountData) {
       const req = lvlData.SummonsRequired ?? 9999;
       if (curCount >= req) { curCount -= req; curLevel += 1; }
       curSeed += 1n;
+
+      const historyItem = m.history[m.history.length - 1];
+      historyItem.nextSeed = curSeed.toString(16).toUpperCase();
+      historyItem.nextLevel = curLevel;
+      historyItem.nextCount = curCount;
+
       pullIdx++;
     }
     totalAcquired += totalTarget;
@@ -17678,7 +17921,7 @@ function renderForgeResults(target, title, results, meta = '') {
     return;
   }
   const rows = results.map(r => `
-    <tr>
+    <tr class="clickable-row" data-mode="Forge" data-seed="${r.nextSeed || ''}">
       <td class="num">${r.index}</td>
       <td>${ageChip(r.Age)}</td>
       <td>${TYPE_KOR[r.Type] || r.Type}</td>
@@ -17716,7 +17959,7 @@ function renderPetResults(target, title, results, meta = '') {
     return;
   }
   const rows = results.map(r => `
-    <tr>
+    <tr class="clickable-row" data-mode="Pet" data-seed="${r.nextSeed || ''}" data-level="${r.nextLevel ?? ''}" data-count="${r.nextCount ?? ''}">
       <td class="num">${r.index}</td>
       <td>${rarityChip(r.rarity_name)}</td>
       <td>${petTypeChip(r.pet_type)}</td>
@@ -17749,7 +17992,7 @@ function renderMountResults(target, title, results, meta = '') {
     return;
   }
   const rows = results.map(r => `
-    <tr>
+    <tr class="clickable-row" data-mode="Mount" data-seed="${r.nextSeed || ''}" data-level="${r.nextLevel ?? ''}" data-count="${r.nextCount ?? ''}">
       <td class="num">${r.index}</td>
       <td>${rarityChip(r.rarity_name)}</td>
       ${statCell(r.detailed_stats[0])}
@@ -17781,7 +18024,7 @@ function renderSkillResults(target, title, results, meta = '') {
     return;
   }
   const rows = results.map(r => `
-    <tr>
+    <tr class="clickable-row" data-mode="Skill" data-seed="${r.nextSeed || ''}" data-level="${r.nextLevel ?? ''}" data-count="${r.nextCount ?? ''}">
       <td class="num">${r.index}</td>
       <td>${rarityChip(r.rarity_name)}</td>
       <td>${r.skill_name}</td>
@@ -17836,44 +18079,53 @@ function renderOptimize(target, result, kind) {
   let modeLabel = '보너스 극대화';
   if (result.mode === 'stat') modeLabel = '스탯 스나이핑';
   else if (result.mode === 'filter') modeLabel = '내가 설정한 필터 저격';
+  else if (result.mode === 'skill') modeLabel = '특정 스킬 저격';
 
-  const tierLabel = result.mode === 'stat' ? ` (${RARITY_KOR[result.tier]} 이상)` : '';
+  const tierLabel = result.mode === 'stat' ? ` (${RARITY_KOR[result.tier] || result.tier} 이상)` : '';
+  const skillLabel = result.mode === 'skill' ? ` (${result.targetSkill})` : '';
 
   let targetTable = '';
   if (result.targetResults && result.targetResults.length) {
     const rows = result.targetResults.map(r => {
-      const cells = (kind === 'pet')
-        ? `<td>${rarityChip(r.rarity_name)}</td><td>${petTypeChip(r.pet_type)}</td>`
-        : `<td>${rarityChip(r.rarity_name)}</td>`;
-      return `<tr>
+      let cells = '';
+      if (kind === 'pet') {
+        cells = `<td>${rarityChip(r.rarity_name)}</td><td>${petTypeChip(r.pet_type)}</td>${statCell(r.detailed_stats[0])}${statCell(r.detailed_stats[1])}${perfCell(r.perfection)}<td class="center">${r.is_bonus ? '🍀' : ''}</td>`;
+      } else if (kind === 'skill') {
+        cells = `<td>${rarityChip(r.rarity_name)}</td><td>${r.skill_name}</td>`;
+      } else {
+        cells = `<td>${rarityChip(r.rarity_name)}</td>${statCell(r.detailed_stats[0])}${statCell(r.detailed_stats[1])}${perfCell(r.perfection)}<td class="center">${r.is_bonus ? '🍀' : ''}</td>`;
+      }
+      
+      const rowMode = (kind === 'pet') ? 'Pet' : (kind === 'mount') ? 'Mount' : 'Skill';
+      return `<tr class="clickable-row" data-mode="${rowMode}" data-seed="${r.nextSeed || ''}" data-level="${r.nextLevel ?? ''}" data-count="${r.nextCount ?? ''}">
         <td class="num">${r.index}</td>
         ${cells}
-        ${statCell(r.detailed_stats[0])}
-        ${statCell(r.detailed_stats[1])}
-        ${perfCell(r.perfection)}
-        <td class="center">${r.is_bonus ? '🍀' : ''}</td>
       </tr>`;
     }).join('');
+
     const head = (kind === 'pet')
       ? '<th>#</th><th>티어</th><th>타입</th><th>스탯1</th><th>스탯2</th><th>완성도</th><th>보너스</th>'
-      : '<th>#</th><th>티어</th><th>스탯1</th><th>스탯2</th><th>완성도</th><th>보너스</th>';
+      : (kind === 'skill')
+        ? '<th>#</th><th>티어</th><th>스킬</th>'
+        : '<th>#</th><th>티어</th><th>스탯1</th><th>스탯2</th><th>완성도</th><th>보너스</th>';
+
     targetTable = `
       <h4 style="margin-top:14px">획득 예상 타겟 아이템 (${result.targetResults.length})</h4>
       <div class="miraesee-subtable-wrap">
         <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
       </div>
     `;
-  } else if (result.mode === 'stat' || result.mode === 'filter') {
+  } else if (result.mode === 'stat' || result.mode === 'filter' || result.mode === 'skill') {
     targetTable = `<p class="hint" style="margin-top:10px">해당 예산 내에서는 조건에 만족하는 아이템을 획득할 수 없습니다.</p>`;
   }
 
-  const showScore = result.mode === 'stat' || result.mode === 'filter';
+  const showScore = result.mode === 'stat' || result.mode === 'filter' || result.mode === 'skill';
 
   target.innerHTML = `
     <div class="output-section">
       <h4>최적화 결과</h4>
-      <div class="meta">조건: ${result.amount}뽑 / ${modeLabel}${tierLabel}</div>
-      <p>예상 획득: <b>${result.estimatedAcquired}</b>마리 (보너스 ${result.bonusCount}회)</p>
+      <div class="meta">조건: ${result.amount}뽑 / ${modeLabel}${tierLabel}${skillLabel}</div>
+      <p>예상 획득: <b>${result.estimatedAcquired}</b>회 소환</p>
       ${showScore ? `<p>만족도 평가 점수: ${result.statScore.toLocaleString(undefined,{maximumFractionDigits:0})}점</p>` : ''}
       <p>추천 순서: <code>${result.route}</code></p>
       <div style="margin: 12px 0;">
@@ -19047,6 +19299,146 @@ if (mountRetroGo) {
     }
   });
 }
+
+// === 🎯 스킬 소환 최적화 (DP) 연동부 ===
+const skillOptMode = $('#skill-opt-mode');
+if (skillOptMode) {
+  skillOptMode.addEventListener('change', (e) => {
+    const tWrapper = $('#skill-opt-tier-wrapper');
+    const nWrapper = $('#skill-opt-name-wrapper');
+    if (tWrapper && nWrapper) {
+      tWrapper.style.display = e.target.value === 'stat' ? 'inline-flex' : 'none';
+      nWrapper.style.display = e.target.value === 'skill' ? 'inline-flex' : 'none';
+    }
+  });
+}
+
+const skillOptGo = $('#skill-opt-go');
+if (skillOptGo) {
+  skillOptGo.addEventListener('click', async () => {
+    const outEl = $('#skill-opt-output');
+    if (!outEl) return;
+    if (!skillData) {
+      outEl.innerHTML = `<span style="color:red;">데이터 로딩 중입니다. 잠시만 기다려주세요.</span>`;
+      return;
+    }
+
+    const budget = parseInt($('#skill-opt-budget').value, 10);
+    if (isNaN(budget) || budget <= 0) {
+      alert("올바른 예산 수량을 입력하세요.");
+      return;
+    }
+    if (budget > 5000) {
+      if (!confirm("예산이 5000을 초과하면 계산이 오래 걸려 브라우저가 잠시 멈출 수 있습니다. 진행할까요?")) {
+        return;
+      }
+    }
+
+    const mode = $('#skill-opt-mode').value;
+    const tier = $('#skill-opt-tier').value;
+    const targetSkill = $('#skill-opt-name').value.trim() || 'all';
+
+    try {
+      showBusy("스킬 최적화 경로 계산 중...");
+
+      setTimeout(() => {
+        try {
+          const result = doSkillOptimize(state, { amount: budget, mode, tier, targetSkill }, skillData, (p) => {
+            setBusyProgress(p);
+          });
+          renderOptimize(outEl, result, 'skill');
+
+          const applyBtn = $('#skill-opt-apply');
+          if (applyBtn && result && result.finalState) {
+            applyBtn.addEventListener('click', async () => {
+              if (confirm('이 추천 경로의 최종 상태를 현재 상태에 반영하시겠습니까?\n(반영 시 소환 Seed와 레벨, 카운트가 업데이트됩니다)')) {
+                try {
+                  state.Skill.seed = BigInt('0x' + result.finalState.seed);
+                  state.Skill.level = result.finalState.level;
+                  state.Skill.count = result.finalState.count;
+                  state.Skill.history = [];
+                  persist();
+                  await refreshAllStatus();
+                  alert('성공적으로 적용되었습니다.');
+                } catch (err) {
+                  alert('적용 중 오류 발생: ' + err.message);
+                }
+              }
+            });
+          }
+        } catch (err) {
+          console.error(err);
+          outEl.innerHTML = `<span style="color:red;">계산 중 오류 발생: ${err.message}</span>`;
+        } finally {
+          hideBusy();
+        }
+      }, 50);
+
+    } catch (e) {
+      hideBusy();
+      outEl.innerHTML = `<span style="color:red;">오류 발생: ${e.message}</span>`;
+    }
+  });
+}
+
+// === 🖱️ 결과 행 클릭-투-점프 (Click-to-Jump) 위임 리스너 ===
+document.body.addEventListener('click', async (e) => {
+  const row = e.target.closest('.clickable-row');
+  if (!row) return;
+
+  const mode = row.dataset.mode;
+  const seedStr = row.dataset.seed;
+  const levelStr = row.dataset.level;
+  const countStr = row.dataset.count;
+
+  if (!seedStr) return;
+
+  const msg = `선택하신 시점으로 시뮬레이터 상태를 변경하시겠습니까?\n변경 시 현재 시드와 레벨, 카운트가 이 아이템 획득 직후의 상태로 동기화됩니다.\n\n[선택한 시드]: 0x${seedStr}`;
+  if (!confirm(msg)) return;
+
+  try {
+    if (mode === 'Forge') {
+      state.Forge.seed = BigInt('0x' + seedStr);
+      state.Forge.history = [];
+    } else if (mode === 'Skill') {
+      state.Skill.seed = BigInt('0x' + seedStr);
+      if (levelStr) state.Skill.level = parseInt(levelStr, 10);
+      if (countStr) state.Skill.count = parseInt(countStr, 10);
+      state.Skill.history = [];
+    } else if (mode === 'Pet') {
+      state.Pet.seed = BigInt('0x' + seedStr);
+      if (levelStr) state.Pet.level = parseInt(levelStr, 10);
+      if (countStr) state.Pet.count = parseInt(countStr, 10);
+      state.Pet.history = [];
+    } else if (mode === 'Mount') {
+      state.Mount.seed = BigInt('0x' + seedStr);
+      if (levelStr) state.Mount.level = parseInt(levelStr, 10);
+      if (countStr) state.Mount.count = parseInt(countStr, 10);
+      state.Mount.history = [];
+    }
+
+    persist();
+    await refreshAllStatus();
+
+    // 결과 출력창들 초기화
+    const outMap = {
+      Forge: ['#forge-output', '#forge-retro-output'],
+      Skill: ['#skill-output', '#skill-retro-output', '#skill-opt-output'],
+      Pet: ['#pet-output', '#pet-retro-output', '#pet-opt-output'],
+      Mount: ['#mount-output', '#mount-retro-output', '#mount-opt-output']
+    };
+    if (outMap[mode]) {
+      outMap[mode].forEach(sel => {
+        const el = $(sel);
+        if (el) el.innerHTML = '';
+      });
+    }
+
+    alert('성공적으로 변경 및 저장되었습니다!');
+  } catch (err) {
+    alert('상태 업데이트 중 오류 발생: ' + err.message);
+  }
+});
 
 initFilters();
 showInitOrTabs();
