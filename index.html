@@ -48,6 +48,9 @@
 
 
 
+
+
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -931,6 +934,55 @@ table td.center { text-align: center; }
                     <button id="pet-retro-go" style="background:#e67e22; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 소환 복원</button>
                 </div>
                 <div id="pet-retro-output" class="output-container" style="margin-top: 12px;"></div>
+
+                <hr style="border:0; border-top:1px dashed var(--border); margin:12px 0;">
+                <div style="font-size:12px; font-weight:bold; color:#e67e22; margin-bottom:8px;">🔍 과거 특정 개체 조건으로 시드 역추적 (스카우터)</div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px;">
+                    <label>등급:</label>
+                    <select id="pet-scout-rarity" style="padding:2px 4px;">
+                        <option value="Mythic" selected>신화</option>
+                        <option value="Ultimate">궁극</option>
+                        <option value="Legendary">전설</option>
+                        <option value="Epic">서사</option>
+                    </select>
+                    <label>타입:</label>
+                    <select id="pet-scout-type" style="padding:2px 4px;">
+                        <option value="all">전체</option>
+                        <option value="Health">체력형</option>
+                        <option value="Damage">공격형</option>
+                        <option value="Balanced">균형형</option>
+                    </select>
+                    <label>스탯1:</label>
+                    <select id="pet-scout-s1name" style="padding:2px 4px;">
+                        <option value="">없음</option>
+                        <option value="Melee Damage">근거리 피해</option>
+                        <option value="Ranged Damage">원거리 피해</option>
+                        <option value="Damage">공격력</option>
+                        <option value="Skill Damage">스킬 피해</option>
+                        <option value="Critical Chance">치명타 확률</option>
+                        <option value="Critical Damage">치명타 피해</option>
+                        <option value="Life Steal">생명력 흡수</option>
+                        <option value="Double Chance">더블 확률</option>
+                        <option value="Attack Speed">공격 속도</option>
+                    </select>
+                    <input type="number" id="pet-scout-s1val" placeholder="수치 %" step="0.1" style="width:60px; padding:2px;">
+                    <label>스탯2:</label>
+                    <select id="pet-scout-s2name" style="padding:2px 4px;">
+                        <option value="">없음</option>
+                        <option value="Melee Damage">근거리 피해</option>
+                        <option value="Ranged Damage">원거리 피해</option>
+                        <option value="Damage">공격력</option>
+                        <option value="Skill Damage">스킬 피해</option>
+                        <option value="Critical Chance">치명타 확률</option>
+                        <option value="Critical Damage">치명타 피해</option>
+                        <option value="Life Steal">생명력 흡수</option>
+                        <option value="Double Chance">더블 확률</option>
+                        <option value="Attack Speed">공격 속도</option>
+                    </select>
+                    <input type="number" id="pet-scout-s2val" placeholder="수치 %" step="0.1" style="width:60px; padding:2px;">
+                    <button id="pet-scout-go" style="background:#8e44ad; color:white; border:none; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">시드 스캔</button>
+                </div>
+                <div id="pet-scout-output" style="margin-top:10px; font-size:12px;"></div>
             </details>
 
             <div id="pet-output" class="output-container"></div>
@@ -1017,6 +1069,48 @@ table td.center { text-align: center; }
                     <button id="mount-retro-go" style="background:#1abc9c; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 소환 복원</button>
                 </div>
                 <div id="mount-retro-output" class="output-container" style="margin-top: 12px;"></div>
+
+                <hr style="border:0; border-top:1px dashed var(--border); margin:12px 0;">
+                <div style="font-size:12px; font-weight:bold; color:#1abc9c; margin-bottom:8px;">🔍 과거 특정 개체 조건으로 시드 역추적 (스카우터)</div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px;">
+                    <label>등급:</label>
+                    <select id="mount-scout-rarity" style="padding:2px 4px;">
+                        <option value="Mythic" selected>신화</option>
+                        <option value="Ultimate">궁극</option>
+                        <option value="Legendary">전설</option>
+                        <option value="Epic">서사</option>
+                    </select>
+                    <label>스탯1:</label>
+                    <select id="mount-scout-s1name" style="padding:2px 4px;">
+                        <option value="">없음</option>
+                        <option value="Melee Damage">근거리 피해</option>
+                        <option value="Ranged Damage">원거리 피해</option>
+                        <option value="Damage">공격력</option>
+                        <option value="Skill Damage">스킬 피해</option>
+                        <option value="Critical Chance">치명타 확률</option>
+                        <option value="Critical Damage">치명타 피해</option>
+                        <option value="Life Steal">생명력 흡수</option>
+                        <option value="Double Chance">더블 확률</option>
+                        <option value="Attack Speed">공격 속도</option>
+                    </select>
+                    <input type="number" id="mount-scout-s1val" placeholder="수치 %" step="0.1" style="width:60px; padding:2px;">
+                    <label>스탯2:</label>
+                    <select id="mount-scout-s2name" style="padding:2px 4px;">
+                        <option value="">없음</option>
+                        <option value="Melee Damage">근거리 피해</option>
+                        <option value="Ranged Damage">원거리 피해</option>
+                        <option value="Damage">공격력</option>
+                        <option value="Skill Damage">스킬 피해</option>
+                        <option value="Critical Chance">치명타 확률</option>
+                        <option value="Critical Damage">치명타 피해</option>
+                        <option value="Life Steal">생명력 흡수</option>
+                        <option value="Double Chance">더블 확률</option>
+                        <option value="Attack Speed">공격 속도</option>
+                    </select>
+                    <input type="number" id="mount-scout-s2val" placeholder="수치 %" step="0.1" style="width:60px; padding:2px;">
+                    <button id="mount-scout-go" style="background:#16a085; color:white; border:none; padding:4px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">시드 스캔</button>
+                </div>
+                <div id="mount-scout-output" style="margin-top:10px; font-size:12px;"></div>
             </details>
 
             <div id="mount-output" class="output-container"></div>
@@ -17434,6 +17528,98 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
   };
 }
 
+function findPetPastSeed(state, config, petData) {
+  const { levels, petsByRarity, petLibrary } = petData;
+  const p = state.Pet;
+  const curSeed = p.seed;
+  const isAscended = p.isAscended;
+
+  function rollbackLvl(level, count, K) {
+    let lvl = level, cnt = count;
+    for (let i = 0; i < K; i++) {
+      if (cnt > 0) cnt--;
+      else {
+        if (lvl > 0) {
+          lvl--;
+          const lvlData = levels[Math.min(lvl, levels.length - 1)];
+          const req = lvlData ? (lvlData.SummonsRequired ?? 9999) : 9999;
+          cnt = req - 1;
+        } else {
+          cnt = 0; break;
+        }
+      }
+    }
+    return { level: lvl, count: cnt };
+  }
+
+  const reqRarity = config.rarity;
+  const reqType = config.type;
+  const reqStats = [];
+  if (config.stat1Name && !isNaN(parseFloat(config.stat1Val))) {
+    reqStats.push({ name: config.stat1Name, val: parseFloat(config.stat1Val) });
+  }
+  if (config.stat2Name && !isNaN(parseFloat(config.stat2Val))) {
+    reqStats.push({ name: config.stat2Name, val: parseFloat(config.stat2Val) });
+  }
+
+  for (let diff = 1; diff <= 150; diff++) {
+    const startSeed = curSeed - BigInt(diff);
+    const { level, count } = rollbackLvl(p.level, p.count, diff);
+    const lvlData = levels[Math.min(level, levels.length - 1)];
+
+    for (const isBonus of [false, true]) {
+      const pcg = new MetaplayPCG(startSeed);
+
+      if (!isBonus) {
+        pcg.nextPcg32();
+      }
+
+      const rolled = petRollRarity(pcg, lvlData);
+      if (rolled !== reqRarity) continue;
+
+      const pets = petsByRarity[rolled];
+      const chosenPet = pets[pcg.nextInt(pets.length)];
+      const petType = petLibrary[chosenPet].Type;
+      if (reqType !== 'all' && petType !== reqType) continue;
+
+      pcg.nextGuid();
+
+      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
+      const { detailed } = petRollSubstats(pcg, numSubs);
+
+      let matched = true;
+      for (const reqS of reqStats) {
+        const found = detailed.find(s => s.name === reqS.name && Math.abs(s.value - reqS.val) < 0.5);
+        if (!found) { matched = false; break; }
+      }
+
+      if (matched) {
+        let nextL = level;
+        let nextC = count + 1;
+        const req = lvlData.SummonsRequired ?? 9999;
+        if (nextC >= req) { nextC -= req; nextL += 1; }
+
+        return {
+          diff,
+          seed: startSeed.toString(16).toUpperCase(),
+          level,
+          count,
+          isBonus,
+          petName: petLibrary[chosenPet].PetId.Id.Name || chosenPet,
+          detailed,
+          nextState: {
+            seed: (startSeed + 1n).toString(16).toUpperCase(),
+            level: nextL,
+            count: nextC
+          }
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
 
 /* === FILE: mount.js === */
 
@@ -17777,6 +17963,93 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
       count: best.count
     }
   };
+}
+
+function findMountPastSeed(state, config, mountData) {
+  const { levels, mountsByRarity } = mountData;
+  const m = state.Mount;
+  const curSeed = m.seed;
+  const isAscended = m.isAscended;
+
+  function rollbackLvl(level, count, K) {
+    let lvl = level, cnt = count;
+    for (let i = 0; i < K; i++) {
+      if (cnt > 0) cnt--;
+      else {
+        if (lvl > 0) {
+          lvl--;
+          const lvlData = levels[Math.min(lvl, levels.length - 1)];
+          const req = lvlData ? (lvlData.SummonsRequired ?? 9999) : 9999;
+          cnt = req - 1;
+        } else {
+          cnt = 0; break;
+        }
+      }
+    }
+    return { level: lvl, count: cnt };
+  }
+
+  const reqRarity = config.rarity;
+  const reqStats = [];
+  if (config.stat1Name && !isNaN(parseFloat(config.stat1Val))) {
+    reqStats.push({ name: config.stat1Name, val: parseFloat(config.stat1Val) });
+  }
+  if (config.stat2Name && !isNaN(parseFloat(config.stat2Val))) {
+    reqStats.push({ name: config.stat2Name, val: parseFloat(config.stat2Val) });
+  }
+
+  for (let diff = 1; diff <= 150; diff++) {
+    const startSeed = curSeed - BigInt(diff);
+    const { level, count } = rollbackLvl(m.level, m.count, diff);
+    const lvlData = levels[Math.min(level, levels.length - 1)];
+
+    for (const isBonus of [false, true]) {
+      const pcg = new MetaplayPCG(startSeed);
+
+      if (!isBonus) {
+        pcg.nextPcg32();
+      }
+
+      const rolled = mountRollRarity(pcg, lvlData);
+      if (rolled !== reqRarity) continue;
+
+      const mounts = mountsByRarity[rolled];
+      pcg.nextInt(mounts.length);
+      pcg.nextGuid();
+
+      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
+      const { detailed } = mountRollSubstats(pcg, numSubs);
+
+      let matched = true;
+      for (const reqS of reqStats) {
+        const found = detailed.find(s => s.name === reqS.name && Math.abs(s.value - reqS.val) < 0.5);
+        if (!found) { matched = false; break; }
+      }
+
+      if (matched) {
+        let nextL = level;
+        let nextC = count + 1;
+        const req = lvlData.SummonsRequired ?? 9999;
+        if (nextC >= req) { nextC -= req; nextL += 1; }
+
+        return {
+          diff,
+          seed: startSeed.toString(16).toUpperCase(),
+          level,
+          count,
+          isBonus,
+          detailed,
+          nextState: {
+            seed: (startSeed + 1n).toString(16).toUpperCase(),
+            level: nextL,
+            count: nextC
+          }
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 
@@ -19439,6 +19712,128 @@ document.body.addEventListener('click', async (e) => {
     alert('상태 업데이트 중 오류 발생: ' + err.message);
   }
 });
+
+// === 🔎 과거 개체 조건 기반 시드 역추적 (스카우터) ===
+const petScoutGo = $('#pet-scout-go');
+if (petScoutGo) {
+  petScoutGo.addEventListener('click', async () => {
+    const outEl = $('#pet-scout-output');
+    if (!outEl) return;
+    if (!petData) {
+      outEl.innerHTML = `<span style="color:red;">데이터 로딩 중...</span>`;
+      return;
+    }
+
+    const rarity = $('#pet-scout-rarity').value;
+    const type = $('#pet-scout-type').value;
+    const stat1Name = $('#pet-scout-s1name').value;
+    const stat1Val = parseFloat($('#pet-scout-s1val').value);
+    const stat2Name = $('#pet-scout-s2name').value;
+    const stat2Val = parseFloat($('#pet-scout-s2val').value);
+
+    outEl.innerHTML = `<span style="color:#666; font-style:italic;">펫 과거 로그 역스캔 중...</span>`;
+
+    try {
+      const res = findPetPastSeed(state, { rarity, type, stat1Name, stat1Val, stat2Name, stat2Val }, petData);
+      if (!res) {
+        outEl.innerHTML = `<span style="color:red; font-weight:bold;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 150소환)</span>`;
+        return;
+      }
+
+      const subDesc = res.detailed.map(s => `${SUBSTATS_KOR[s.name] || s.name} ${s.value.toFixed(1)}%`).join(', ');
+      outEl.innerHTML = `
+        <div style="background:rgba(46, 204, 113, 0.15); border:1px solid #2ecc71; border-radius:6px; padding:10px; margin-top:10px; color:#2c3e50;">
+          <span style="color:#27ae60; font-weight:bold;">🔍 일치하는 과거 시드 발견!</span><br>
+          • 현재로부터 약 <span style="font-weight:bold; color:#e67e22;">${res.diff}번 전</span> 소환된 개체입니다.<br>
+          • 매치된 펫: [${res.petName}] (${subDesc})<br>
+          • 과거 소환 시점 상태: Seed 0x${res.seed} | Level ${res.level+1} (${res.count}) | ${res.isBonus ? '보너스 소환' : '일반 소환'}<br>
+          <button id="pet-scout-apply" style="margin-top:8px; background:#2ecc71; color:white; border:none; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">
+            이 펫을 뽑은 직후 상태로 롤백 적용하기
+          </button>
+        </div>
+      `;
+
+      const applyBtn = $('#pet-scout-apply');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', async () => {
+          if (confirm('시뮬레이터를 이 펫을 뽑은 직후 상태로 롤백하시겠습니까?')) {
+            state.Pet.seed = BigInt('0x' + res.nextState.seed);
+            state.Pet.level = res.nextState.level;
+            state.Pet.count = res.nextState.count;
+            state.Pet.history = [];
+            persist();
+            await refreshAllStatus();
+            outEl.innerHTML = '';
+            if ($('#pet-output')) $('#pet-output').innerHTML = '';
+            alert('성공적으로 롤백 완료 및 브라우저 세이브 저장되었습니다.');
+          }
+        });
+      }
+    } catch (e) {
+      outEl.innerHTML = `<span style="color:red;">오류 발생: ${e.message}</span>`;
+    }
+  });
+}
+
+const mountScoutGo = $('#mount-scout-go');
+if (mountScoutGo) {
+  mountScoutGo.addEventListener('click', async () => {
+    const outEl = $('#mount-scout-output');
+    if (!outEl) return;
+    if (!mountData) {
+      outEl.innerHTML = `<span style="color:red;">데이터 로딩 중...</span>`;
+      return;
+    }
+
+    const rarity = $('#mount-scout-rarity').value;
+    const stat1Name = $('#mount-scout-s1name').value;
+    const stat1Val = parseFloat($('#mount-scout-s1val').value);
+    const stat2Name = $('#mount-scout-s2name').value;
+    const stat2Val = parseFloat($('#mount-scout-s2val').value);
+
+    outEl.innerHTML = `<span style="color:#666; font-style:italic;">탈것 과거 로그 역스캔 중...</span>`;
+
+    try {
+      const res = findMountPastSeed(state, { rarity, stat1Name, stat1Val, stat2Name, stat2Val }, mountData);
+      if (!res) {
+        outEl.innerHTML = `<span style="color:red; font-weight:bold;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 150소환)</span>`;
+        return;
+      }
+
+      const subDesc = res.detailed.map(s => `${SUBSTATS_KOR[s.name] || s.name} ${s.value.toFixed(1)}%`).join(', ');
+      outEl.innerHTML = `
+        <div style="background:rgba(46, 204, 113, 0.15); border:1px solid #2ecc71; border-radius:6px; padding:10px; margin-top:10px; color:#2c3e50;">
+          <span style="color:#27ae60; font-weight:bold;">🔍 일치하는 과거 시드 발견!</span><br>
+          • 현재로부터 약 <span style="font-weight:bold; color:#e67e22;">${res.diff}번 전</span> 소환된 개체입니다.<br>
+          • 매치된 옵션: (${subDesc})<br>
+          • 과거 소환 시점 상태: Seed 0x${res.seed} | Level ${res.level+1} (${res.count}) | ${res.isBonus ? '보너스 소환' : '일반 소환'}<br>
+          <button id="mount-scout-apply" style="margin-top:8px; background:#2ecc71; color:white; border:none; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">
+            이 탈것을 뽑은 직후 상태로 롤백 적용하기
+          </button>
+        </div>
+      `;
+
+      const applyBtn = $('#mount-scout-apply');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', async () => {
+          if (confirm('시뮬레이터를 이 탈것을 뽑은 직후 상태로 롤백하시겠습니까?')) {
+            state.Mount.seed = BigInt('0x' + res.nextState.seed);
+            state.Mount.level = res.nextState.level;
+            state.Mount.count = res.nextState.count;
+            state.Mount.history = [];
+            persist();
+            await refreshAllStatus();
+            outEl.innerHTML = '';
+            if ($('#mount-output')) $('#mount-output').innerHTML = '';
+            alert('성공적으로 롤백 완료 및 브라우저 세이브 저장되었습니다.');
+          }
+        });
+      }
+    } catch (e) {
+      outEl.innerHTML = `<span style="color:red;">오류 발생: ${e.message}</span>`;
+    }
+  });
+}
 
 initFilters();
 showInitOrTabs();
