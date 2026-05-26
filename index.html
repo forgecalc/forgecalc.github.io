@@ -53,6 +53,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -19780,7 +19781,7 @@ if (petScoutGo) {
     try {
       const res = findPetPastSeed(state, { rarity, type, stat1Name, stat1Val, stat2Name, stat2Val }, petData);
       if (!res) {
-        outEl.insertAdjacentHTML('afterbegin', `<span style="color:red; font-weight:bold; display:block; margin-bottom:10px;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 150소환)</span>`);
+        outEl.insertAdjacentHTML('afterbegin', `<span style="color:red; font-weight:bold; display:block; margin-bottom:10px;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 500소환)</span>`);
         return;
       }
 
@@ -19822,7 +19823,7 @@ if (mountScoutGo) {
     try {
       const res = findMountPastSeed(state, { rarity, stat1Name, stat1Val, stat2Name, stat2Val }, mountData);
       if (!res) {
-        outEl.insertAdjacentHTML('afterbegin', `<span style="color:red; font-weight:bold; display:block; margin-bottom:10px;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 150소환)</span>`);
+        outEl.insertAdjacentHTML('afterbegin', `<span style="color:red; font-weight:bold; display:block; margin-bottom:10px;">❌ 일치하는 과거 소환 시점을 찾지 못했습니다. (탐색 범위: 최근 500소환)</span>`);
         return;
       }
 
