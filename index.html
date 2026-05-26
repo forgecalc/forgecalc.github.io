@@ -46,6 +46,7 @@
 </script>
 <!-- MIRAESEE_ERROR_TRACKER_END -->
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -756,6 +757,16 @@ table td.center { text-align: center; }
                 <div id="forge-filter-grid" class="stat-filter-grid"></div>
             </details>
 
+            <details class="card" style="margin: 12px 0;">
+                <summary style="cursor: pointer; font-weight: bold; color: #3498db; user-select: none;">⏳ 과거 제작 기록 역산 복원 (Retroactive History)</summary>
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="font-size: 13px;">복원할 과거 횟수:</label>
+                    <input type="number" id="forge-retro-amount" value="50" style="width:70px; padding:4px; text-align:center;">
+                    <button id="forge-retro-go" style="background:#3498db; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 제작 복원</button>
+                </div>
+                <div id="forge-retro-output" class="output-container" style="margin-top: 12px;"></div>
+            </details>
+
             <div id="forge-output" class="output-container"></div>
         </div>
 
@@ -769,6 +780,16 @@ table td.center { text-align: center; }
                 <button id="skill-go" style="background:#9b59b6; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">파이썬 시뮬레이션 가동</button>
                 <button id="skill-reset-run" style="background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer;">초기화</button>
             </div>
+            <details class="card" style="margin: 12px 0;">
+                <summary style="cursor: pointer; font-weight: bold; color: #9b59b6; user-select: none;">⏳ 과거 소환 기록 역산 복원 (Retroactive History)</summary>
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="font-size: 13px;">복원할 과거 횟수:</label>
+                    <input type="number" id="skill-retro-amount" value="50" style="width:70px; padding:4px; text-align:center;">
+                    <button id="skill-retro-go" style="background:#9b59b6; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 소환 복원</button>
+                </div>
+                <div id="skill-retro-output" class="output-container" style="margin-top: 12px;"></div>
+            </details>
+
             <div id="skill-output" class="output-container"></div>
         </div>
 
@@ -856,6 +877,16 @@ table td.center { text-align: center; }
                 <div id="pet-opt-output" style="margin-top: 15px;"></div>
             </div>
 
+            <details class="card" style="margin: 12px 0;">
+                <summary style="cursor: pointer; font-weight: bold; color: #e67e22; user-select: none;">⏳ 과거 소환 기록 역산 복원 (Retroactive History)</summary>
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="font-size: 13px;">복원할 과거 횟수:</label>
+                    <input type="number" id="pet-retro-amount" value="50" style="width:70px; padding:4px; text-align:center;">
+                    <button id="pet-retro-go" style="background:#e67e22; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 소환 복원</button>
+                </div>
+                <div id="pet-retro-output" class="output-container" style="margin-top: 12px;"></div>
+            </details>
+
             <div id="pet-output" class="output-container"></div>
         </div>
 
@@ -931,6 +962,16 @@ table td.center { text-align: center; }
                 </div>
                 <div id="mount-opt-output" style="margin-top: 15px;"></div>
             </div>
+
+            <details class="card" style="margin: 12px 0;">
+                <summary style="cursor: pointer; font-weight: bold; color: #1abc9c; user-select: none;">⏳ 과거 소환 기록 역산 복원 (Retroactive History)</summary>
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="font-size: 13px;">복원할 과거 횟수:</label>
+                    <input type="number" id="mount-retro-amount" value="50" style="width:70px; padding:4px; text-align:center;">
+                    <button id="mount-retro-go" style="background:#1abc9c; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 소환 복원</button>
+                </div>
+                <div id="mount-retro-output" class="output-container" style="margin-top: 12px;"></div>
+            </details>
 
             <div id="mount-output" class="output-container"></div>
         </div>
@@ -18692,8 +18733,324 @@ if (mountOptGo) {
   });
 }
 
+// === ⏳ 과거 소환/제작 기록 역산 복원 (Retroactive History) ===
+
+function rollbackLevelAndCount(mode, curLevel, curCount, K, data) {
+  let level = curLevel;
+  let count = curCount;
+  
+  let levels = [];
+  if (mode === "Skill") levels = data.Levels || [];
+  else if (mode === "Pet") levels = data.levels || [];
+  else if (mode === "Mount") levels = data.levels || [];
+  else if (mode === "Forge") {
+    return { level, count };
+  }
+
+  for (let i = 0; i < K; i++) {
+    if (count > 0) {
+      count--;
+    } else {
+      if (level > 0) {
+        level--;
+        const req = levels[level].SummonsRequired ?? 9999;
+        count = req - 1;
+      } else {
+        count = 0;
+        break;
+      }
+    }
+  }
+  return { level, count };
+}
+
+// 1. 대장간 역산
+const forgeRetroGo = $('#forge-retro-go');
+if (forgeRetroGo) {
+  forgeRetroGo.addEventListener('click', async () => {
+    const outputBox = $('#forge-retro-output');
+    try {
+      if (outputBox) outputBox.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 대장간 과거 시드를 역산하는 중...</div>";
+      
+      const amount = parseInt($('#forge-retro-amount').value, 10);
+      if (isNaN(amount) || amount <= 0) throw new Error("올바른 과거 복원 횟수를 입력하세요.");
+      if (!forgeData) throw new Error("대장간 기획서 데이터가 로드되지 않았습니다.");
+
+      const curSeed = state.Forge.seed;
+      const startSeed = curSeed - BigInt(amount);
+
+      const tempState = {
+        Forge: {
+          seed: startSeed,
+          level: state.Forge.level,
+          chance: state.Forge.chance,
+          isAscended: state.Forge.ascensionLevel > 0,
+          ascensionLevel: state.Forge.ascensionLevel,
+          history: []
+        }
+      };
+
+      const { results } = doForge(tempState, { amount, times: 1 }, forgeData);
+
+      const formatted = results.map((item, idx) => ({
+        ...item,
+        index: `-${results.length - idx}`
+      }));
+
+      const title = `✓ 과거 제작 기록 복원 완료 (시작 Seed: 0x${startSeed.toString(16).toUpperCase()})`;
+      renderForgeResults(outputBox, title, formatted);
+
+    } catch (e) {
+      if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 대장간 역산 오류: ${e.message}</span>`;
+    }
+  });
+}
+
+// 2. 스킬 역산
+const skillRetroGo = $('#skill-retro-go');
+if (skillRetroGo) {
+  skillRetroGo.addEventListener('click', async () => {
+    const outputBox = $('#skill-retro-output');
+    try {
+      if (outputBox) outputBox.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 스킬 과거 시드를 역산하는 중...</div>";
+      
+      const amount = parseInt($('#skill-retro-amount').value, 10);
+      if (isNaN(amount) || amount <= 0) throw new Error("올바른 과거 복원 횟수를 입력하세요.");
+      if (!skillData) throw new Error("스킬 기획서 데이터가 로드되지 않았습니다.");
+
+      const curSeed = BigInt(state.Skill.seed);
+      const startSeed = (curSeed - BigInt(amount)) & 0xFFFFFFFFFFFFFFFFn;
+
+      const { level: startLevel, count: startCount } = rollbackLevelAndCount("Skill", state.Skill.level, state.Skill.count, amount, skillData);
+
+      const tempState = {
+        Skill: {
+          seed: startSeed,
+          level: startLevel,
+          count: startCount,
+          history: []
+        }
+      };
+
+      const results = doSkillSummon(tempState, { amount, times: 1 }, skillData);
+
+      const formatted = results.map((item, idx) => ({
+        ...item,
+        index: `-${results.length - idx}`
+      }));
+
+      const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${startSeed.toString(16).toUpperCase()})`;
+      renderSkillResults(outputBox, title, formatted);
+
+    } catch (e) {
+      if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 스킬 역산 오류: ${e.message}</span>`;
+    }
+  });
+}
+
+// 3. 펫 역산
+const petRetroGo = $('#pet-retro-go');
+if (petRetroGo) {
+  petRetroGo.addEventListener('click', async () => {
+    const outputBox = $('#pet-retro-output');
+    try {
+      if (outputBox) outputBox.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 펫 과거 시드를 탐색 중...</div>";
+      
+      const amount = parseInt($('#pet-retro-amount').value, 10);
+      if (isNaN(amount) || amount <= 0) throw new Error("올바른 과거 복원 횟수를 입력하세요.");
+      if (!petData) throw new Error("펫 기획서 데이터가 로드되지 않았습니다.");
+
+      // 복합 전방 탐색 실행
+      let foundHistory = null;
+      let finalStartSeed = null;
+
+      // 50소환 단위 매칭
+      const B50 = Math.ceil(amount / 50);
+      for (let diff = B50 * 50; diff <= B50 * 85; diff++) {
+        const startSeed = state.Pet.seed - BigInt(diff);
+        const { level, count } = rollbackLevelAndCount("Pet", state.Pet.level, state.Pet.count, diff, petData);
+        const tempState = {
+          Pet: { seed: startSeed, level, count, chance: state.Pet.chance, isAscended: state.Pet.isAscended, history: [] }
+        };
+        try {
+          doPetSummon(tempState, { amount: 50, times: B50 }, petData);
+          if (tempState.Pet.seed === state.Pet.seed) {
+            foundHistory = tempState.Pet.history;
+            finalStartSeed = startSeed;
+            break;
+          }
+        } catch(e) {}
+      }
+
+      // 15소환 단위 매칭
+      if (!foundHistory) {
+        const B15 = Math.ceil(amount / 15);
+        for (let diff = B15 * 15; diff <= B15 * 25; diff++) {
+          const startSeed = state.Pet.seed - BigInt(diff);
+          const { level, count } = rollbackLevelAndCount("Pet", state.Pet.level, state.Pet.count, diff, petData);
+          const tempState = {
+            Pet: { seed: startSeed, level, count, chance: state.Pet.chance, isAscended: state.Pet.isAscended, history: [] }
+          };
+          try {
+            doPetSummon(tempState, { amount: 15, times: B15 }, petData);
+            if (tempState.Pet.seed === state.Pet.seed) {
+              foundHistory = tempState.Pet.history;
+              finalStartSeed = startSeed;
+              break;
+            }
+          } catch(e) {}
+        }
+      }
+
+      // 1소환 단위 매칭
+      if (!foundHistory) {
+        const B1 = amount;
+        for (let diff = B1; diff <= B1 * 2; diff++) {
+          const startSeed = state.Pet.seed - BigInt(diff);
+          const { level, count } = rollbackLevelAndCount("Pet", state.Pet.level, state.Pet.count, diff, petData);
+          const tempState = {
+            Pet: { seed: startSeed, level, count, chance: state.Pet.chance, isAscended: state.Pet.isAscended, history: [] }
+          };
+          try {
+            doPetSummon(tempState, { amount: 1, times: B1 }, petData);
+            if (tempState.Pet.seed === state.Pet.seed) {
+              foundHistory = tempState.Pet.history;
+              finalStartSeed = startSeed;
+              break;
+            }
+          } catch(e) {}
+        }
+      }
+
+      // 매칭 실패 시 단순 선형 롤백 및 보너스 무시 강제 1소환 역산 (차선책)
+      if (!foundHistory) {
+        const startSeed = state.Pet.seed - BigInt(amount);
+        const { level, count } = rollbackLevelAndCount("Pet", state.Pet.level, state.Pet.count, amount, petData);
+        const tempState = {
+          Pet: { seed: startSeed, level, count, chance: state.Pet.chance, isAscended: state.Pet.isAscended, history: [] }
+        };
+        doPetSummon(tempState, { amount: 1, times: amount }, petData);
+        foundHistory = tempState.Pet.history;
+        finalStartSeed = startSeed;
+      }
+
+      const formatted = foundHistory.map((item, idx) => ({
+        ...item,
+        index: `-${foundHistory.length - idx}`
+      }));
+
+      const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${finalStartSeed.toString(16).toUpperCase()})`;
+      renderPetResults(outputBox, title, formatted);
+
+    } catch (e) {
+      if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 펫 역산 오류: ${e.message}</span>`;
+    }
+  });
+}
+
+// 4. 탈것 역산
+const mountRetroGo = $('#mount-retro-go');
+if (mountRetroGo) {
+  mountRetroGo.addEventListener('click', async () => {
+    const outputBox = $('#mount-retro-output');
+    try {
+      if (outputBox) outputBox.innerHTML = "<div style='color:#666; font-style:italic;'>로컬 코어가 탈것 과거 시드를 탐색 중...</div>";
+      
+      const amount = parseInt($('#mount-retro-amount').value, 10);
+      if (isNaN(amount) || amount <= 0) throw new Error("올바른 과거 복원 횟수를 입력하세요.");
+      if (!mountData) throw new Error("탈것 기획서 데이터가 로드되지 않았습니다.");
+
+      // 복합 전방 탐색 실행
+      let foundHistory = null;
+      let finalStartSeed = null;
+
+      // 50소환 단위 매칭
+      const B50 = Math.ceil(amount / 50);
+      for (let diff = B50 * 50; diff <= B50 * 85; diff++) {
+        const startSeed = state.Mount.seed - BigInt(diff);
+        const { level, count } = rollbackLevelAndCount("Mount", state.Mount.level, state.Mount.count, diff, mountData);
+        const tempState = {
+          Mount: { seed: startSeed, level, count, chance: state.Mount.chance, isAscended: state.Mount.isAscended, history: [] }
+        };
+        try {
+          doMountSummon(tempState, { amount: 50, times: B50 }, mountData);
+          if (tempState.Mount.seed === state.Mount.seed) {
+            foundHistory = tempState.Mount.history;
+            finalStartSeed = startSeed;
+            break;
+          }
+        } catch(e) {}
+      }
+
+      // 15소환 단위 매칭
+      if (!foundHistory) {
+        const B15 = Math.ceil(amount / 15);
+        for (let diff = B15 * 15; diff <= B15 * 25; diff++) {
+          const startSeed = state.Mount.seed - BigInt(diff);
+          const { level, count } = rollbackLevelAndCount("Mount", state.Mount.level, state.Mount.count, diff, mountData);
+          const tempState = {
+            Mount: { seed: startSeed, level, count, chance: state.Mount.chance, isAscended: state.Mount.isAscended, history: [] }
+          };
+          try {
+            doMountSummon(tempState, { amount: 15, times: B15 }, mountData);
+            if (tempState.Mount.seed === state.Mount.seed) {
+              foundHistory = tempState.Mount.history;
+              finalStartSeed = startSeed;
+              break;
+            }
+          } catch(e) {}
+        }
+      }
+
+      // 1소환 단위 매칭
+      if (!foundHistory) {
+        const B1 = amount;
+        for (let diff = B1; diff <= B1 * 2; diff++) {
+          const startSeed = state.Mount.seed - BigInt(diff);
+          const { level, count } = rollbackLevelAndCount("Mount", state.Mount.level, state.Mount.count, diff, mountData);
+          const tempState = {
+            Mount: { seed: startSeed, level, count, chance: state.Mount.chance, isAscended: state.Mount.isAscended, history: [] }
+          };
+          try {
+            doMountSummon(tempState, { amount: 1, times: B1 }, mountData);
+            if (tempState.Mount.seed === state.Mount.seed) {
+              foundHistory = tempState.Mount.history;
+              finalStartSeed = startSeed;
+              break;
+            }
+          } catch(e) {}
+        }
+      }
+
+      // 매칭 실패 시 단순 선형 롤백 및 보너스 무시 강제 1소환 역산 (차선책)
+      if (!foundHistory) {
+        const startSeed = state.Mount.seed - BigInt(amount);
+        const { level, count } = rollbackLevelAndCount("Mount", state.Mount.level, state.Mount.count, amount, mountData);
+        const tempState = {
+          Mount: { seed: startSeed, level, count, chance: state.Mount.chance, isAscended: state.Mount.isAscended, history: [] }
+        };
+        doMountSummon(tempState, { amount: 1, times: amount }, mountData);
+        foundHistory = tempState.Mount.history;
+        finalStartSeed = startSeed;
+      }
+
+      const formatted = foundHistory.map((item, idx) => ({
+        ...item,
+        index: `-${foundHistory.length - idx}`
+      }));
+
+      const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${finalStartSeed.toString(16).toUpperCase()})`;
+      renderMountResults(outputBox, title, formatted);
+
+    } catch (e) {
+      if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 탈것 역산 오류: ${e.message}</span>`;
+    }
+  });
+}
+
 initFilters();
 showInitOrTabs();
+
 
 
     
