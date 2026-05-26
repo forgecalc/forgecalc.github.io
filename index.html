@@ -57,6 +57,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -923,8 +924,18 @@ table td.center { text-align: center; }
             </div>
 
             <details class="card" style="margin: 12px 0;">
-                <summary style="cursor: pointer; font-weight: bold; color: #e67e22; user-select: none;">🔍 과거 특정 개체 조건으로 시드 역추적 (스카우터)</summary>
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; margin-top: 10px;">
+                <summary style="cursor: pointer; font-weight: bold; color: #e67e22; user-select: none;">⏳ 과거 소환 기록 역산 복원 (Retroactive History)</summary>
+                <div style="margin-top: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <label style="font-size: 13px;">복원할 과거 횟수:</label>
+                    <input type="number" id="pet-retro-amount" value="50" style="width:70px; padding:4px; text-align:center;">
+                    <button id="pet-retro-go" style="background:#e67e22; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer;">과거 소환 복원</button>
+                    <button id="pet-retro-clear" style="background:#7f8c8d; color:white; border:none; padding:6px 12px; border-radius:4px; font-weight:bold; cursor:pointer; margin-left:5px;">결과 비우기</button>
+                </div>
+                <div id="pet-retro-output" class="output-container" style="margin-top: 12px;"></div>
+
+                <hr style="border:0; border-top:1px dashed var(--border); margin:12px 0;">
+                <div style="font-size:12px; font-weight:bold; color:#e67e22; margin-bottom:8px;">🔍 과거 특정 개체 조건으로 시드 역추적 (스카우터)</div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px;">
                     <label>등급:</label>
                     <select id="pet-scout-rarity" style="padding:2px 4px;">
                         <option value="Mythic" selected>신화</option>
