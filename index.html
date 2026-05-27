@@ -58,6 +58,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -19051,6 +19052,7 @@ if ($('#forge-reset-run')) {
     state.Forge.chance = state.Forge.initChance ?? state.Forge.chance;
     state.Forge.history = [];
     lastResponse.Forge = null;
+    accumulatedResponse.Forge = [];
     persist();
     await refreshAllStatus();
     if ($('#forge-output')) $('#forge-output').innerHTML = '';
@@ -19075,6 +19077,7 @@ if ($('#pet-reset-run')) {
     state.Pet.chance = state.Pet.initChance ?? state.Pet.chance;
     state.Pet.history = [];
     lastResponse.Pet = null;
+    accumulatedResponse.Pet = [];
     persist();
     await refreshAllStatus();
     if ($('#pet-output')) $('#pet-output').innerHTML = '';
@@ -19088,6 +19091,7 @@ if ($('#mount-reset-run')) {
     state.Mount.chance = state.Mount.initChance ?? state.Mount.chance;
     state.Mount.history = [];
     lastResponse.Mount = null;
+    accumulatedResponse.Mount = [];
     persist();
     await refreshAllStatus();
     if ($('#mount-output')) $('#mount-output').innerHTML = '';
@@ -19569,7 +19573,7 @@ if (petRetroGo) {
 
       const formatted = foundHistory.map((item, idx) => ({
         ...item,
-        index: `-${foundHistory.length - idx}`
+        index: idx + 1
       }));
 
       const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${finalStartSeed.toString(16).toUpperCase()})`;
@@ -19581,6 +19585,7 @@ if (petRetroGo) {
       state.Pet.level = level;
       state.Pet.count = count;
       state.Pet.history = [];
+      accumulatedResponse.Pet = [];
       persist();
       await refreshAllStatus();
 
@@ -19626,7 +19631,7 @@ if (mountRetroGo) {
 
       const formatted = foundHistory.map((item, idx) => ({
         ...item,
-        index: `-${foundHistory.length - idx}`
+        index: idx + 1
       }));
 
       const title = `✓ 과거 소환 기록 복원 완료 (시작 Seed: 0x${finalStartSeed.toString(16).toUpperCase()})`;
@@ -19638,6 +19643,7 @@ if (mountRetroGo) {
       state.Mount.level = level;
       state.Mount.count = count;
       state.Mount.history = [];
+      accumulatedResponse.Mount = [];
       persist();
       await refreshAllStatus();
 
@@ -19762,6 +19768,10 @@ document.body.addEventListener('click', async (e) => {
       if (levelStr) state.Mount.level = parseInt(levelStr, 10);
       if (countStr) state.Mount.count = parseInt(countStr, 10);
       state.Mount.history = [];
+    }
+
+    if (accumulatedResponse[mode]) {
+      accumulatedResponse[mode] = [];
     }
 
     persist();
