@@ -60,6 +60,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -17458,7 +17459,7 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
   }
 
   let targetResults = null;
-  if (mode === 'stat' || mode === 'filter') {
+  if (mode === 'stat' || mode === 'filter' || mode === 'bonus') {
     targetResults = [];
     let cS = startSeed, cLv = startLevel, cCt = startCount;
     let simIdx = p.history.length + 1;
@@ -17488,7 +17489,9 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
         };
 
         let isTarget = false;
-        if (mode === 'stat') {
+        if (mode === 'bonus') {
+          isTarget = true;
+        } else if (mode === 'stat') {
           isTarget = RARITY_SCORE[rolled] >= targetScore;
         } else if (mode === 'filter' && filterFunc) {
           isTarget = filterFunc(item);
@@ -17896,7 +17899,7 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
   }
 
   let targetResults = null;
-  if (mode === 'stat' || mode === 'filter') {
+  if (mode === 'stat' || mode === 'filter' || mode === 'bonus') {
     targetResults = [];
     let cS = startSeed, cLv = startLevel, cCt = startCount;
     let simIdx = m.history.length + 1;
@@ -17925,7 +17928,9 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
         };
 
         let isTarget = false;
-        if (mode === 'stat') {
+        if (mode === 'bonus') {
+          isTarget = true;
+        } else if (mode === 'stat') {
           isTarget = RARITY_SCORE[rolled] >= targetScore;
         } else if (mode === 'filter' && filterFunc) {
           isTarget = filterFunc(item);
