@@ -59,6 +59,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -18463,11 +18464,7 @@ const lastResponse = {
   Pet: null,
   Mount: null
 };
-const accumulatedResponse = {
-  Forge: [],
-  Pet: [],
-  Mount: []
-};
+
 
 async function initStaticData() {
   try {
@@ -18834,39 +18831,43 @@ function readFilters(mode) {
 }
 
 function applyFilterAndRender(mode) {
-  const list = accumulatedResponse[mode];
   const outputBox = $(`#${mode.toLowerCase()}-output`);
   if (!outputBox) return;
 
-  if (!list || list.length === 0) {
+  const history = state[mode].history;
+  if (!history || history.length === 0) {
     outputBox.innerHTML = '';
     return;
   }
 
   const config = readFilters(mode);
-  let combinedHtml = '';
+  const filtered = history.filter(item => filterItem(item, config, mode));
 
-  for (let i = list.length - 1; i >= 0; i--) {
-    const data = list[i];
-    const filtered = data.results.filter(item => filterItem(item, config, mode));
-    const title = `✓ 연산 결과 출력 완료 (Next Seed: 0x${data.next_seed}) - 매칭: ${filtered.length} / 전체: ${data.results.length}`;
-    const meta = `
-      <div style='margin-bottom:12px; padding:10px; background:#2c3e50; border-radius:4px; font-family:monospace; color:#fff; font-size:13px;'>
-        <span style='color:#2ecc71;'>ForgeMaster_Terminal:</span>~$ ${data.command}
-      </div>`;
+  const formatted = filtered.map((item, idx) => ({
+    ...item,
+    index: idx + 1
+  }));
 
-    const tempDiv = document.createElement('div');
-    if (mode === 'Forge') {
-      renderForgeResults(tempDiv, title, filtered, meta);
-    } else if (mode === 'Pet') {
-      renderPetResults(tempDiv, title, filtered, meta);
-    } else if (mode === 'Mount') {
-      renderMountResults(tempDiv, title, filtered, meta);
-    }
-    combinedHtml += tempDiv.innerHTML;
+  const next_seed = state[mode].seed.toString(16).toUpperCase();
+  const title = `✓ 연산 결과 출력 완료 (Next Seed: 0x${next_seed}) - 매칭: ${filtered.length} / 전체: ${history.length}`;
+  
+  let command = '';
+  if (mode === 'Forge') command = `doForge(state)`;
+  else if (mode === 'Pet') command = `doPetSummon(state)`;
+  else if (mode === 'Mount') command = `doMountSummon(state)`;
+
+  const meta = `
+    <div style='margin-bottom:12px; padding:10px; background:#2c3e50; border-radius:4px; font-family:monospace; color:#fff; font-size:13px;'>
+      <span style='color:#2ecc71;'>ForgeMaster_Terminal:</span>~$ ${command}
+    </div>`;
+
+  if (mode === 'Forge') {
+    renderForgeResults(outputBox, title, formatted, meta);
+  } else if (mode === 'Pet') {
+    renderPetResults(outputBox, title, formatted, meta);
+  } else if (mode === 'Mount') {
+    renderMountResults(outputBox, title, formatted, meta);
   }
-
-  outputBox.innerHTML = combinedHtml;
 }
 
 function clearFilters(mode) {
@@ -18936,16 +18937,7 @@ $('#forge-go').addEventListener('click', async () => {
     if (!forgeData) throw new Error("대장간 기획서 데이터가 로드되지 않았습니다.");
 
     // 로컬 doForge 실행
-    const { results } = doForge(state, { amount, times }, forgeData);
-
-    const next_seed = state.Forge.seed.toString(16).toUpperCase();
-    const command = `doForge(state, amount=${amount}, times=${times})`;
-
-    accumulatedResponse.Forge.push({
-      results,
-      next_seed,
-      command
-    });
+    doForge(state, { amount, times }, forgeData);
 
     persist();
     applyFilterAndRender('Forge');
@@ -18953,7 +18945,7 @@ $('#forge-go').addEventListener('click', async () => {
 
   } catch (e) {
     const outputBox = $('#forge-output');
-    if (outputBox) outputBox.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 대장간 연산 오류: ${e.message}</span>`);
+    if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 대장간 연산 오류: ${e.message}</span>`;
   }
 });
 
@@ -18995,23 +18987,14 @@ $('#pet-go').addEventListener('click', async () => {
     if (!petData) throw new Error("펫 기획서 데이터가 로드되지 않았습니다.");
 
     // 로컬 doPetSummon 실행
-    const { newResults } = doPetSummon(state, { amount, times }, petData);
-
-    const next_seed = state.Pet.seed.toString(16).toUpperCase();
-    const command = `doPetSummon(state, amount=${amount}, times=${times})`;
-
-    accumulatedResponse.Pet.push({
-      results: newResults,
-      next_seed,
-      command
-    });
+    doPetSummon(state, { amount, times }, petData);
 
     persist();
     applyFilterAndRender('Pet');
     await refreshAllStatus();
   } catch (error) {
     const outputContainer = $('#pet-output');
-    if (outputContainer) outputContainer.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 펫 연산 오류: ${error.message}</span>`);
+    if (outputContainer) outputContainer.innerHTML = `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 펫 연산 오류: ${error.message}</span>`;
   }
 });
 
@@ -19024,23 +19007,14 @@ $('#mount-go').addEventListener('click', async () => {
     if (!mountData) throw new Error("탈것 기획서 데이터가 로드되지 않았습니다.");
 
     // 로컬 doMountSummon 실행
-    const { newResults } = doMountSummon(state, { amount, times }, mountData);
-
-    const next_seed = state.Mount.seed.toString(16).toUpperCase();
-    const command = `doMountSummon(state, amount=${amount}, times=${times})`;
-
-    accumulatedResponse.Mount.push({
-      results: newResults,
-      next_seed,
-      command
-    });
+    doMountSummon(state, { amount, times }, mountData);
 
     persist();
     applyFilterAndRender('Mount');
     await refreshAllStatus();
   } catch (error) {
     const outputContainer = $('#mount-output');
-    if (outputContainer) outputContainer.insertAdjacentHTML('afterbegin', `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 탈것 연산 오류: ${error.message}</span>`);
+    if (outputContainer) outputContainer.innerHTML = `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 탈것 연산 오류: ${error.message}</span>`;
   }
 });
 
@@ -19052,10 +19026,9 @@ if ($('#forge-reset-run')) {
     state.Forge.chance = state.Forge.initChance ?? state.Forge.chance;
     state.Forge.history = [];
     lastResponse.Forge = null;
-    accumulatedResponse.Forge = [];
     persist();
+    applyFilterAndRender('Forge');
     await refreshAllStatus();
-    if ($('#forge-output')) $('#forge-output').innerHTML = '';
   });
 }
 if ($('#skill-reset-run')) {
@@ -19077,10 +19050,9 @@ if ($('#pet-reset-run')) {
     state.Pet.chance = state.Pet.initChance ?? state.Pet.chance;
     state.Pet.history = [];
     lastResponse.Pet = null;
-    accumulatedResponse.Pet = [];
     persist();
+    applyFilterAndRender('Pet');
     await refreshAllStatus();
-    if ($('#pet-output')) $('#pet-output').innerHTML = '';
   });
 }
 if ($('#mount-reset-run')) {
@@ -19091,10 +19063,9 @@ if ($('#mount-reset-run')) {
     state.Mount.chance = state.Mount.initChance ?? state.Mount.chance;
     state.Mount.history = [];
     lastResponse.Mount = null;
-    accumulatedResponse.Mount = [];
     persist();
+    applyFilterAndRender('Mount');
     await refreshAllStatus();
-    if ($('#mount-output')) $('#mount-output').innerHTML = '';
   });
 }
 
@@ -19585,8 +19556,8 @@ if (petRetroGo) {
       state.Pet.level = level;
       state.Pet.count = count;
       state.Pet.history = [];
-      accumulatedResponse.Pet = [];
       persist();
+      applyFilterAndRender('Pet');
       await refreshAllStatus();
 
     } catch (e) {
@@ -19643,8 +19614,8 @@ if (mountRetroGo) {
       state.Mount.level = level;
       state.Mount.count = count;
       state.Mount.history = [];
-      accumulatedResponse.Mount = [];
       persist();
+      applyFilterAndRender('Mount');
       await refreshAllStatus();
 
     } catch (e) {
@@ -19770,19 +19741,18 @@ document.body.addEventListener('click', async (e) => {
       state.Mount.history = [];
     }
 
-    if (accumulatedResponse[mode]) {
-      accumulatedResponse[mode] = [];
-    }
-
     persist();
+    if (mode !== 'Skill') {
+      applyFilterAndRender(mode);
+    }
     await refreshAllStatus();
 
-    // 결과 출력창들 초기화
+    // 결과 출력창들 초기화 (미래시창 외의 서브창들)
     const outMap = {
-      Forge: ['#forge-output', '#forge-retro-output'],
+      Forge: ['#forge-retro-output'],
       Skill: ['#skill-output', '#skill-retro-output', '#skill-opt-output'],
-      Pet: ['#pet-output', '#pet-retro-output', '#pet-opt-output'],
-      Mount: ['#mount-output', '#mount-retro-output', '#mount-opt-output']
+      Pet: ['#pet-retro-output', '#pet-opt-output'],
+      Mount: ['#mount-retro-output', '#mount-opt-output']
     };
     if (outMap[mode]) {
       outMap[mode].forEach(sel => {
@@ -19901,15 +19871,11 @@ document.body.addEventListener('click', async (e) => {
       state[mode].count = parseInt(countStr, 10);
       state[mode].history = [];
       persist();
+      applyFilterAndRender(mode);
       await refreshAllStatus();
       
       const outBox = $(`#${mode.toLowerCase()}-scout-output`);
       if (outBox) outBox.innerHTML = '';
-      const mainOut = $(`#${mode.toLowerCase()}-output`);
-      if (mainOut) mainOut.innerHTML = '';
-      
-      // 누적 변수 초기화
-      accumulatedResponse[mode] = [];
       
       alert('성공적으로 롤백 완료 및 브라우저 세이브 저장되었습니다.');
     } catch (err) {
@@ -19941,10 +19907,25 @@ Object.entries(clearMapping).forEach(([btnId, targetId]) => {
     btn.addEventListener('click', () => {
       const target = $(targetId);
       if (target) target.innerHTML = '';
-      // 소환 미래시 결과의 경우, 누적 데이터 배열도 초기화한다
-      if (btnId === 'forge-clear') accumulatedResponse.Forge = [];
-      if (btnId === 'pet-clear') accumulatedResponse.Pet = [];
-      if (btnId === 'mount-clear') accumulatedResponse.Mount = [];
+      // 소환 미래시 결과의 경우, 실제 history 상태도 함께 초기화한다
+      if (btnId === 'forge-clear') {
+        state.Forge.history = [];
+        persist();
+        applyFilterAndRender('Forge');
+        refreshAllStatus();
+      }
+      if (btnId === 'pet-clear') {
+        state.Pet.history = [];
+        persist();
+        applyFilterAndRender('Pet');
+        refreshAllStatus();
+      }
+      if (btnId === 'mount-clear') {
+        state.Mount.history = [];
+        persist();
+        applyFilterAndRender('Mount');
+        refreshAllStatus();
+      }
     });
   }
 });
