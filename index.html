@@ -61,6 +61,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -18848,11 +18849,6 @@ function applyFilterAndRender(mode) {
   const config = readFilters(mode);
   const filtered = history.filter(item => filterItem(item, config, mode));
 
-  const formatted = filtered.map((item, idx) => ({
-    ...item,
-    index: idx + 1
-  }));
-
   const next_seed = state[mode].seed.toString(16).toUpperCase();
   const title = `✓ 연산 결과 출력 완료 (Next Seed: 0x${next_seed}) - 매칭: ${filtered.length} / 전체: ${history.length}`;
   
@@ -18867,11 +18863,11 @@ function applyFilterAndRender(mode) {
     </div>`;
 
   if (mode === 'Forge') {
-    renderForgeResults(outputBox, title, formatted, meta);
+    renderForgeResults(outputBox, title, filtered, meta);
   } else if (mode === 'Pet') {
-    renderPetResults(outputBox, title, formatted, meta);
+    renderPetResults(outputBox, title, filtered, meta);
   } else if (mode === 'Mount') {
-    renderMountResults(outputBox, title, formatted, meta);
+    renderMountResults(outputBox, title, filtered, meta);
   }
 }
 
