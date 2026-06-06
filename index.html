@@ -66,6 +66,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -17656,6 +17657,10 @@ function findPetPastSeed(state, config, petData) {
 
 
 
+function mountNeedAt(level) {
+  return 20;
+}
+
 let _mountCache = null;
 
 async function loadMountData(baseUrl = '.') {
@@ -18535,26 +18540,7 @@ initStaticData();
 
 function persist() { saveState(state); }
 
-function skillNeedAt(level) {
-  if (level <= 10) return 2 * level;
-  if (level === 11) return 30;
-  if (level === 12) return 40;
-  if (level === 13) return 50;
-  if (level === 14) return 60;
-  if (level === 15) return 80;
-  if (level === 16) return 100;
-  return 110;
-}
 
-function petNeedAt(level) {
-  const tbl = [0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
-  if (level < tbl.length) return tbl[level];
-  return 23;
-}
-
-function mountNeedAt(level) {
-  return 20;
-}
 
 // 📥 로컬 상태 기반 통합 정보 현황판 (서버리스 구동)
 function getLevelMaxCount(mode, levelIdx) {
