@@ -65,6 +65,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -17286,11 +17287,10 @@ function doPetSummon(state, { amount, times }, petData) {
         index: p.history.length + 1
       });
 
-      if (!isBonusPull) {
-        curCount += 1;
-        const req = petNeedAt(curLevel + 1);
-        if (curCount >= req) { curCount -= req; curLevel += 1; }
-      }
+      curCount += 1;
+      const req = petNeedAt(curLevel + 1);
+      if (curCount >= req) { curCount -= req; curLevel += 1; }
+
       curSeed += 1n;
       
       const historyItem = p.history[p.history.length - 1];
@@ -17433,7 +17433,7 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
           cIdx++;
         }
 
-        // 2. 보너스 소환 처리 (레벨 카운트 증가 없음)
+        // 2. 보너스 소환 처리 (레벨 카운트 증가 포함!)
         for (let i = 0; i < bonuses; i++) {
           const lvlData = levels[Math.min(curLevel, levels.length - 1)];
           const item = getB(cIdx, curLevel, lvlData);
@@ -17444,6 +17444,9 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
               stepScore += 1000000 + (item.score * 1000) + item.perfection;
             }
           }
+          curCount += 1;
+          const req = petNeedAt(curLevel + 1);
+          if (curCount >= req) { curCount -= req; curLevel += 1; }
           cIdx++;
         }
 
@@ -17503,11 +17506,10 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
         const { detailed, f64Sum } = petRollSubstats(pcg, nSubs);
         const perf = (f64Sum / nSubs) * 100;
         
-        if (!isBonusPull) {
-          cCt += 1;
-          const req = petNeedAt(cLv + 1);
-          if (cCt >= req) { cCt -= req; cLv += 1; }
-        }
+        cCt += 1;
+        const req = petNeedAt(cLv + 1);
+        if (cCt >= req) { cCt -= req; cLv += 1; }
+
         cS += 1n;
 
         const item = {
@@ -17732,11 +17734,10 @@ function doMountSummon(state, { amount, times }, mountData) {
         index: m.history.length + 1
       });
 
-      if (!isBonusPull) {
-        curCount += 1;
-        const req = lvlData.SummonsRequired ?? 9999;
-        if (curCount >= req) { curCount -= req; curLevel += 1; }
-      }
+      curCount += 1;
+      const req = lvlData.SummonsRequired ?? 9999;
+      if (curCount >= req) { curCount -= req; curLevel += 1; }
+
       curSeed += 1n;
 
       const historyItem = m.history[m.history.length - 1];
@@ -17879,6 +17880,7 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
         }
 
         // 2. 보너스 소환 처리 (레벨 카운트 증가 없음)
+        // 2. 보너스 소환 처리 (레벨 카운트 증가 포함!)
         for (let i = 0; i < bonuses; i++) {
           const lvlData = levels[Math.min(curLevel, levels.length - 1)];
           const item = getB(cIdx, curLevel, lvlData);
@@ -17889,6 +17891,9 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
               stepScore += 1000000 + (item.score * 1000) + item.perfection;
             }
           }
+          curCount += 1;
+          const req = lvlData.SummonsRequired ?? 9999;
+          if (curCount >= req) { curCount -= req; curLevel += 1; }
           cIdx++;
         }
 
@@ -17948,11 +17953,10 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
         const { detailed, f64Sum } = mountRollSubstats(pcg, nSubs);
         const perf = (f64Sum / nSubs) * 100;
         
-        if (!isBonusPull) {
-          cCt += 1;
-          const req = lvlData.SummonsRequired ?? 9999;
-          if (cCt >= req) { cCt -= req; cLv += 1; }
-        }
+        cCt += 1;
+        const req = lvlData.SummonsRequired ?? 9999;
+        if (cCt >= req) { cCt -= req; cLv += 1; }
+
         cS += 1n;
 
         const item = {
