@@ -62,6 +62,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -17265,9 +17266,11 @@ function doPetSummon(state, { amount, times }, petData) {
         index: p.history.length + 1
       });
 
-      curCount += 1;
-      const req = lvlData.SummonsRequired ?? 9999;
-      if (curCount >= req) { curCount -= req; curLevel += 1; }
+      if (!isBonusPull) {
+        curCount += 1;
+        const req = lvlData.SummonsRequired ?? 9999;
+        if (curCount >= req) { curCount -= req; curLevel += 1; }
+      }
       curSeed += 1n;
       
       const historyItem = p.history[p.history.length - 1];
@@ -17706,9 +17709,11 @@ function doMountSummon(state, { amount, times }, mountData) {
         index: m.history.length + 1
       });
 
-      curCount += 1;
-      const req = lvlData.SummonsRequired ?? 9999;
-      if (curCount >= req) { curCount -= req; curLevel += 1; }
+      if (!isBonusPull) {
+        curCount += 1;
+        const req = lvlData.SummonsRequired ?? 9999;
+        if (curCount >= req) { curCount -= req; curLevel += 1; }
+      }
       curSeed += 1n;
 
       const historyItem = m.history[m.history.length - 1];
