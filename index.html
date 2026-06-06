@@ -63,6 +63,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -17483,13 +17484,23 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
         const { detailed, f64Sum } = petRollSubstats(pcg, nSubs);
         const perf = (f64Sum / nSubs) * 100;
         
+        if (!isBonusPull) {
+          cCt += 1;
+          const req = lvlData.SummonsRequired ?? 9999;
+          if (cCt >= req) { cCt -= req; cLv += 1; }
+        }
+        cS += 1n;
+
         const item = {
           index: simIdx,
           rarity_name: rolled,
           pet_type: petLibrary[chosenPet].Type,
           detailed_stats: detailed,
           perfection: perf,
-          is_bonus: isBonusPull
+          is_bonus: isBonusPull,
+          nextSeed: cS.toString(16).toUpperCase(),
+          nextLevel: cLv,
+          nextCount: cCt
         };
 
         let isTarget = false;
@@ -17505,12 +17516,6 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
           targetResults.push(item);
         }
         
-        if (!isBonusPull) {
-          cCt += 1;
-          const req = lvlData.SummonsRequired ?? 9999;
-          if (cCt >= req) { cCt -= req; cLv += 1; }
-        }
-        cS += 1n;
         pullIdx++;
         simIdx++;
       }
@@ -17925,12 +17930,22 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
         const { detailed, f64Sum } = mountRollSubstats(pcg, nSubs);
         const perf = (f64Sum / nSubs) * 100;
         
+        if (!isBonusPull) {
+          cCt += 1;
+          const req = lvlData.SummonsRequired ?? 9999;
+          if (cCt >= req) { cCt -= req; cLv += 1; }
+        }
+        cS += 1n;
+
         const item = {
           index: simIdx,
           rarity_name: rolled,
           detailed_stats: detailed,
           perfection: perf,
-          is_bonus: isBonusPull
+          is_bonus: isBonusPull,
+          nextSeed: cS.toString(16).toUpperCase(),
+          nextLevel: cLv,
+          nextCount: cCt
         };
 
         let isTarget = false;
@@ -17946,12 +17961,6 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
           targetResults.push(item);
         }
         
-        if (!isBonusPull) {
-          cCt += 1;
-          const req = lvlData.SummonsRequired ?? 9999;
-          if (cCt >= req) { cCt -= req; cLv += 1; }
-        }
-        cS += 1n;
         pullIdx++;
         simIdx++;
       }
@@ -18520,6 +18529,13 @@ function getLevelMaxCount(mode, levelIdx) {
 
 async function refreshAllStatus() {
   try {
+    // 미래시 레벨을 승천(Ascend) 탭 레벨로 실시간 동기화 연동
+    if (state.ascend) {
+      if (state.Skill) state.ascend.skill.level = Math.max(1, Math.min(100, state.Skill.level + 1));
+      if (state.Pet) state.ascend.pet.level = Math.max(1, Math.min(100, state.Pet.level + 1));
+      if (state.Mount) state.ascend.mount.level = Math.max(1, Math.min(100, state.Mount.level + 1));
+    }
+
     if (state.initialized) {
       // Forge
       const f_stars = "★".repeat(state.Forge.ascensionLevel) + "☆".repeat(4 - state.Forge.ascensionLevel);
@@ -18575,6 +18591,11 @@ async function refreshAllStatus() {
       state.initialized = false;
       persist();
       showInitOrTabs();
+    }
+
+    // 승천 탭 등 전체 화면 갱신 트리거 연동
+    if (typeof onAnyChange === 'function') {
+      onAnyChange();
     }
   } catch (e) {
     console.error("실시간 상태 동기화 실패:", e);
