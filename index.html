@@ -68,6 +68,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -18624,14 +18625,14 @@ async function refreshAllStatus() {
   try {
     // 미래시 레벨을 승천(Ascend) 탭 레벨로 실시간 동기화 연동
     if (state.ascend) {
-      if (state.Skill) state.ascend.skill.level = Math.max(1, Math.min(100, state.Skill.level + 1));
-      if (state.Pet) state.ascend.pet.level = Math.max(1, Math.min(100, state.Pet.level + 1));
-      if (state.Mount) state.ascend.mount.level = Math.max(1, Math.min(100, state.Mount.level + 1));
+      if (state.Skill && state.Skill.ascensionLevel !== undefined) state.ascend.skill.level = Math.max(1, Math.min(100, state.Skill.ascensionLevel));
+      if (state.Pet && state.Pet.ascensionLevel !== undefined) state.ascend.pet.level = Math.max(1, Math.min(100, state.Pet.ascensionLevel));
+      if (state.Mount && state.Mount.ascensionLevel !== undefined) state.ascend.mount.level = Math.max(1, Math.min(100, state.Mount.ascensionLevel));
     }
 
     if (state.initialized) {
       // Forge
-      const f_stars = "★".repeat(state.Forge.ascensionLevel) + "☆".repeat(4 - state.Forge.ascensionLevel);
+      const f_stars = "★".repeat(Math.min(4, state.Forge.ascensionLevel)) + "☆".repeat(4 - Math.min(4, state.Forge.ascensionLevel));
       const f_seed = state.Forge.seed.toString(16).toUpperCase().padStart(16, '0');
       if ($('#forge-status')) {
         $('#forge-status').innerHTML = `
@@ -18643,7 +18644,7 @@ async function refreshAllStatus() {
           </div>`;
       }
       // Skill
-      const s_stars = "★".repeat(state.Skill.ascensionLevel) + "☆".repeat(4 - state.Skill.ascensionLevel);
+      const s_stars = "★".repeat(Math.min(4, state.Skill.ascensionLevel)) + "☆".repeat(4 - Math.min(4, state.Skill.ascensionLevel));
       const s_seed = state.Skill.seed.toString(16).toUpperCase().padStart(16, '0');
       const s_max = getLevelMaxCount('Skill', state.Skill.level);
       if ($('#skill-status')) {
@@ -18656,7 +18657,7 @@ async function refreshAllStatus() {
           </div>`;
       }
       // Pet
-      const p_stars = "★".repeat(state.Pet.ascensionLevel) + "☆".repeat(4 - state.Pet.ascensionLevel);
+      const p_stars = "★".repeat(Math.min(4, state.Pet.ascensionLevel)) + "☆".repeat(4 - Math.min(4, state.Pet.ascensionLevel));
       const p_seed = state.Pet.seed.toString(16).toUpperCase().padStart(16, '0');
       const p_max = getLevelMaxCount('Pet', state.Pet.level);
       if ($('#pet-status')) {
@@ -18669,7 +18670,7 @@ async function refreshAllStatus() {
           </div>`;
       }
       // Mount
-      const m_stars = "★".repeat(state.Mount.ascensionLevel) + "☆".repeat(4 - state.Mount.ascensionLevel);
+      const m_stars = "★".repeat(Math.min(4, state.Mount.ascensionLevel)) + "☆".repeat(4 - Math.min(4, state.Mount.ascensionLevel));
       const m_seed = state.Mount.seed.toString(16).toUpperCase().padStart(16, '0');
       const m_max = getLevelMaxCount('Mount', state.Mount.level);
       if ($('#mount-status')) {
@@ -18820,6 +18821,22 @@ $('#btn-apply').addEventListener('click', async () => {
       state[mode].initLevel = state[mode].level;
       state[mode].initCount = state[mode].count || 0;
       state[mode].initChance = state[mode].chance || 0;
+    }
+
+    // 일괄 적용 시 승천 탭의 승천 레벨 초기값도 등급에 맞춰 친절하게 설정
+    if (state.ascend) {
+      const getMinAscendLevel = (cat, grade) => {
+        const table = {
+          skill: [1, 2, 8, 18, 39, 68],
+          pet: [1, 2, 7, 28, 46, 71],
+          mount: [1, 2, 22, 38, 55, 71]
+        };
+        const list = table[cat] || [1, 1, 1, 1, 1, 1];
+        return list[Math.min(list.length - 1, Math.max(0, grade))];
+      };
+      state.ascend.skill.level = getMinAscendLevel('skill', state.Skill.ascensionLevel);
+      state.ascend.pet.level = getMinAscendLevel('pet', state.Pet.ascensionLevel);
+      state.ascend.mount.level = getMinAscendLevel('mount', state.Mount.ascensionLevel);
     }
 
     state.initialized = true;
