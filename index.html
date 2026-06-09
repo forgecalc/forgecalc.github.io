@@ -67,6 +67,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -692,6 +693,10 @@ table td.center { text-align: center; }
                 <input type="number" id="ch-forge" value="14" step="0.1" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
             </div>
             <div style="flex: 1;">
+                <label style="font-size: 12px; font-weight: bold; color: #555;">스킬 보너스 (%)</label>
+                <input type="number" id="ch-skill" value="25" step="0.1" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
+            </div>
+            <div style="flex: 1;">
                 <label style="font-size: 12px; font-weight: bold; color: #555;">펫 보너스 (%)</label>
                 <input type="number" id="ch-pet" value="22" step="0.1" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
             </div>
@@ -795,7 +800,7 @@ table td.center { text-align: center; }
             <div id="skill-status" class="status-box"></div>
             <div class="miraesee-control-panel">
                 <label>1회 뽑기량:</label>
-                <select id="skill-amount"><option value="75">75소환 (소형)</option><option value="150">150소환 (중형)</option><option value="300">300소환 (대형)</option></select>
+                <select id="skill-amount"><option value="5">5소환 (소형)</option><option value="75">75소환 (중형)</option><option value="250" selected>250소환 (대형)</option></select>
                 <label>반복 연산 횟수:</label>
                 <input type="number" id="skill-times" value="1" style="width:60px; padding:4px; text-align:center;">
                 <button id="skill-go" style="background:#9b59b6; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">파이썬 시뮬레이션 가동</button>
@@ -807,7 +812,7 @@ table td.center { text-align: center; }
             <div class="card" style="margin: 12px 0;">
                 <h3 style="margin-top:0; color: #9b59b6;">🎯 최단 루트 소환 최적화 (DP 스나이퍼)</h3>
                 <p style="font-size: 12px; color: var(--muted); margin: -5px 0 12px 0;">
-                    75회, 150회, 300회 소환의 시드 변화를 DP로 계산하여 최소 소환으로 목표 등급이나 스킬을 달성하는 최적의 빌드를 계산합니다.
+                    5회, 75회, 250회 소환의 시드 변화를 DP로 계산하여 최소 소환으로 목표 등급이나 스킬을 달성하는 최적의 빌드를 계산합니다.
                 </p>
                 <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                     <label style="font-size: 13px;">총 소환 예산:</label>
@@ -16889,7 +16894,6 @@ function skillNeedAt(level) {
 
 
 
-// 웹 시뮬레이터 기존 doSkillSummon 대체 함수
 function doSkillSummon(state, params, skillData) {
     const { amount, times } = params;
     const s_state = state.Skill;
@@ -16898,14 +16902,8 @@ function doSkillSummon(state, params, skillData) {
     let current_level = Number(s_state.level);
     let current_count = Number(s_state.count);
     
-    const batch_size = amount * times;
+    const bonusThreshold = Math.round((s_state.chance / 100) * 4294967296);
     const rarities = ["Common", "Rare", "Epic", "Legendary", "Ultimate", "Mythic"];
-    
-    // 등급 가중치 매핑용 한글 변환 데이터
-    const rarityMap = {
-        "Common": "Common", "Rare": "Rare", "Epic": "Epic",
-        "Legendary": "Legendary", "Ultimate": "Ultimate", "Mythic": "Mythic"
-    };
 
     // 스킬 라이브러리 분류
     let skills_by_rarity = { Common: [], Rare: [], Epic: [], Legendary: [], Ultimate: [], Mythic: [] };
@@ -16916,58 +16914,72 @@ function doSkillSummon(state, params, skillData) {
     }
 
     let newResults = [];
+    let totalAcquired = 0, totalBonus = 0;
 
-    for (let i = 0; i < batch_size; i++) {
-        let pcg_summon = new MetaplayPCG(current_seed);
-        
-        // 파이썬 원본 흐름 그대로 2회 연속 주사위 소모
-        pcg_summon._next_pcg32(); 
-        let rarity_roll_raw = pcg_summon._next_pcg32(); 
-        
-        const levels_config = skillData.Levels || skillData;
-        let current_lvl_data = levels_config[Math.min(current_level, levels_config.length - 1)];
-        
-        let accumulated_raw = 0;
-        let rolled_rarity = "Common";
-        
-        for (let rarity of rarities) {
-            let rate = current_lvl_data[rarity] || 0.0;
-            // 💡 자바스크립트의 실수를 방지하는 완벽한 파이썬형 정수 가중치 라인 연산
-            accumulated_raw += Number(BigInt(Math.round(rate * 4294967296)));
-            
-            if (rarity_roll_raw < accumulated_raw) {
-                rolled_rarity = rarity;
-                break;
+    for (let t = 0; t < times; t++) {
+        let totalTarget = amount, pullIdx = 0, bonusCnt = 0;
+        while (pullIdx < totalTarget) {
+            const isBonusPull = pullIdx >= amount;
+            let pcg_summon = new MetaplayPCG(current_seed);
+
+            if (!isBonusPull) {
+                if (pcg_summon._next_pcg32() < bonusThreshold) {
+                    totalTarget++; bonusCnt++;
+                }
             }
-        }
 
-        const chosen_skill = pcg_summon.choice(skills_by_rarity[rolled_rarity]);
-        const res = {
-            rarity: rolled_rarity,
-            name: chosen_skill,
-            rarity_name: rolled_rarity,
-            skill_name: chosen_skill,
-            index: s_state.history.length + 1
-        };
-        s_state.history.push(res);
-        newResults.push(res);
-        
-        // 레벨업 카운트 계산
-        current_count += 1;
-        let summons_required = skillNeedAt(current_level + 1);
-        if (current_count >= summons_required) {
-            current_count -= summons_required;
-            current_level += 1;
-        }
-        
-        current_seed = (current_seed + 1n) & 0xFFFFFFFFFFFFFFFFn;
+            // 본래 소환용 난수 (1회 소모)
+            pcg_summon._next_pcg32();
+            let rarity_roll_raw = pcg_summon._next_pcg32();
 
-        res.nextSeed = current_seed.toString(16).toUpperCase();
-        res.nextLevel = current_level;
-        res.nextCount = current_count;
+            const levels_config = skillData.Levels || skillData;
+            let current_lvl_data = levels_config[Math.min(current_level, levels_config.length - 1)];
+
+            let accumulated_raw = 0;
+            let rolled_rarity = "Common";
+
+            for (let rarity of rarities) {
+                let rate = current_lvl_data[rarity] || 0.0;
+                accumulated_raw += Number(BigInt(Math.round(rate * 4294967296)));
+
+                if (rarity_roll_raw < accumulated_raw) {
+                    rolled_rarity = rarity;
+                    break;
+                }
+            }
+
+            const chosen_skill = pcg_summon.choice(skills_by_rarity[rolled_rarity]);
+            const res = {
+                rarity: rolled_rarity,
+                name: chosen_skill,
+                rarity_name: rolled_rarity,
+                skill_name: chosen_skill,
+                is_bonus: isBonusPull,
+                index: s_state.history.length + 1
+            };
+            s_state.history.push(res);
+            newResults.push(res);
+
+            // 레벨업 카운트 계산 (보너스 포함하여 무조건 카운트!)
+            current_count += 1;
+            let summons_required = skillNeedAt(current_level + 1);
+            if (current_count >= summons_required) {
+                current_count -= summons_required;
+                current_level += 1;
+            }
+
+            current_seed = (current_seed + 1n) & 0xFFFFFFFFFFFFFFFFn;
+
+            res.nextSeed = current_seed.toString(16).toUpperCase();
+            res.nextLevel = current_level;
+            res.nextCount = current_count;
+
+            pullIdx++;
+        }
+        totalAcquired += totalTarget;
+        totalBonus += bonusCnt;
     }
 
-    // 전역 세이브 갱신
     s_state.seed = "0x" + current_seed.toString(16).toUpperCase();
     s_state.level = current_level;
     s_state.count = current_count;
@@ -17019,6 +17031,7 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
   const startSeed = BigInt(s_state.seed);
   const startLevel = s_state.level;
   const startCount = s_state.count;
+  const bonusThreshold = Math.round((s_state.chance / 100) * 4294967296);
   const targetScore = RARITY_SCORE[tier] || 0;
 
   const levels_config = skillData.Levels || skillData;
@@ -17029,12 +17042,13 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
     if (skills_by_rarity[r_type]) skills_by_rarity[r_type].push(key);
   }
 
-  const cache = new Map();
-  function evalSeed(seedOffset, lvlData) {
-    const key = `${seedOffset}_${lvlData.LevelIndex || 0}`;
-    if (cache.has(key)) return cache.get(key);
-
+  const cacheA = new Map(), cacheB = new Map();
+  function evalSeed(seedOffset, lvlData, isBase) {
     const pcg = new MetaplayPCG((startSeed + BigInt(seedOffset)) & 0xFFFFFFFFFFFFFFFFn);
+    let genBonus = false;
+    if (isBase) {
+      if (pcg._next_pcg32() < bonusThreshold) genBonus = true;
+    }
     pcg._next_pcg32();
     const rarity_roll_raw = pcg._next_pcg32();
     
@@ -17050,18 +17064,28 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
       }
     }
     const chosen_skill = pcg.choice(skills_by_rarity[rolled_rarity]);
-    const result = {
+    return {
+      genBonus,
       score: RARITY_SCORE[rolled_rarity],
       rarity_name: rolled_rarity,
-      skill_name: chosen_skill
+      skill_name: chosen_skill,
+      is_bonus: !isBase
     };
-    cache.set(key, result);
-    return result;
+  }
+  function getA(idx, level, lvlData) {
+    const key = `${idx}_${level}`;
+    if (!cacheA.has(key)) cacheA.set(key, evalSeed(idx, lvlData, true));
+    return cacheA.get(key);
+  }
+  function getB(idx, level, lvlData) {
+    const key = `${idx}_${level}`;
+    if (!cacheB.has(key)) cacheB.set(key, evalSeed(idx, lvlData, false));
+    return cacheB.get(key);
   }
 
   const dp = new Array(amount + 1);
   for (let i = 0; i <= amount; i++) dp[i] = new Map();
-  dp[amount].set(0, { score: 0, path: [], level: startLevel, count: startCount });
+  dp[amount].set(0, { score: 0, path: [], gens: 0, level: startLevel, count: startCount });
 
   for (let rem = amount; rem > 0; rem--) {
     if (dp[rem].size === 0) continue;
@@ -17073,16 +17097,18 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
     if (onProgress) onProgress((amount - rem) / amount);
 
     for (const [idx, st] of entries) {
-      for (const cost of [75, 150, 300]) {
+      for (const cost of [5, 75, 250]) {
         if (cost > rem) continue;
         const nxtRem = rem - cost;
-        let cIdx = idx, stepScore = 0;
+        let cIdx = idx, stepScore = 0, bonuses = 0;
         let curLevel = st.level;
         let curCount = st.count;
 
+        // 1. 기본 소환 처리 (레벨 카운트 증가)
         for (let i = 0; i < cost; i++) {
           const lvlData = levels_config[Math.min(curLevel, levels_config.length - 1)];
-          const item = evalSeed(cIdx, lvlData);
+          const item = getA(cIdx, curLevel, lvlData);
+          if (item.genBonus) bonuses++;
           
           let isTarget = false;
           if (mode === 'stat') {
@@ -17092,27 +17118,48 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
           } else if (mode === 'both') {
             isTarget = (item.score >= targetScore) && (targetSkill === 'all' || item.skill_name === targetSkill);
           }
-
           if (isTarget) {
             stepScore += 1000000 + (item.score * 1000);
           }
 
           curCount += 1;
           const req = skillNeedAt(curLevel + 1);
-          if (curCount >= req) {
-            curCount -= req;
-            curLevel += 1;
+          if (curCount >= req) { curCount -= req; curLevel += 1; }
+          cIdx++;
+        }
+
+        // 2. 보너스 소환 처리 (레벨 카운트 증가 포함!)
+        for (let i = 0; i < bonuses; i++) {
+          const lvlData = levels_config[Math.min(curLevel, levels_config.length - 1)];
+          const item = getB(cIdx, curLevel, lvlData);
+          
+          let isTarget = false;
+          if (mode === 'stat') {
+            isTarget = item.score >= targetScore;
+          } else if (mode === 'skill') {
+            isTarget = (targetSkill === 'all' || item.skill_name === targetSkill);
+          } else if (mode === 'both') {
+            isTarget = (item.score >= targetScore) && (targetSkill === 'all' || item.skill_name === targetSkill);
           }
+          if (isTarget) {
+            stepScore += 1000000 + (item.score * 1000);
+          }
+
+          curCount += 1;
+          const req = skillNeedAt(curLevel + 1);
+          if (curCount >= req) { curCount -= req; curLevel += 1; }
           cIdx++;
         }
 
         const nxtIdx = cIdx;
         const nxtScore = st.score + stepScore;
+        const nxtGens = st.gens + cost + bonuses;
         const cur = dp[nxtRem].get(nxtIdx);
-        if (!cur || nxtScore > cur.score || (nxtScore === cur.score && nxtIdx < cur.idx_total_cost)) {
+        if (!cur || nxtScore > cur.score || (nxtScore === cur.score && nxtGens < cur.gens)) {
           dp[nxtRem].set(nxtIdx, {
             score: nxtScore,
             path: [...st.path, cost],
+            gens: nxtGens,
             level: curLevel,
             count: curCount
           });
@@ -17123,9 +17170,7 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
 
   let best = null;
   for (const [, val] of dp[0]) {
-    if (!best || val.score > best.score || (val.score === best.score && val.path.reduce((a,b)=>a+b, 0) < best.path.reduce((a,b)=>a+b, 0))) {
-      best = val;
-    }
+    if (!best || val.score > best.score || (val.score === best.score && val.gens < best.gens)) best = val;
   }
   if (!best) return null;
 
@@ -17139,44 +17184,68 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
     compressed.push(`${curB}소환(${cnt}번)`);
   }
 
-  let targetResults = [];
   let cS = startSeed, cLv = startLevel, cCt = startCount;
-  let simIdx = s_state.history.length + 1;
-  for (const cost of best.path) {
-    for (let i = 0; i < cost; i++) {
-      const lvlData = levels_config[Math.min(cLv, levels_config.length - 1)];
-      const item = evalSeed(Number(cS - startSeed), lvlData);
-      
-      let isTarget = false;
-      if (mode === 'stat') {
-        isTarget = item.score >= targetScore;
-      } else if (mode === 'skill') {
-        isTarget = (targetSkill === 'all' || item.skill_name === targetSkill);
-      } else if (mode === 'both') {
-        isTarget = (item.score >= targetScore) && (targetSkill === 'all' || item.skill_name === targetSkill);
-      }
+  let targetResults = null;
+  if (mode === 'stat' || mode === 'skill' || mode === 'both') {
+    targetResults = [];
+    let simIdx = s_state.history.length + 1;
+    for (const cost of best.path) {
+      let totalTarget = cost, pullIdx = 0;
+      while (pullIdx < totalTarget) {
+        const pcg = new MetaplayPCG(cS);
+        const isBonusPull = pullIdx >= cost;
+        if (!isBonusPull) {
+          if (pcg._next_pcg32() < bonusThreshold) totalTarget++;
+        }
+        
+        pcg._next_pcg32();
+        const rarity_roll_raw = pcg._next_pcg32();
+        const lvlData = levels_config[Math.min(cLv, levels_config.length - 1)];
 
-      const itemRes = {
-        index: simIdx,
-        rarity_name: item.rarity_name,
-        skill_name: item.skill_name,
-        nextSeed: ((cS + 1n) & 0xFFFFFFFFFFFFFFFFn).toString(16).toUpperCase(),
-        nextLevel: cCt + 1 >= skillNeedAt(cLv + 1) ? cLv + 1 : cLv,
-        nextCount: cCt + 1 >= skillNeedAt(cLv + 1) ? cCt + 1 - skillNeedAt(cLv + 1) : cCt + 1
-      };
+        let accumulated_raw = 0;
+        let rolled_rarity = "Common";
+        const rarities = ["Common", "Rare", "Epic", "Legendary", "Ultimate", "Mythic"];
+        for (let rarity of rarities) {
+          let rate = lvlData[rarity] || 0.0;
+          accumulated_raw += Number(BigInt(Math.round(rate * 4294967296)));
+          if (rarity_roll_raw < accumulated_raw) {
+            rolled_rarity = rarity;
+            break;
+          }
+        }
+        const chosen_skill = pcg.choice(skills_by_rarity[rolled_rarity]);
 
-      if (isTarget) {
-        targetResults.push(itemRes);
-      }
+        cCt += 1;
+        const req = skillNeedAt(cLv + 1);
+        if (cCt >= req) { cCt -= req; cLv += 1; }
+        cS = (cS + 1n) & 0xFFFFFFFFFFFFFFFFn;
 
-      cCt += 1;
-      const req = skillNeedAt(cLv + 1);
-      if (cCt >= req) {
-        cCt -= req;
-        cLv += 1;
+        const itemRes = {
+          index: simIdx,
+          rarity_name: rolled_rarity,
+          skill_name: chosen_skill,
+          is_bonus: isBonusPull,
+          nextSeed: cS.toString(16).toUpperCase(),
+          nextLevel: cLv,
+          nextCount: cCt
+        };
+
+        let isTarget = false;
+        if (mode === 'stat') {
+          isTarget = RARITY_SCORE[rolled_rarity] >= targetScore;
+        } else if (mode === 'skill') {
+          isTarget = (targetSkill === 'all' || chosen_skill === targetSkill);
+        } else if (mode === 'both') {
+          isTarget = (RARITY_SCORE[rolled_rarity] >= targetScore) && (targetSkill === 'all' || chosen_skill === targetSkill);
+        }
+
+        if (isTarget) {
+          targetResults.push(itemRes);
+        }
+
+        pullIdx++;
+        simIdx++;
       }
-      cS = (cS + 1n) & 0xFFFFFFFFFFFFFFFFn;
-      simIdx++;
     }
   }
 
@@ -17185,8 +17254,8 @@ function doSkillOptimize(state, { amount, mode = 'stat', tier = 'Mythic', target
     mode,
     tier,
     targetSkill,
-    estimatedAcquired: amount,
-    bonusCount: 0,
+    estimatedAcquired: best.gens,
+    bonusCount: best.gens - amount,
     statScore: best.score,
     route: compressed.join(' ➔ '),
     targetResults,
@@ -18574,6 +18643,7 @@ async function refreshAllStatus() {
           </div>`;
       }
       // Skill
+      const s_stars = "★".repeat(state.Skill.ascensionLevel) + "☆".repeat(4 - state.Skill.ascensionLevel);
       const s_seed = state.Skill.seed.toString(16).toUpperCase().padStart(16, '0');
       const s_max = getLevelMaxCount('Skill', state.Skill.level);
       if ($('#skill-status')) {
@@ -18581,7 +18651,8 @@ async function refreshAllStatus() {
           <div style="padding:15px; background:#f5eef8; border-radius:6px; font-family:monospace; font-size:13px; line-height:1.7; border-left:4px solid #9b59b6; color:#2c3e50;">
             <strong style="font-size:14px; color:#2c3e50;">🔮 로컬 실시간 스킬 상태 (Skill)</strong><br>
             • Seed : <span style="color:#8e44ad; font-weight:bold;">${s_seed}</span><br>
-            • Level : Level ${state.Skill.level + 1} (${state.Skill.count}/${s_max})
+            • Level : Level ${state.Skill.level + 1} (${state.Skill.count}/${s_max})<br>
+            • Ascension : <span style="color:#f1c40f;">${s_stars}</span> | Chance: ${state.Skill.chance.toFixed(1)}%
           </div>`;
       }
       // Pet
@@ -18717,6 +18788,7 @@ $('#btn-apply').addEventListener('click', async () => {
     state.Skill.count = Number(BigInt('0x' + lines[4]) & 0xFFFFFFFFn);
     state.Skill.ascensionLevel = parseInt(lines[5], 16);
     state.Skill.isAscended = state.Skill.ascensionLevel > 0;
+    state.Skill.chance = parseFloat($('#ch-skill').value) || 0.0;
     state.Skill.history = [];
 
     state.Pet.seed = BigInt('0x' + lines[6]);
@@ -18738,6 +18810,7 @@ $('#btn-apply').addEventListener('click', async () => {
     state.lastInputText = $('#total-12-lines').value;
     state.lastChances = {
       forge: parseFloat($('#ch-forge').value) || 14,
+      skill: parseFloat($('#ch-skill').value) || 25,
       pet: parseFloat($('#ch-pet').value) || 22,
       mount: parseFloat($('#ch-mount').value) || 20
     };
@@ -19010,7 +19083,7 @@ $('#skill-go').addEventListener('click', async () => {
     if (!skillData) throw new Error("스킬 기획서 데이터가 로드되지 않았습니다.");
 
     // 로컬 doSkillSummon 실행
-    const results = doSkillSummon(state, { amount, times }, skillData);
+    const { newResults, totalAcquired, totalBonus } = doSkillSummon(state, { amount, times }, skillData);
 
     if (outputContainer) {
       const next_seed = state.Skill.seed.toString(16).toUpperCase();
@@ -19020,7 +19093,7 @@ $('#skill-go').addEventListener('click', async () => {
         <div style='margin-bottom:12px; padding:10px; background:#2c3e50; border-radius:4px; font-family:monospace; color:#fff; font-size:13px;'>
           <span style='color:#2ecc71;'>ForgeMaster_Terminal:</span>~$ ${command}
         </div>`;
-      appendOutput(outputContainer, renderSkillResults, title, results, meta);
+      appendOutput(outputContainer, renderSkillResults, title, newResults, meta);
       persist();
       await refreshAllStatus();
     }
@@ -19087,6 +19160,7 @@ if ($('#skill-reset-run')) {
     state.Skill.seed = state.Skill.initSeed ?? state.Skill.seed;
     state.Skill.level = state.Skill.initLevel ?? state.Skill.level;
     state.Skill.count = state.Skill.initCount ?? state.Skill.count;
+    state.Skill.chance = state.Skill.initChance ?? state.Skill.chance;
     state.Skill.history = [];
     persist();
     await refreshAllStatus();
