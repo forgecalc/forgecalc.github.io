@@ -69,6 +69,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -17344,7 +17345,7 @@ function doPetSummon(state, { amount, times }, petData) {
       const chosenPet = pets[pcg.nextInt(pets.length)];
       pcg.nextGuid();
 
-      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
+      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled)) ? 2 : 1;
       const { detailed, f64Sum } = petRollSubstats(pcg, numSubs);
 
       p.history.push({
@@ -17438,7 +17439,7 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
     const pets = petsByRarity[rVal];
     const chosenPet = pets[pcg.nextInt(pets.length)];
     pcg.nextGuid();
-    const nSubs = (['Legendary','Ultimate','Mythic'].includes(rVal) || isAscended) ? 2 : 1;
+    const nSubs = (['Legendary','Ultimate','Mythic'].includes(rVal)) ? 2 : 1;
     const { detailed, f64Sum } = petRollSubstats(pcg, nSubs);
     const perf = (f64Sum / nSubs) * 100;
     return {
@@ -17573,7 +17574,7 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
         const rolled = petRollRarity(pcg, lvlData);
         const chosenPet = petsByRarity[rolled][pcg.nextInt(petsByRarity[rolled].length)];
         pcg.nextGuid();
-        const nSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
+        const nSubs = (['Legendary','Ultimate','Mythic'].includes(rolled)) ? 2 : 1;
         const { detailed, f64Sum } = petRollSubstats(pcg, nSubs);
         const perf = (f64Sum / nSubs) * 100;
         
@@ -17686,7 +17687,7 @@ function findPetPastSeed(state, config, petData) {
 
       pcg.nextGuid();
 
-      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
+      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled)) ? 2 : 1;
       const { detailed } = petRollSubstats(pcg, numSubs);
 
       let matched = true;
@@ -17796,7 +17797,7 @@ function doMountSummon(state, { amount, times }, mountData) {
       pcg.nextInt(mounts.length);
       pcg.nextGuid();
 
-      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
+      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled)) ? 2 : 1;
       const { detailed, f64Sum } = mountRollSubstats(pcg, numSubs);
 
       m.history.push({
@@ -17889,7 +17890,7 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
     const mounts = mountsByRarity[rVal];
     pcg.nextInt(mounts.length);
     pcg.nextGuid();
-    const nSubs = (['Legendary','Ultimate','Mythic'].includes(rVal) || isAscended) ? 2 : 1;
+    const nSubs = (['Legendary','Ultimate','Mythic'].includes(rVal)) ? 2 : 1;
     const { detailed, f64Sum } = mountRollSubstats(pcg, nSubs);
     const perf = (f64Sum / nSubs) * 100;
     return {
@@ -18024,7 +18025,7 @@ function doMountOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filte
         const rolled = mountRollRarity(pcg, lvlData);
         pcg.nextInt(mountsByRarity[rolled].length);
         pcg.nextGuid();
-        const nSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
+        const nSubs = (['Legendary','Ultimate','Mythic'].includes(rolled)) ? 2 : 1;
         const { detailed, f64Sum } = mountRollSubstats(pcg, nSubs);
         const perf = (f64Sum / nSubs) * 100;
         
@@ -18133,7 +18134,7 @@ function findMountPastSeed(state, config, mountData) {
       pcg.nextInt(mounts.length);
       pcg.nextGuid();
 
-      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
+      const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled)) ? 2 : 1;
       const { detailed } = mountRollSubstats(pcg, numSubs);
 
       let matched = true;
