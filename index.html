@@ -73,6 +73,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -17319,11 +17320,22 @@ function petRollRarity(pcg, lvlData) {
   return 'Common';
 }
 
-function petRollSubstats(pcg, numSubs) {
-  const avail = [...SUBSTATS_POOL];
+function petRollSubstats(pcg, numSubs, petType) {
+  let avail = [...SUBSTATS_POOL];
+  if (petType === 'Balanced') {
+    avail = avail.filter(s => !['Block Chance', 'Damage', 'Melee Damage', 'Ranged Damage'].includes(s));
+  } else if (petType === 'Health') {
+    avail = avail.filter(s => !['Double Chance', 'Melee Damage', 'Ranged Damage', 'Skill Damage', 'Health Regen', 'Life Steal'].includes(s));
+  } else if (petType === 'Damage') {
+    avail = avail.filter(s => !['Block Chance', 'Health', 'Health Regen', 'Life Steal', 'Melee Damage', 'Ranged Damage'].includes(s));
+  } else {
+    avail = avail.filter(s => s !== 'Melee Damage' && s !== 'Ranged Damage');
+  }
+
   const detailed = [];
   let f64Sum = 0;
   for (let i = 0; i < numSubs; i++) {
+    if (avail.length === 0) break;
     const name = avail.splice(pcg.nextInt(avail.length), 1)[0];
     const f64Val = pcg.nextF64();
     f64Sum += f64Val;
@@ -17346,30 +17358,25 @@ function doPetSummon(state, { amount, times }, petData) {
   for (let t = 0; t < times; t++) {
     let totalTarget = amount, pullIdx = 0, bonusCnt = 0;
     while (pullIdx < totalTarget) {
+      const pcg = new MetaplayPCG(curSeed);
       const isBonusPull = pullIdx >= amount;
-      
-      let genBonus = false;
+
       if (!isBonusPull) {
-        const bonusPcg = new MetaplayPCG(curSeed);
-        if (bonusPcg.nextPcg32() < bonusThreshold) {
-          genBonus = true;
+        if (pcg.nextPcg32() < bonusThreshold) {
+          totalTarget++; bonusCnt++;
         }
       }
-      if (genBonus) {
-        totalTarget++; bonusCnt++;
-      }
 
-      const pcg = new MetaplayPCG(curSeed);
       const lvlData = levels[Math.min(curLevel, levels.length - 1)];
       const rolled = petRollRarity(pcg, lvlData);
 
       const pets = petsByRarity[rolled];
-      const chosenPet = pets[0]; // 인덱스 롤링 제거
+      const chosenPet = pets[pcg.nextInt(pets.length)];
       const petType = petLibrary[chosenPet].Type;
       pcg.nextGuid();
 
       const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
-      const { detailed, f64Sum } = petRollSubstats(pcg, numSubs);
+      const { detailed, f64Sum } = petRollSubstats(pcg, numSubs, petType);
 
       p.history.push({
         rarity_score: RARITY_SCORE[rolled],
@@ -17448,12 +17455,11 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
 
   const cacheA = new Map(), cacheB = new Map();
   function evalSeed(seedOffset, lvlData, isBase) {
+    const pcg = new MetaplayPCG(startSeed + BigInt(seedOffset));
     let genBonus = false;
     if (isBase) {
-      const bonusPcg = new MetaplayPCG(startSeed + BigInt(seedOffset));
-      if (bonusPcg.nextPcg32() < bonusThreshold) genBonus = true;
+      if (pcg.nextPcg32() < bonusThreshold) genBonus = true;
     }
-    const pcg = new MetaplayPCG(startSeed + BigInt(seedOffset));
     const rRaw = pcg.nextPcg32();
     let acc = 0, rVal = 'Common';
     for (const r of RARITIES) {
@@ -17461,11 +17467,11 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
       if (rRaw < acc) { rVal = r; break; }
     }
     const pets = petsByRarity[rVal];
-    const chosenPet = pets[0];
+    const chosenPet = pets[pcg.nextInt(pets.length)];
     const petType = petLibrary[chosenPet].Type;
     pcg.nextGuid();
     const nSubs = (['Legendary','Ultimate','Mythic'].includes(rVal) || isAscended) ? 2 : 1;
-    const { detailed, f64Sum } = petRollSubstats(pcg, nSubs);
+    const { detailed, f64Sum } = petRollSubstats(pcg, nSubs, petType);
     const perf = (f64Sum / nSubs) * 100;
     return {
       genBonus,
@@ -17590,27 +17596,23 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
     for (const cost of best.path) {
       let totalTarget = cost, pullIdx = 0;
       while (pullIdx < totalTarget) {
+        const pcg = new MetaplayPCG(cS);
         const isBonusPull = pullIdx >= cost;
         
-        let genBonus = false;
         if (!isBonusPull) {
-          const bonusPcg = new MetaplayPCG(cS);
-          if (bonusPcg.nextPcg32() < bonusThreshold) {
-            genBonus = true;
+          if (pcg.nextPcg32() < bonusThreshold) {
+            totalTarget++;
           }
         }
-        if (genBonus) {
-          totalTarget++;
-        }
 
-        const pcg = new MetaplayPCG(cS);
         const lvlData = levels[Math.min(cLv, levels.length - 1)];
         const rolled = petRollRarity(pcg, lvlData);
-        const chosenPet = petsByRarity[rolled][0]; // 인덱스 롤링 제거
+        const pets = petsByRarity[rolled];
+        const chosenPet = pets[pcg.nextInt(pets.length)];
         const petType = petLibrary[chosenPet].Type;
         pcg.nextGuid();
         const nSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
-        const { detailed, f64Sum } = petRollSubstats(pcg, nSubs);
+        const { detailed, f64Sum } = petRollSubstats(pcg, nSubs, petType);
         const perf = (f64Sum / nSubs) * 100;
         
         cCt += 1;
@@ -17708,18 +17710,22 @@ function findPetPastSeed(state, config, petData) {
     for (const isBonus of [false, true]) {
       const pcg = new MetaplayPCG(startSeed);
 
+      if (!isBonus) {
+        pcg.nextPcg32();
+      }
+
       const rolled = petRollRarity(pcg, lvlData);
       if (rolled !== reqRarity) continue;
 
       const pets = petsByRarity[rolled];
-      const chosenPet = pets[0]; // 인덱스 롤링 제거
+      const chosenPet = pets[pcg.nextInt(pets.length)];
       const petType = petLibrary[chosenPet].Type;
       if (reqType !== 'all' && petType !== reqType) continue;
 
       pcg.nextGuid();
 
       const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
-      const { detailed } = petRollSubstats(pcg, numSubs);
+      const { detailed } = petRollSubstats(pcg, numSubs, petType);
 
       let matched = true;
       for (const reqS of reqStats) {
