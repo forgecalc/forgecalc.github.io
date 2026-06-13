@@ -71,6 +71,7 @@
 
 
 
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>전투력 · 대장간 계산기</title>
@@ -17317,11 +17318,22 @@ function petRollRarity(pcg, lvlData) {
   return 'Common';
 }
 
-function petRollSubstats(pcg, numSubs) {
-  const avail = [...SUBSTATS_POOL];
+function petRollSubstats(pcg, numSubs, petType) {
+  let avail = [...SUBSTATS_POOL];
+  if (petType === 'Balanced') {
+    avail = avail.filter(s => !['Block Chance', 'Damage', 'Melee Damage', 'Ranged Damage'].includes(s));
+  } else if (petType === 'Health') {
+    avail = avail.filter(s => !['Double Chance', 'Melee Damage', 'Ranged Damage', 'Skill Damage', 'Health Regen', 'Life Steal'].includes(s));
+  } else if (petType === 'Damage') {
+    avail = avail.filter(s => !['Block Chance', 'Health', 'Health Regen', 'Life Steal', 'Melee Damage', 'Ranged Damage'].includes(s));
+  } else {
+    avail = avail.filter(s => s !== 'Melee Damage' && s !== 'Ranged Damage');
+  }
+
   const detailed = [];
   let f64Sum = 0;
   for (let i = 0; i < numSubs; i++) {
+    if (avail.length === 0) break;
     const name = avail.splice(pcg.nextInt(avail.length), 1)[0];
     const f64Val = pcg.nextF64();
     f64Sum += f64Val;
@@ -17358,15 +17370,16 @@ function doPetSummon(state, { amount, times }, petData) {
 
       const pets = petsByRarity[rolled];
       const chosenPet = pets[pcg.nextInt(pets.length)];
+      const petType = petLibrary[chosenPet].Type;
       pcg.nextGuid();
 
       const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
-      const { detailed, f64Sum } = petRollSubstats(pcg, numSubs);
+      const { detailed, f64Sum } = petRollSubstats(pcg, numSubs, petType);
 
       p.history.push({
         rarity_score: RARITY_SCORE[rolled],
         rarity_name: rolled,
-        pet_type: petLibrary[chosenPet].Type,
+        pet_type: petType,
         perfection: (f64Sum / numSubs) * 100,
         detailed_stats: detailed,
         is_bonus: isBonusPull,
@@ -17453,15 +17466,16 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
     }
     const pets = petsByRarity[rVal];
     const chosenPet = pets[pcg.nextInt(pets.length)];
+    const petType = petLibrary[chosenPet].Type;
     pcg.nextGuid();
     const nSubs = (['Legendary','Ultimate','Mythic'].includes(rVal) || isAscended) ? 2 : 1;
-    const { detailed, f64Sum } = petRollSubstats(pcg, nSubs);
+    const { detailed, f64Sum } = petRollSubstats(pcg, nSubs, petType);
     const perf = (f64Sum / nSubs) * 100;
     return {
       genBonus,
       score: RARITY_SCORE[rVal],
       rarity_name: rVal,
-      pet_type: petLibrary[chosenPet].Type,
+      pet_type: petType,
       perfection: perf,
       detailed_stats: detailed,
       is_bonus: !isBase
@@ -17588,9 +17602,10 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
         const lvlData = levels[Math.min(cLv, levels.length - 1)];
         const rolled = petRollRarity(pcg, lvlData);
         const chosenPet = petsByRarity[rolled][pcg.nextInt(petsByRarity[rolled].length)];
+        const petType = petLibrary[chosenPet].Type;
         pcg.nextGuid();
         const nSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
-        const { detailed, f64Sum } = petRollSubstats(pcg, nSubs);
+        const { detailed, f64Sum } = petRollSubstats(pcg, nSubs, petType);
         const perf = (f64Sum / nSubs) * 100;
         
         cCt += 1;
@@ -17703,7 +17718,7 @@ function findPetPastSeed(state, config, petData) {
       pcg.nextGuid();
 
       const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
-      const { detailed } = petRollSubstats(pcg, numSubs);
+      const { detailed } = petRollSubstats(pcg, numSubs, petType);
 
       let matched = true;
       for (const reqS of reqStats) {
