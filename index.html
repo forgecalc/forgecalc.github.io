@@ -17321,16 +17321,7 @@ function petRollRarity(pcg, lvlData) {
 }
 
 function petRollSubstats(pcg, numSubs, petType) {
-  let avail = [...SUBSTATS_POOL];
-  if (petType === 'Balanced') {
-    avail = avail.filter(s => !['Block Chance', 'Damage', 'Melee Damage', 'Ranged Damage'].includes(s));
-  } else if (petType === 'Health') {
-    avail = avail.filter(s => !['Double Chance', 'Melee Damage', 'Ranged Damage', 'Skill Damage', 'Health Regen', 'Life Steal'].includes(s));
-  } else if (petType === 'Damage') {
-    avail = avail.filter(s => !['Block Chance', 'Health', 'Health Regen', 'Life Steal', 'Melee Damage', 'Ranged Damage'].includes(s));
-  } else {
-    avail = avail.filter(s => s !== 'Melee Damage' && s !== 'Ranged Damage');
-  }
+  const avail = [...SUBSTATS_POOL];
 
   const detailed = [];
   let f64Sum = 0;
@@ -17362,7 +17353,8 @@ function doPetSummon(state, { amount, times }, petData) {
       const isBonusPull = pullIdx >= amount;
 
       if (!isBonusPull) {
-        if (pcg.nextPcg32() < bonusThreshold) {
+        const bonusPcg = new MetaplayPCG(curSeed);
+        if (bonusPcg.nextPcg32() < bonusThreshold) {
           totalTarget++; bonusCnt++;
         }
       }
@@ -17371,7 +17363,7 @@ function doPetSummon(state, { amount, times }, petData) {
       const rolled = petRollRarity(pcg, lvlData);
 
       const pets = petsByRarity[rolled];
-      const chosenPet = pets[pcg.nextInt(pets.length)];
+      const chosenPet = pets[0];
       const petType = petLibrary[chosenPet].Type;
       pcg.nextGuid();
 
@@ -17458,7 +17450,8 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
     const pcg = new MetaplayPCG(startSeed + BigInt(seedOffset));
     let genBonus = false;
     if (isBase) {
-      if (pcg.nextPcg32() < bonusThreshold) genBonus = true;
+      const bonusPcg = new MetaplayPCG(startSeed + BigInt(seedOffset));
+      if (bonusPcg.nextPcg32() < bonusThreshold) genBonus = true;
     }
     const rRaw = pcg.nextPcg32();
     let acc = 0, rVal = 'Common';
@@ -17467,7 +17460,7 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
       if (rRaw < acc) { rVal = r; break; }
     }
     const pets = petsByRarity[rVal];
-    const chosenPet = pets[pcg.nextInt(pets.length)];
+    const chosenPet = pets[0];
     const petType = petLibrary[chosenPet].Type;
     pcg.nextGuid();
     const nSubs = (['Legendary','Ultimate','Mythic'].includes(rVal) || isAscended) ? 2 : 1;
@@ -17600,7 +17593,8 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
         const isBonusPull = pullIdx >= cost;
         
         if (!isBonusPull) {
-          if (pcg.nextPcg32() < bonusThreshold) {
+          const bonusPcg = new MetaplayPCG(cS);
+          if (bonusPcg.nextPcg32() < bonusThreshold) {
             totalTarget++;
           }
         }
@@ -17608,7 +17602,7 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
         const lvlData = levels[Math.min(cLv, levels.length - 1)];
         const rolled = petRollRarity(pcg, lvlData);
         const pets = petsByRarity[rolled];
-        const chosenPet = pets[pcg.nextInt(pets.length)];
+        const chosenPet = pets[0];
         const petType = petLibrary[chosenPet].Type;
         pcg.nextGuid();
         const nSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
@@ -17710,15 +17704,11 @@ function findPetPastSeed(state, config, petData) {
     for (const isBonus of [false, true]) {
       const pcg = new MetaplayPCG(startSeed);
 
-      if (!isBonus) {
-        pcg.nextPcg32();
-      }
-
       const rolled = petRollRarity(pcg, lvlData);
       if (rolled !== reqRarity) continue;
 
       const pets = petsByRarity[rolled];
-      const chosenPet = pets[pcg.nextInt(pets.length)];
+      const chosenPet = pets[0];
       const petType = petLibrary[chosenPet].Type;
       if (reqType !== 'all' && petType !== reqType) continue;
 
