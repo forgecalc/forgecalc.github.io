@@ -652,18 +652,9 @@ table td.center { text-align: center; }
   <div class="notice">⚠️ iOS Safari는 일주일 이상 안 열면 저장값을 자동 삭제할 수 있어요. 가끔 JSON 내보내기로 백업해 두세요.</div>
 
   <div class="tabs">
-    <div class="tab active" data-tab="combat">⚔️ 전투력</div>
     <div class="tab" data-tab="forge">🔨 대장간</div>
     <div class="tab" data-tab="ascend">🌟 승천</div>
-    <div class="tab" data-tab="miraesee">🔮 미래시</div>
-  </div>
-
-  <div class="tab-panel active" id="panel-combat">
-    <details open id="sec-result"><summary>📊 현재 DPS</summary><div class="body" id="result-body"></div></details>
-    <details open id="sec-me"><summary>① 내 장비/펫/탈것 세팅</summary><div class="body" id="me-body"></div></details>
-    <details id="sec-buff"><summary>② 연구 보정 및 버프</summary><div class="body" id="buff-body"></div></details>
-    <details id="sec-compare"><summary>③ 장비 교체 DPS 비교</summary><div class="body" id="cmp-body"></div></details>
-    <details id="sec-recommend"><summary>④ 최대 DPS 옵션 추천</summary><div class="body" id="rec-body"></div></details>
+    <div class="tab active" data-tab="miraesee">🔮 미래시</div>
   </div>
 
   <div class="tab-panel" id="panel-forge">
@@ -683,7 +674,7 @@ table td.center { text-align: center; }
 
   
   <!-- MIRAESEE_PANEL_START -->
-  <div class="tab-panel" id="panel-miraesee">
+  <div class="tab-panel active" id="panel-miraesee">
     <div style="max-width: 1000px; margin: 0 auto; padding: 12px 10px 100px;">
       <div id="init-screen" style="max-width: 600px; margin: 50px auto; padding: 25px; background: #f8f9fa; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-top: 5px solid #2ecc71;">
         <h2 style="text-align: center; color: #2c3e50; margin-bottom: 20px; font-weight: 700;">🔮 ForgeMaster 통합 미래시 주입창</h2>
@@ -1360,7 +1351,7 @@ function defaultState(){
     },
     fixedSkills: JSON.parse(JSON.stringify(FIXED_SKILLS_DEFAULT)),
     skins: [{ dmg:0, hp:0 }, { dmg:0, hp:0 }, { dmg:0, hp:0 }],
-    _activeTab: "combat",
+    _activeTab: "miraesee",
   };
 }
 
@@ -1409,8 +1400,8 @@ function migrate(s){
   s.forge.upgrading = Object.assign({ active:false, remainingSec:0 }, s.forge.upgrading||{});
   if(s.forge.hammerSaveChance === undefined) s.forge.hammerSaveChance = 13;
 
-  s._activeTab = s._activeTab || "combat";
-  if(s._activeTab === "stones") s._activeTab = "combat";
+  s._activeTab = s._activeTab || "miraesee";
+  if(s._activeTab === "stones" || s._activeTab === "combat") s._activeTab = "miraesee";
   delete s.stones;
   s.ascend = Object.assign({}, d.ascend, s.ascend||{});
   for(const k of ["skill","pet","mount"]){
@@ -1429,500 +1420,6 @@ function migrate(s){
   return s;
 }
 function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
-
-/* ==========================================================================
-   시뮬레이션 로직 (확률 기반 랜덤 적용)
-   ========================================================================== */
-function aggregateOptions(st){
-  const agg = Object.fromEntries(OPT.filter(o=>o.id!=="none").map(o=>[o.id,0]));
-  const allSlots = [...st.equips, ...st.pets, st.mount];
-  for(const slot of allSlots){
-    for(const o of slot.opts){
-      if(o && o.type && o.type !== "none" && agg[o.type] !== undefined) agg[o.type] += (+o.val || 0);
-    }
-  }
-  return agg;
-}
-
-function realCd(baseCd, skillCdSum){
-  const v = +baseCd || 0;
-  if(v <= 0) return Infinity;
-  return Math.max(0.05, v * (1 + skillCdSum/100));
-}
-
-function computeBase(st, agg){
-  const r = st.research;
-  // 스킨 합산 (피해%, 체력%) — 장비 합계에만 곱해짐
-  const skins = Array.isArray(st.skins) ? st.skins : [];
-  const skinDmgPct = skins.reduce((s,x)=> s + (+x.dmg||0), 0);
-  const skinHpPct  = skins.reduce((s,x)=> s + (+x.hp||0), 0);
-
-  // 장비: 부위별 연구 + 전체 연구(r.equipHp, r.equipAtk) + 스킨 %
-  const equipHpRaw  = st.equips.reduce((sum, eq, i) => sum + (+eq.hp||0)  * (1 + (r.equips[i]?.hp||0)/100), 0);
-  const equipAtkRaw = st.equips.reduce((sum, eq, i) => sum + (+eq.atk||0) * (1 + (r.equips[i]?.atk||0)/100), 0);
-  const equipHp  = equipHpRaw  * (1 + (r.equipHp||0)/100)  * (1 + skinHpPct/100);
-  const equipAtk = equipAtkRaw * (1 + (r.equipAtk||0)/100) * (1 + skinDmgPct/100);
-
-  const petHp  = st.pets.reduce((sum, eq) => sum + (+eq.hp||0), 0)  * (1 + (r.petHp||0)/100);
-  const petAtk = st.pets.reduce((sum, eq) => sum + (+eq.atk||0), 0) * (1 + (r.petAtk||0)/100);
-  const mntHp  = (+st.mount.hp||0)  * (1 + (r.mountHp||0)/100);
-  const mntAtk = (+st.mount.atk||0) * (1 + (r.mountAtk||0)/100);
-
-  const rawHp  = equipHp + petHp + mntHp;
-  const rawAtk = equipAtk + petAtk + mntAtk;
-
-  const buffWaitCd = realCd(FIXED_SKILLS.buff.cd, agg.skillCd);
-  const buffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + buffWaitCd);
-
-  // 버프 OFF 기본값 (시뮬은 이 상태로 시작, 2.2초에 버프 발동)
-  const totalHp_OFF_noArena = rawHp * (1 + agg.hp/100) + (+st.buff.hpFlat||0);
-  const totalHp_OFF = totalHp_OFF_noArena * 5;
-
-  // 평타 공식: base = atkCore × (1+dmg)(1+ranged) + atkBuff
-  // atkCore는 "배수 곱하는 쪽" = rawAtk만 포함
-  // atkBuff는 "그대로 더하는 쪽" = buff.atkFlat(상시) + 버프스킬 추가분(동적)
-  const totalAtkCore = rawAtk;
-  const buffAtkFlat = (+st.buff.atkFlat||0); // 상시
-
-  // 버프스킬 발동 시 추가
-  const buffHpBonus = (FIXED_SKILLS.buff.hp||0) * 5; // 결투장 ×5 반영
-  const buffAtkBonus = (FIXED_SKILLS.buff.atk||0);
-
-  // 평균 (공식·UI용)
-  const avgAtkBuff = buffAtkFlat + buffAtkBonus * buffUptime;
-  const totalHp = totalHp_OFF + buffHpBonus * buffUptime;
-  const totalAtk = totalAtkCore + avgAtkBuff;
-
-  return { totalHp, totalAtk, totalAtkCore, totalAtkBuff: avgAtkBuff, rawHp, rawAtk,
-           equipHp, equipAtk, petHp, petAtk, mntHp, mntAtk,
-           totalHp_OFF, buffAtkFlat, buffHpBonus, buffAtkBonus, buffUptime };
-}
-
-function attackPeriod(atkSpd){
-  const v = Math.max(0, +atkSpd||0);
-  // 구간 경계점: [공속%, 해당 공속에서의 공격 주기(초)]
-  // 범위 내에서는 선형 보간으로 세분화됨
-  const t = [
-    [0, 1.7], [7.1, 1.6], [15.4, 1.5], [25, 1.4], [36.4, 1.3], [50, 1.2],
-    [66.7, 1.1], [87.5, 1.0], [114, 0.9], [150, 0.8], [200, 0.7], [275, 0.6], [400, 0.5]
-  ];
-  if(v <= t[0][0]) return t[0][1];
-  if(v >= t[t.length-1][0]) return t[t.length-1][1];
-  for(let i=0; i<t.length-1; i++){
-    const [lowX, lowT] = t[i];
-    const [highX, highT] = t[i+1];
-    if(v >= lowX && v <= highX){
-      const ratio = (v - lowX) / (highX - lowX);
-      return lowT + (highT - lowT) * ratio;
-    }
-  }
-  return 0.5;
-}
-
-// 단일 타격: 블록 롤 → 치명 롤. detail 반환.
-function rollOneHitDetail(base, cr, cd, blk){
-  if (Math.random() < blk) return { dmg: 0, crit: false, blocked: true };
-  const crit = Math.random() < cr;
-  return { dmg: crit ? base * cd : base, crit, blocked: false };
-}
-
-function getAutoDmg(atkCore, atkBuff, opts, oppBlock, isDeterministic = false, hitList = null){
-  const cr = Math.max(0, Math.min(100, opts.critRate||0))/100;
-  const cd = (120 + (opts.critDmg||0))/100;
-  const db = Math.max(0, Math.min(100, opts.double||0))/100;
-  const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
-  // 평타: core는 dmg/ranged 곱 적용, buff는 그대로 더함 (게임 실측 기준)
-  const base = atkCore * (1 + (opts.dmg||0)/100) * (1 + (opts.ranged||0)/100) + (atkBuff||0);
-
-  if (isDeterministic) {
-    return base * ((1-cr)*1 + cr*cd) * (1+db) * (1-blk);
-  }
-  const hit1 = rollOneHitDetail(base, cr, cd, blk);
-  if(hitList) hitList.push(hit1);
-  let total = hit1.dmg;
-  if (Math.random() < db) {
-    const hit2 = rollOneHitDetail(base, cr, cd, blk);
-    hit2.double = true;
-    if(hitList) hitList.push(hit2);
-    total += hit2.dmg;
-  }
-  return total;
-}
-
-// 스킬 전용 타격: 치명 없음, 블록만 적용
-function rollSkillHitDetail(base, blk){
-  if (Math.random() < blk) return { dmg: 0, crit: false, blocked: true };
-  return { dmg: base, crit: false, blocked: false };
-}
-
-function getSkillFlatDmg(flatBase, opts, oppBlock, researchSkillDmg, isDeterministic = false, hitList = null){
-  // 스킬은 치명·더블 모두 미적용. 블록만 적용. (1타 고정)
-  const blk = Math.max(0, Math.min(100, oppBlock||0))/100;
-  const base = flatBase * (1 + (opts.dmg||0)/100) * (1 + ((opts.skillDmg||0) + (researchSkillDmg||0))/100);
-
-  if (isDeterministic) {
-    return base * (1 - blk);
-  }
-  const hit = rollSkillHitDetail(base, blk);
-  if(hitList) hitList.push(hit);
-  return hit.dmg;
-}
-
-function simulate(me, en, isDeterministic = false, collectLog = false){
-  const dtMs = 100;
-  const tMaxMs = 120000;
-  // 버프 OFF 상태로 시작. 2.2초에 버프 발동 시 HP/ATK 증가
-  let myMax = me.totalHp_OFF || me.totalHp;
-  let enMax = en.totalHp_OFF || en.totalHp;
-  let myHp = myMax, enHp = enMax;
-  // 상시 buff.atkFlat는 기본값, 버프스킬 발동 시 buffAtkBonus 추가
-  let myCurrAtkBuff = (me.buffAtkFlat||0);
-  let enCurrAtkBuff = (en.buffAtkFlat||0);
-
-  const myAutoP = attackPeriod(me.opts.atkSpd);
-  const enAutoP = attackPeriod(en.opts.atkSpd);
-  const myAutoMs = Math.round(myAutoP * 1000);
-  const enAutoMs = Math.round(enAutoP * 1000);
-
-  const myLife = Math.max(0, +(me.opts.lifesteal||0))/100;
-  const enLife = Math.max(0, +(en.opts.lifesteal||0))/100;
-
-  const myS1Cd = realCd(me.isMe ? FIXED_SKILLS.s1.cd : (me.skills?.[0]?.cd||0), me.opts.skillCd);
-  const myS2Cd = realCd(me.isMe ? FIXED_SKILLS.s2.cd : (me.skills?.[1]?.cd||0), me.opts.skillCd);
-  const enS1Cd = realCd(en.isMe ? FIXED_SKILLS.s1.cd : (en.skills?.[0]?.cd||0), en.opts.skillCd);
-  const enS2Cd = realCd(en.isMe ? FIXED_SKILLS.s2.cd : (en.skills?.[1]?.cd||0), en.opts.skillCd);
-
-  const myS1Cycle = (me.isMe ? FIXED_SKILLS.s1.duration : 0) + myS1Cd;
-  const myS2Cycle = (me.isMe ? FIXED_SKILLS.s2.duration : 0) + myS2Cd;
-  const enS1Cycle = (en.isMe ? FIXED_SKILLS.s1.duration : 0) + enS1Cd;
-  const enS2Cycle = (en.isMe ? FIXED_SKILLS.s2.duration : 0) + enS2Cd;
-
-  const myS1DmgBase = me.isMe ? FIXED_SKILLS.s1.dmg : (me.skills?.[0]?.dmg||0);
-  const myS2DmgBase = me.isMe ? FIXED_SKILLS.s2.dmg : (me.skills?.[1]?.dmg||0);
-  const enS1DmgBase = en.isMe ? FIXED_SKILLS.s1.dmg : (en.skills?.[0]?.dmg||0);
-  const enS2DmgBase = en.isMe ? FIXED_SKILLS.s2.dmg : (en.skills?.[1]?.dmg||0);
-
-  // 첫 auto 시점 = autoAnchor (공속과 무관한 고정 시각). 이후 += autoMs.
-  const autoAnchorMs = Math.max(0, Math.round((FIXED_SKILLS.autoAnchor||1.88) * 1000));
-  let myNextAuto = myAutoMs > 0 ? autoAnchorMs : Infinity;
-  let enNextAuto = enAutoMs > 0 ? autoAnchorMs : Infinity;
-
-  // 첫 스킬 발동 = 전투 시작 후 startTime(초) 고정 시점 (공속과 무관)
-  const s1StartMs = Math.max(50, Math.round((FIXED_SKILLS.s1.startTime||2.2) * 1000));
-  const s2StartMs = Math.max(50, Math.round((FIXED_SKILLS.s2.startTime||2.2) * 1000));
-  const buffStartMs = Math.max(50, Math.round((FIXED_SKILLS.buff.startTime||2.2) * 1000));
-  let myNextS1 = myS1DmgBase > 0 && myS1Cd !== Infinity ? s1StartMs : Infinity;
-  let myNextS2 = myS2DmgBase > 0 && myS2Cd !== Infinity ? s2StartMs : Infinity;
-  let enNextS1 = enS1DmgBase > 0 && enS1Cd !== Infinity ? s1StartMs : Infinity;
-  let enNextS2 = enS2DmgBase > 0 && enS2Cd !== Infinity ? s2StartMs : Infinity;
-
-  // 버프스킬: 고정 시점 첫 발동, 지속 duration초, 쿨타임 cd초 (skillCd 옵션 반영)
-  const buffDurMs = (FIXED_SKILLS.buff.duration||0) * 1000;
-  const myBuffCdSec = realCd(FIXED_SKILLS.buff.cd, me.opts.skillCd);
-  const enBuffCdSec = realCd(FIXED_SKILLS.buff.cd, en.opts.skillCd);
-  const myBuffCdMs = myBuffCdSec === Infinity ? Infinity : Math.max(50, Math.round(myBuffCdSec * 1000));
-  const enBuffCdMs = enBuffCdSec === Infinity ? Infinity : Math.max(50, Math.round(enBuffCdSec * 1000));
-  const myHasBuff = (me.buffHpBonus||0) > 0 || (me.buffAtkBonus||0) > 0;
-  const enHasBuff = (en.buffHpBonus||0) > 0 || (en.buffAtkBonus||0) > 0;
-  let myNextBuff = myHasBuff ? buffStartMs : Infinity;
-  let enNextBuff = enHasBuff ? buffStartMs : Infinity;
-  let myBuffEndMs = -1, enBuffEndMs = -1;
-
-  let myTotalDealt = 0;
-  let enTotalDealt = 0;
-  const log = [];
-
-  let tMs = 0;
-  while(tMs < tMaxMs){
-    tMs += dtMs;
-    let myDealtThisTick = 0, enDealtThisTick = 0;
-    let myAutoDealt = 0, enAutoDealt = 0;
-    let myS1Dealt = 0, myS2Dealt = 0, enS1Dealt = 0, enS2Dealt = 0;
-
-    // 타격 디테일 수집(로그 수집 시에만)
-    const myAutoHits = collectLog ? [] : null;
-    const myS1Hits = collectLog ? [] : null;
-    const myS2Hits = collectLog ? [] : null;
-    const enAutoHits = collectLog ? [] : null;
-    const enS1Hits = collectLog ? [] : null;
-    const enS2Hits = collectLog ? [] : null;
-    let myBuffStarted = false, myBuffEnded = false, enBuffStarted = false, enBuffEnded = false;
-
-    // 버프 발동/종료 (공격 처리 전)
-    if(myNextBuff !== Infinity && tMs >= myNextBuff){
-      myMax += (me.buffHpBonus||0);
-      myHp += (me.buffHpBonus||0);
-      myCurrAtkBuff = (me.buffAtkFlat||0) + (me.buffAtkBonus||0);
-      myBuffEndMs = tMs + buffDurMs;
-      myNextBuff = Infinity;
-      myBuffStarted = true;
-    }
-    if(myBuffEndMs > 0 && tMs >= myBuffEndMs){
-      myMax = Math.max(0, myMax - (me.buffHpBonus||0));
-      myHp = Math.min(myHp, myMax);
-      myCurrAtkBuff = (me.buffAtkFlat||0);
-      myBuffEndMs = -1;
-      myNextBuff = (myBuffCdMs === Infinity) ? Infinity : tMs + myBuffCdMs;
-      myBuffEnded = true;
-    }
-    if(enNextBuff !== Infinity && tMs >= enNextBuff){
-      enMax += (en.buffHpBonus||0);
-      enHp += (en.buffHpBonus||0);
-      enCurrAtkBuff = (en.buffAtkFlat||0) + (en.buffAtkBonus||0);
-      enBuffEndMs = tMs + buffDurMs;
-      enNextBuff = Infinity;
-      enBuffStarted = true;
-    }
-    if(enBuffEndMs > 0 && tMs >= enBuffEndMs){
-      enMax = Math.max(0, enMax - (en.buffHpBonus||0));
-      enHp = Math.min(enHp, enMax);
-      enCurrAtkBuff = (en.buffAtkFlat||0);
-      enBuffEndMs = -1;
-      enNextBuff = (enBuffCdMs === Infinity) ? Infinity : tMs + enBuffCdMs;
-      enBuffEnded = true;
-    }
-
-    if(tMs >= myNextAuto){
-      const dmg = getAutoDmg(me.totalAtkCore, myCurrAtkBuff, me.opts, en.opts.block, isDeterministic, myAutoHits);
-      myAutoDealt += dmg; myDealtThisTick += dmg;
-      myNextAuto += myAutoMs;
-    }
-    if(tMs >= myNextS1){
-      const d = getSkillFlatDmg(myS1DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic, myS1Hits);
-      myS1Dealt += d; myDealtThisTick += d;
-      myNextS1 += Math.max(50, Math.round(myS1Cycle * 1000));
-    }
-    if(tMs >= myNextS2){
-      const d = getSkillFlatDmg(myS2DmgBase, me.opts, en.opts.block, me.research?.skillDmg||0, isDeterministic, myS2Hits);
-      myS2Dealt += d; myDealtThisTick += d;
-      myNextS2 += Math.max(50, Math.round(myS2Cycle * 1000));
-    }
-
-    if(tMs >= enNextAuto){
-      const dmg = getAutoDmg(en.totalAtkCore, enCurrAtkBuff, en.opts, me.opts.block, isDeterministic, enAutoHits);
-      enAutoDealt += dmg; enDealtThisTick += dmg;
-      enNextAuto += enAutoMs;
-    }
-    if(tMs >= enNextS1){
-      const d = getSkillFlatDmg(enS1DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic, enS1Hits);
-      enS1Dealt += d; enDealtThisTick += d;
-      enNextS1 += Math.max(50, Math.round(enS1Cycle * 1000));
-    }
-    if(tMs >= enNextS2){
-      const d = getSkillFlatDmg(enS2DmgBase, en.opts, me.opts.block, en.research?.skillDmg||0, isDeterministic, enS2Hits);
-      enS2Dealt += d; enDealtThisTick += d;
-      enNextS2 += Math.max(50, Math.round(enS2Cycle * 1000));
-    }
-
-    enHp -= myDealtThisTick;
-    myHp -= enDealtThisTick;
-
-    myTotalDealt += myDealtThisTick;
-    enTotalDealt += enDealtThisTick;
-
-    const myHeal = myAutoDealt > 0 ? myAutoDealt * myLife : 0;
-    const enHeal = enAutoDealt > 0 ? enAutoDealt * enLife : 0;
-    if(myHeal > 0) myHp = Math.min(myMax, myHp + myHeal);
-    if(enHeal > 0) enHp = Math.min(enMax, enHp + enHeal);
-
-    if(collectLog && (myDealtThisTick > 0 || enDealtThisTick > 0 || myBuffStarted || myBuffEnded || enBuffStarted || enBuffEnded)){
-      log.push({ t:tMs/1000,
-                 myAuto:myAutoDealt, myS1:myS1Dealt, myS2:myS2Dealt, myHeal,
-                 enAuto:enAutoDealt, enS1:enS1Dealt, enS2:enS2Dealt, enHeal,
-                 myAutoHits, myS1Hits, myS2Hits, enAutoHits, enS1Hits, enS2Hits,
-                 myBuffStarted, myBuffEnded, enBuffStarted, enBuffEnded,
-                 myHp:Math.max(0,myHp), enHp:Math.max(0,enHp),
-                 myMaxTick: myMax, enMaxTick: enMax });
-    }
-
-    const meDead = myHp <= 0, enDead = enHp <= 0;
-    if(meDead && enDead) return { winner:"draw", myHp:0, enHp:0, t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt, log };
-    if(enDead) return { winner:"me", myHp:Math.max(0,myHp), enHp:0, t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt, log };
-    if(meDead) return { winner:"en", myHp:0, enHp:Math.max(0,enHp), t:tMs/1000, myMax, enMax, timeout:false, myTotalDealt, enTotalDealt, log };
-  }
-  const myFrac = myHp/myMax, enFrac = enHp/enMax;
-  return { winner: myFrac>enFrac?"me":(myFrac<enFrac?"en":"draw"), myHp:Math.max(0,myHp), enHp:Math.max(0,enHp), t:tMaxMs/1000, myMax, enMax, timeout:true, myTotalDealt, enTotalDealt, log };
-}
-
-function buildMe(st){
-  const agg = aggregateOptions(st);
-  const base = computeBase(st, agg);
-  return { isMe: true, totalHp: base.totalHp, totalAtk: base.totalAtk,
-           totalAtkCore: base.totalAtkCore, totalAtkBuff: base.totalAtkBuff,
-           totalHp_OFF: base.totalHp_OFF,
-           buffAtkFlat: base.buffAtkFlat,
-           buffHpBonus: base.buffHpBonus, buffAtkBonus: base.buffAtkBonus,
-           opts: agg, research: st.research,
-           _rawHp: base.rawHp, _rawAtk: base.rawAtk,
-           _equipHp: base.equipHp, _equipAtk: base.equipAtk };
-}
-
-function buildPresetEnemy(st, fallbackHp, fallbackAtk){
-  let enHp = +st.enemy.hp || 0;
-  let enAtk = +st.enemy.atk || 0;
-
-  if(enHp <= 0) enHp = (fallbackHp || 100000) / 5;
-  if(enAtk <= 0) enAtk = fallbackAtk || 10000;
-
-  const presetDist = { critRate: 7, critDmg: 7, atkSpd: 6, double: 2, lifesteal: 1, dmg: 1, hp: 0, block: 0, ranged: 0, skillDmg: 0, skillCd: 0, hpRegen: 0, melee: 0 };
-  const presetAgg = aggregateFromDist(presetDist);
-
-  // 적도 버프스킬 사용 (내 FIXED_SKILLS와 동일)
-  const presetBuffCdSec = realCd(FIXED_SKILLS.buff.cd, presetAgg.skillCd||0);
-  const presetBuffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + presetBuffCdSec);
-  const presetBuffHpBonus = (FIXED_SKILLS.buff.hp||0) * 5;
-  const presetBuffAtkBonus = (FIXED_SKILLS.buff.atk||0);
-
-  return {
-    isMe: false,
-    totalHp: enHp * 5 + presetBuffHpBonus * presetBuffUptime,
-    totalHp_OFF: enHp * 5,
-    totalAtk: enAtk + presetBuffAtkBonus * presetBuffUptime,
-    totalAtkCore: enAtk,
-    totalAtkBuff: presetBuffAtkBonus * presetBuffUptime,
-    buffAtkFlat: 0,
-    buffHpBonus: presetBuffHpBonus,
-    buffAtkBonus: presetBuffAtkBonus,
-    opts: presetAgg,
-    skills: [
-      { dmg: FIXED_SKILLS.s1.dmg, cd: FIXED_SKILLS.s1.cd },
-      { dmg: FIXED_SKILLS.s2.dmg, cd: FIXED_SKILLS.s2.cd }
-    ],
-    research: st.research
-  };
-}
-
-function buildCustomEnemy(st, fallbackHp, fallbackAtk){
-  let enHp = +st.enemy.hp || 0;
-  let enAtk = +st.enemy.atk || 0;
-  if(enHp <= 0) enHp = (fallbackHp || 100000) / 5;
-  if(enAtk <= 0) enAtk = fallbackAtk || 10000;
-
-  // 커스텀 적도 버프스킬 사용 (내 FIXED_SKILLS와 동일)
-  const customAgg = Object.fromEntries(OPT_IDS_ENEMY.map(k => [k, +st.enemy.opts[k]||0]));
-  const customBuffCdSec = realCd(FIXED_SKILLS.buff.cd, customAgg.skillCd||0);
-  const customBuffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + customBuffCdSec);
-  const customBuffHpBonus = (FIXED_SKILLS.buff.hp||0) * 5;
-  const customBuffAtkBonus = (FIXED_SKILLS.buff.atk||0);
-
-  return {
-    isMe: false,
-    totalHp: enHp * 5 + customBuffHpBonus * customBuffUptime,
-    totalHp_OFF: enHp * 5,
-    totalAtk: enAtk + customBuffAtkBonus * customBuffUptime,
-    totalAtkCore: enAtk,
-    totalAtkBuff: customBuffAtkBonus * customBuffUptime,
-    buffAtkFlat: 0,
-    buffHpBonus: customBuffHpBonus,
-    buffAtkBonus: customBuffAtkBonus,
-    opts: customAgg,
-    skills: [
-      { dmg: +st.enemy.skills[0].dmg||0, cd: +st.enemy.skills[0].cd||0 },
-      { dmg: +st.enemy.skills[1].dmg||0, cd: +st.enemy.skills[1].cd||0 }
-    ],
-    research: { skillDmg:0 }
-  };
-}
-
-function powerScore(sim){
-  const myFrac = sim.myHp / Math.max(1, sim.myMax);
-  const enFrac = sim.enHp / Math.max(1, sim.enMax);
-  if(sim.winner === "me")  return 10000 + myFrac*5000 - sim.t*10;
-  if(sim.winner === "en")  return (1 - enFrac) * 3000;
-  return 5000 + (myFrac - enFrac) * 2500;
-}
-
-function aggregateFromDist(dist){
-  const agg = Object.fromEntries(OPT.filter(o=>o.id!=="none").map(o=>[o.id,0]));
-  for(const [id, count] of Object.entries(dist)){
-    const opt = OPT.find(o => o.id === id);
-    if(opt && opt.used) agg[id] = count * opt.max;
-  }
-  return agg;
-}
-
-// 공식 기반 전투력 계산: 내 DPS × 내 생존시간
-// - DPS = auto + 스킬1 + 스킬2 (치명/더블/블록 기댓값 반영)
-// - 흡혈 = 내 auto DPS × lifesteal% → 상대 DPS 상쇄 → 생존시간 증가
-// - 예: 흡혈 10/초로 상대 DPS 100 → 실효 90 → HP 1000이면 11.11초 생존
-function cpFormula(me, en){
-  const myAutoP = attackPeriod(me.opts.atkSpd);
-  const enAutoP = attackPeriod(en.opts.atkSpd);
-
-  const myAutoDmg = getAutoDmg(me.totalAtkCore, me.totalAtkBuff, me.opts, en.opts.block, true);
-  const enAutoDmg = getAutoDmg(en.totalAtkCore, en.totalAtkBuff, en.opts, me.opts.block, true);
-  const myAutoDPS = myAutoP > 0 ? myAutoDmg / myAutoP : 0;
-  const enAutoDPS = enAutoP > 0 ? enAutoDmg / enAutoP : 0;
-
-  const skillDPS = (side, oppBlock) => {
-    let dps = 0;
-    for(let i=0; i<2; i++){
-      const key = "s"+(i+1);
-      const dmgBase = side.isMe ? FIXED_SKILLS[key].dmg : (side.skills?.[i]?.dmg||0);
-      if(dmgBase <= 0) continue;
-      const cdBase  = side.isMe ? FIXED_SKILLS[key].cd  : (side.skills?.[i]?.cd||0);
-      const cdReal  = realCd(cdBase, side.opts.skillCd);
-      if(cdReal === Infinity) continue;
-      const duration = side.isMe ? FIXED_SKILLS[key].duration : 0;
-      const cycle = duration + cdReal;
-      if(cycle <= 0) continue;
-      dps += getSkillFlatDmg(dmgBase, side.opts, oppBlock, side.research?.skillDmg||0, true) / cycle;
-    }
-    return dps;
-  };
-  const mySkillDPS = skillDPS(me, en.opts.block);
-  const enSkillDPS = skillDPS(en, me.opts.block);
-
-  const myDPS = myAutoDPS + mySkillDPS;
-  const enDPS = enAutoDPS + enSkillDPS;
-
-  // 흡혈은 일반공격에만 적용 → 상대 DPS 상쇄
-  const myLife = Math.max(0, +(me.opts.lifesteal||0))/100;
-  const enLife = Math.max(0, +(en.opts.lifesteal||0))/100;
-  const myHealRate = myAutoDPS * myLife;
-  const enHealRate = enAutoDPS * enLife;
-
-  const effEnDPS = Math.max(0.01, enDPS - myHealRate);
-  const effMyDPS = Math.max(0.01, myDPS - enHealRate);
-  const mySurvivalSec = me.totalHp / effEnDPS;
-  const enKillTime = en.totalHp / effMyDPS; // 내가 상대를 죽이는 데 걸리는 시간
-
-  // 전투력: 실제 전투 종료 시점까지만 DPS 유효 (초과 생존시간은 의미 없음)
-  // - 승리: 상대 HP 다 깎음 + 여유시간 × 내 DPS 추가
-  // - 패배: 내가 죽기 전까지 준 총 피해 = myDPS × mySurvivalSec
-  let score;
-  let winner;
-  if(mySurvivalSec >= enKillTime){
-    winner = "me";
-    score = en.totalHp + myDPS * (mySurvivalSec - enKillTime);
-  } else {
-    winner = "en";
-    score = myDPS * mySurvivalSec;
-  }
-  return { score, winner, myDPS, enDPS, myAutoDPS, enAutoDPS, mySkillDPS, enSkillDPS, myHealRate, enHealRate, mySurvivalSec, enKillTime };
-}
-
-function currentCPScore(st){
-  return currentDPS(st);
-}
-function currentDPS(st){
-  const me = buildMe(st);
-  const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
-  return cpFormula(me, en).myDPS;
-}
-
-function bestBuildCPScore(st){
-  const me = buildMe(st);
-  const en = buildPresetEnemy(st, me.totalHp, me.totalAtk);
-
-  const presetDist = { critRate: 7, critDmg: 7, atkSpd: 6, double: 2, lifesteal: 1, dmg: 1, hp: 0, block: 0, ranged: 0, skillDmg: 0, skillCd: 0, hpRegen: 0, melee: 0 };
-  const presetAgg = aggregateFromDist(presetDist);
-  const presetBase = computeBase(st, presetAgg);
-  const presetMe = { isMe: true, totalHp: presetBase.totalHp, totalAtk: presetBase.totalAtk,
-                     totalAtkCore: presetBase.totalAtkCore, totalAtkBuff: presetBase.totalAtkBuff,
-                     opts: presetAgg, research: st.research };
-  return cpFormula(presetMe, en).score;
-}
 
 /* ==========================================================================
    DOM 렌더링 함수 & UI 컴포넌트
@@ -1975,828 +1472,12 @@ function unitNumInput(value, onchange, opts={}){
    return h("div", {style:"display:flex; width:100%"}, inp, sel);
 }
 
-function selectUI(options, value, onchange){
-  const sel = h("select", { onchange:(e)=>onchange(e.target.value) });
-  for(const o of options){
-    const opt = h("option", {value:o.id}, o.name);
-    if(o.id === value) opt.selected = true;
-    sel.append(opt);
-  }
-  return sel;
-}
-
-function renderOptRow(opt, onTypeChange, onValChange){
-  const typeSel = selectUI(OPT, opt.type||"none", onTypeChange);
-  const valInp = numInput(opt.val, onValChange);
-  const def = OPT.find(o=>o.id===(opt.type||"none"));
-  if(def && def.id!=="none"){
-    const over = def.max < 0 ? (opt.val < def.max) : (opt.val > def.max);
-    if(over) valInp.classList.add("over");
-  }
-  const maxHint = (def && def.id!=="none") ? h("div",{class:"lbl-sub"}, `max ${def.max}%`) : h("div",{class:"lbl-sub"}, "");
-  return h("div",{class:"row3"}, h("div", null, h("label", null, "옵션 종류"), typeSel), h("div", null, h("label", null, "수치(%)"), valInp), maxHint);
-}
-
-function gearCard(slot, label, key, active){
-  const chips = slot.opts.map(o => {
-    if(!o || o.type==="none") return h("span",{class:"opt-chip empty"}, "—");
-    const sh = OPT_SHORT[o.type] || o.type;
-    return h("span",{class:"opt-chip"}, `${sh} ${o.val}`);
-  });
-  const hasOpts = slot.opts.some(o => o && o.type!=="none");
-  const formatCompact = (n) => {
-    if(n>=1e9) return (n/1e9).toFixed(1).replace(/\.0$/,'')+'b';
-    if(n>=1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'')+'m';
-    if(n>=1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'')+'k';
-    return Math.round(n);
-  };
-  const baseTxt = (slot.hp||slot.atk) ? `H ${formatCompact(slot.hp||0)} · A ${formatCompact(slot.atk||0)}` : "";
-  return h("div", {
-    class: "gear-card" + (active?" active":"") + (hasOpts?" has-opts":""),
-    onclick: ()=>{ state._selectedSlot = key; saveState(); renderMe(); }
-  },
-    h("div",{class:"icon"}, label.icon),
-    h("div",{class:"title"}, label.name),
-    h("div",{class:"opts"}, ...chips),
-    baseTxt ? h("div",{class:"basestat"}, baseTxt) : null
-  );
-}
-
-function renderGearEditor(key){
-  const [kind, idxStr] = key.split("-");
-  const idx = +idxStr;
-  let slot = null, label = null;
-
-  if (kind === "equips" || kind === "mount") {
-     slot = kind==="mount" ? state.mount : state.equips[idx];
-     label = GEAR_GRID_LABELS.find(l => l.type === kind && l.idx === idx);
-  } else if (kind === "pets") {
-     slot = state.pets[idx];
-     label = PET_LABELS[idx];
-  } else if (kind === "petInv") {
-     slot = state.petInventory[idx];
-     label = {icon:"💤", name:`보관함 펫 ${idx+1}`};
-  } else if (kind === "mountInv") {
-     slot = state.mountInventory[idx];
-     label = {icon:"🐴", name:`보관함 탈것 ${idx+1}`};
-  }
-  if(!slot) return h("div");
-
-  const body = h("div",{class:"slot", style:"border-color:var(--accent)"});
-  body.append(h("h4", null, `${label.icon} ${label.name} — 상세 편집`));
-  body.append(h("div",{class:"row"},
-      h("div", null, h("label",null,"기본 체력"), unitNumInput(slot.hp, v=>{ slot.hp=v; onAnyChange(); renderMe(); })),
-      h("div", null, h("label",null,"기본 공격력"), unitNumInput(slot.atk, v=>{ slot.atk=v; onAnyChange(); renderMe(); }))
-  ));
-  for(let i=0;i<slot.opts.length;i++){
-    if(!slot.opts[i]) slot.opts[i] = emptyOpt();
-    const opt = slot.opts[i];
-    body.append(h("div",{class:"lbl-sub", style:"text-align:left;margin:8px 0 2px"}, `옵션 ${i+1}`));
-    body.append(renderOptRow(opt, t => { opt.type = t; onAnyChange(); renderMe(); }, v => { opt.val = v; onAnyChange(); renderMe(); }));
-  }
-
-  if (kind === "petInv") {
-    const buttonGroup = h("div", {style:"display:grid;grid-template-columns:repeat(3,1fr);gap:8px"});
-    for(let i=0; i<3; i++){
-      buttonGroup.append(h("button",{class:"btn alt", onclick:()=>{
-        const temp = state.pets[i];
-        state.pets[i] = state.petInventory[idx];
-        state.petInventory[idx] = temp;
-        state._selectedSlot = `pets-${i}`;
-        onAnyChange(); renderMe();
-      }}, `✅ 펫${i+1} 자리에 장착`));
-    }
-    body.append(h("div", {class:"slot", style:"margin-top:10px"},
-      h("h4",null,"본 슬롯 펫과 장착 교체"),
-      h("p",{class:"muted",style:"margin:4px 0 8px"},"장착 후 상단 'DPS' 패널에서 변화량 확인."),
-      buttonGroup
-    ));
-  } else if (kind === "pets") {
-    body.append(h("div", {class:"slot", style:"margin-top:10px"},
-      h("h4",null,"보관함 펫과 맞교환"),
-      h("div",{class:"btnrow"}, ...[0,1,2].map(i => h("button",{class:"btn alt", onclick:()=>{
-           const temp = state.petInventory[i];
-           state.petInventory[i] = state.pets[idx];
-           state.pets[idx] = temp;
-           state._selectedSlot = `petInv-${i}`;
-           onAnyChange(); renderMe();
-        }}, `보관 ${i+1} 이동`)))
-    ));
-  } else if (kind === "mountInv") {
-    body.append(h("div", {class:"slot", style:"margin-top:10px"},
-      h("h4",null,"현재 탈것과 장착 교체"),
-      h("p",{class:"muted",style:"margin:4px 0 8px"},"장착 후 상단 'DPS' 패널에서 변화량 확인."),
-      h("div",{class:"btnrow"},
-        h("button",{class:"btn alt", onclick:()=>{
-           const temp = state.mount;
-           state.mount = state.mountInventory[idx];
-           state.mountInventory[idx] = temp;
-           state._selectedSlot = `mount-0`;
-           onAnyChange(); renderMe();
-        }}, "✅ 탈것 장착")
-      )
-    ));
-  }
-  return body;
-}
-
-async function simulateMountSwap(invIdx, resultDiv, btn){
-  const origText = btn.textContent;
-  btn.disabled = true; btn.textContent = "계산 중…";
-  resultDiv.innerHTML = "";
-  await new Promise(r=>setTimeout(r, 30));
-  try {
-    const meA = buildMe(state);
-    const origMount = state.mount;
-    const origInv = state.mountInventory[invIdx];
-    let meB;
-    try {
-      state.mount = origInv;
-      state.mountInventory[invIdx] = origMount;
-      meB = buildMe(state);
-    } finally {
-      state.mount = origMount;
-      state.mountInventory[invIdx] = origInv;
-    }
-    const labelA = "현재 탈것";
-    const labelB = `보관${invIdx+1}`;
-    const scoreA = cpAgainstPreset(meA);
-    const scoreB = cpAgainstPreset(meB);
-    const result = await runBattleRepeats(meA, meB, 1000, btn);
-    resultDiv.append(renderWinRateBox(`⚡ 탈것 교체 비교`, labelA, labelB, result, scoreA, scoreB));
-    const logEl = renderCombatLog(result.sampleSim, labelA, labelB);
-    if(logEl) resultDiv.append(logEl);
-  } finally {
-    btn.disabled = false; btn.textContent = origText;
-  }
-}
-
-function renderMe(){
-  const host = document.getElementById("me-body");
-  if(!host) return;
-  host.innerHTML = "";
-  const selected = state._selectedSlot || "equips-0";
-
-  host.append(h("div",{class:"gear-sec-title"}, "장비 및 탈것 (대장간 5열 배치)"));
-  const mainGrid = h("div",{class:"gear-grid main-layout"});
-  GEAR_GRID_LABELS.forEach(lbl => {
-    const slotData = lbl.type === "mount" ? state.mount : state.equips[lbl.idx];
-    const key = `${lbl.type}-${lbl.idx}`;
-    const card = gearCard(slotData, lbl, key, selected===key);
-    if(lbl.span) card.classList.add(`span-${lbl.span}`);
-    mainGrid.append(card);
-  });
-  host.append(mainGrid);
-
-  host.append(h("div",{class:"gear-sec-title"}, "장착 중인 펫"));
-  const pGrid = h("div",{class:"gear-grid pets"});
-  state.pets.forEach((s,i)=> pGrid.append(gearCard(s, PET_LABELS[i], `pets-${i}`, selected===`pets-${i}`)));
-  host.append(pGrid);
-
-  // 펫 보관함 (접기). 보관함 슬롯 선택 시 편집 패널도 보관함 안에 위치 → 접으면 같이 숨음
-  const isPetInvSelected = selected.startsWith("petInv-");
-  const petInvDet = h("details", { style:"margin-top:10px" });
-  if(isPetInvSelected) petInvDet.setAttribute("open", "");
-  petInvDet.append(h("summary",{class:"gear-sec-title",style:"cursor:pointer;margin:0;padding:8px 4px"},"💤 펫 보관함 (장착 전 비교용)"));
-  const petInvGrid = h("div",{class:"gear-grid pets",style:"margin-top:6px"});
-  state.petInventory.forEach((s,i)=> petInvGrid.append(gearCard(s, {icon:"💤", name:`보관 ${i+1}`}, `petInv-${i}`, selected===`petInv-${i}`)));
-  petInvDet.append(petInvGrid);
-  if(isPetInvSelected) petInvDet.append(renderGearEditor(selected));
-  host.append(petInvDet);
-
-  // 탈것 보관함 (접기). 동일 원리.
-  const isMntInvSelected = selected.startsWith("mountInv-");
-  const mntInvDet = h("details", { style:"margin-top:10px" });
-  if(isMntInvSelected) mntInvDet.setAttribute("open", "");
-  mntInvDet.append(h("summary",{class:"gear-sec-title",style:"cursor:pointer;margin:0;padding:8px 4px"},"💤 탈것 보관함"));
-  const mntInvGrid = h("div",{class:"gear-grid pets",style:"margin-top:6px"});
-  state.mountInventory.forEach((s,i)=> mntInvGrid.append(gearCard(s, {icon:"🐴", name:`보관 ${i+1}`}, `mountInv-${i}`, selected===`mountInv-${i}`)));
-  mntInvDet.append(mntInvGrid);
-  if(isMntInvSelected) mntInvDet.append(renderGearEditor(selected));
-  host.append(mntInvDet);
-
-  // 보관함이 아닌 슬롯만 메인 편집 패널 표시
-  if(!isPetInvSelected && !isMntInvSelected){
-    host.append(renderGearEditor(selected));
-  }
-}
-
-function renderBuff(){
-  const host = document.getElementById("buff-body");
-  if(!host) return;
-  host.innerHTML = "";
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"기타 버프 안내"),
-    h("p", {class:"muted", style:"margin:4px 0 8px; line-height:1.4"}, "스킬 3종은 엔진에 내장되어 쿨타임 및 가동률이 자동 계산됩니다."),
-    h("div",{class:"row"},
-      h("div",null,h("label",null,"+ 추가 체력(고정치)"), unitNumInput(state.buff.hpFlat, v=>{state.buff.hpFlat=v;onAnyChange();})),
-      h("div",null,h("label",null,"+ 추가 공격력(고정치)"), unitNumInput(state.buff.atkFlat, v=>{state.buff.atkFlat=v;onAnyChange();}))
-    )
-  ));
-  const gearResearchGrid = h("div", {class:"slot"});
-  gearResearchGrid.append(h("h4",null,"부위별 장비 연구 (%)"));
-  gearResearchGrid.append(h("div",{class:"row3", style:"margin-bottom:6px; align-items:center"},
-    h("div", {class:"lbl-sub", style:"text-align:left;margin:0"}, "부위명"), h("div", {class:"lbl-sub", style:"margin:0"}, "체력 (%)"), h("div", {class:"lbl-sub", style:"margin:0"}, "공격력 (%)")
-  ));
-  GEAR_GRID_LABELS.forEach(lbl => {
-    if(lbl.type !== "equips") return;
-    gearResearchGrid.append(h("div",{class:"row3", style:"margin-bottom:6px; align-items:center"},
-      h("div", {class:"lbl-sub", style:"text-align:left;margin:0"}, `${lbl.icon} ${lbl.name}`),
-      h("div", null, numInput(state.research.equips[lbl.idx].hp, v=>{state.research.equips[lbl.idx].hp=v;onAnyChange();})),
-      h("div", null, numInput(state.research.equips[lbl.idx].atk, v=>{state.research.equips[lbl.idx].atk=v;onAnyChange();}))
-    ));
-  });
-  host.append(gearResearchGrid);
-  // 스킨 3개 (피해%/체력%)
-  const skinBox = h("div",{class:"slot"}, h("h4",null,"스킨 보너스 (3개, 각 피해 % · 체력 %)"));
-  for(let i=0; i<3; i++){
-    if(!state.skins[i]) state.skins[i] = {dmg:0, hp:0};
-    skinBox.append(h("div",{class:"row3", style:"margin-bottom:6px; align-items:center"},
-      h("div", {class:"lbl-sub", style:"text-align:left;margin:0"}, `👗 스킨 ${i+1}`),
-      h("div", null, h("label",{class:"lbl-sub",style:"margin:0"},"피해 %"),
-        numInput(state.skins[i].dmg, v=>{state.skins[i].dmg=v;onAnyChange();})),
-      h("div", null, h("label",{class:"lbl-sub",style:"margin:0"},"체력 %"),
-        numInput(state.skins[i].hp, v=>{state.skins[i].hp=v;onAnyChange();}))
-    ));
-  }
-  host.append(skinBox);
-
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"펫 · 탈것 · 스킬 연구 (%)"),
-    h("div",{class:"row"},
-      h("div",null,h("label",null,"펫 체력 %"), numInput(state.research.petHp, v=>{state.research.petHp=v;onAnyChange();})),
-      h("div",null,h("label",null,"펫 공격력 %"), numInput(state.research.petAtk, v=>{state.research.petAtk=v;onAnyChange();})),
-      h("div",null,h("label",null,"탈것 체력 %"), numInput(state.research.mountHp, v=>{state.research.mountHp=v;onAnyChange();})),
-      h("div",null,h("label",null,"탈것 공격력 %"), numInput(state.research.mountAtk, v=>{state.research.mountAtk=v;onAnyChange();})),
-      h("div",null,h("label",null,"스킬 피해 %"), numInput(state.research.skillDmg, v=>{state.research.skillDmg=v;onAnyChange();}))
-    )
-  ));
-
-  // 고정 스킬 수치 편집 (게임 실측에 맞게 조정)
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"고정 스킬 수치 (게임 실측에 맞게 조정)"),
-    h("p",{class:"muted",style:"margin:4px 0 8px"},"평타·크리 실측과 어긋나면 여기서 조정하세요. 특히 버프 공격력/체력 증가치."),
-    h("div",{class:"gear-sec-title",style:"margin-top:4px"},"딜스킬 1"),
-    h("div",{class:"row"},
-      h("div",null,h("label",null,"피해량(고정)"), unitNumInput(FIXED_SKILLS.s1.dmg, v=>{FIXED_SKILLS.s1.dmg=v;onAnyChange();})),
-      h("div",null,h("label",null,"첫 발동(초)"), numInput(FIXED_SKILLS.s1.startTime, v=>{FIXED_SKILLS.s1.startTime=v;onAnyChange();})),
-      h("div",null,h("label",null,"지속(초)"), numInput(FIXED_SKILLS.s1.duration, v=>{FIXED_SKILLS.s1.duration=v;onAnyChange();})),
-      h("div",null,h("label",null,"쿨타임(초)"), numInput(FIXED_SKILLS.s1.cd, v=>{FIXED_SKILLS.s1.cd=v;onAnyChange();}))
-    ),
-    h("div",{class:"gear-sec-title",style:"margin-top:10px"},"딜스킬 2"),
-    h("div",{class:"row"},
-      h("div",null,h("label",null,"피해량(고정)"), unitNumInput(FIXED_SKILLS.s2.dmg, v=>{FIXED_SKILLS.s2.dmg=v;onAnyChange();})),
-      h("div",null,h("label",null,"첫 발동(초)"), numInput(FIXED_SKILLS.s2.startTime, v=>{FIXED_SKILLS.s2.startTime=v;onAnyChange();})),
-      h("div",null,h("label",null,"지속(초)"), numInput(FIXED_SKILLS.s2.duration, v=>{FIXED_SKILLS.s2.duration=v;onAnyChange();})),
-      h("div",null,h("label",null,"쿨타임(초)"), numInput(FIXED_SKILLS.s2.cd, v=>{FIXED_SKILLS.s2.cd=v;onAnyChange();}))
-    ),
-    h("div",{class:"gear-sec-title",style:"margin-top:10px"},"버프스킬"),
-    h("div",{class:"row"},
-      h("div",null,h("label",null,"체력 증가"), unitNumInput(FIXED_SKILLS.buff.hp, v=>{FIXED_SKILLS.buff.hp=v;onAnyChange();})),
-      h("div",null,h("label",null,"공격력 증가"), unitNumInput(FIXED_SKILLS.buff.atk, v=>{FIXED_SKILLS.buff.atk=v;onAnyChange();})),
-      h("div",null,h("label",null,"첫 발동(초)"), numInput(FIXED_SKILLS.buff.startTime, v=>{FIXED_SKILLS.buff.startTime=v;onAnyChange();})),
-      h("div",null,h("label",null,"지속(초)"), numInput(FIXED_SKILLS.buff.duration, v=>{FIXED_SKILLS.buff.duration=v;onAnyChange();})),
-      h("div",null,h("label",null,"쿨타임(초)"), numInput(FIXED_SKILLS.buff.cd, v=>{FIXED_SKILLS.buff.cd=v;onAnyChange();}))
-    ),
-    h("div",{class:"gear-sec-title",style:"margin-top:10px"},"공통 타이밍"),
-    h("div",{class:"row"},
-      h("div",null,h("label",null,"첫 평타 시점(초)"), numInput(FIXED_SKILLS.autoAnchor, v=>{FIXED_SKILLS.autoAnchor=v;onAnyChange();})),
-      h("div",null,h("p",{class:"muted",style:"margin:0;font-size:11px"},"※ 첫 auto는 공속과 무관한 고정 시점. 이후 공격부터 공속 주기에 따라 간격이 벌어짐."))
-    )
-  ));
-}
-
-function renderEnemy(){
-  const host = document.getElementById("enemy-body");
-  if(!host) return;
-  host.innerHTML = "";
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"상대 기본 스탯"),
-    h("p", {class:"muted", style:"margin:4px 0 8px; line-height:1.4"}, "미입력 시 내 기본 스탯에 '표준 프리셋(100%)'을 장착한 더미가 자동으로 생성되어 1:1 비교를 진행합니다."),
-    h("div",{class:"row"},
-      h("div",null,h("label",null,"최종 체력"), unitNumInput(state.enemy.hp, v=>{state.enemy.hp=v;onAnyChange();})),
-      h("div",null,h("label",null,"최종 공격력"), unitNumInput(state.enemy.atk, v=>{state.enemy.atk=v;onAnyChange();}))
-    )
-  ));
-  const grid = h("div",{class:"row"});
-  for(const k of OPT_IDS_ENEMY){
-    grid.append(h("div",null, h("label",null,ENEMY_LABELS[k]||k), numInput(state.enemy.opts[k], v=>{state.enemy.opts[k]=v;onAnyChange();}) ));
-  }
-  host.append(h("div",{class:"slot"}, h("h4",null,"상대 옵션 %"), grid));
-  for(let i=0;i<2;i++){
-    host.append(h("div",{class:"slot"},
-      h("h4",null,`상대 딜스킬 #${i+1}`),
-      h("div",{class:"row"},
-        h("div",null,h("label",null,"피해량(고정)"), unitNumInput(state.enemy.skills[i].dmg, v=>{state.enemy.skills[i].dmg=v;onAnyChange();})),
-        h("div",null,h("label",null,"원본 쿨타임(초)"), numInput(state.enemy.skills[i].cd, v=>{state.enemy.skills[i].cd=v;onAnyChange();}))
-      )
-    ));
-  }
-
-  const simResultDiv = h("div",{id:"enemy-sim-result"});
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"⚔️ 입력한 상대와 전투 시뮬"),
-    h("p",{class:"muted",style:"margin:4px 0 8px"},"위에 입력한 상대 스펙으로 1:1 전투를 즉시 실행합니다 (RNG 1회)."),
-    h("div",{class:"btnrow"}, h("button",{class:"btn", onclick:function(){simulateVsCustom(this);}}, "🎯 전투 시작")),
-    simResultDiv
-  ));
-}
-
-// 1000회 시뮬 공통 헬퍼 — 첫 1회만 로그 수집
-async function runBattleRepeats(meA, meB, runs, btn){
-  let aWin=0, bWin=0, draw=0;
-  let sampleSim = null;
-  for(let i=0; i<runs; i++){
-    const sim = simulate(meA, meB, false, i === 0);
-    if(sim.winner === "me") aWin++;
-    else if(sim.winner === "en") bWin++;
-    else draw++;
-    if(i === 0) sampleSim = sim;
-    if(i > 0 && i % 50 === 0){
-      if(btn) btn.textContent = `계산 중 ${i}/${runs}`;
-      await new Promise(r => setTimeout(r, 0));
-    }
-  }
-  return { aWin, bWin, draw, sampleSim, runs };
-}
-
-function renderWinRateBox(title, aLabel, bLabel, r, scoreA, scoreB){
-  const aPct = (r.aWin/r.runs*100).toFixed(1);
-  const bPct = (r.bWin/r.runs*100).toFixed(1);
-  const drawPct = (r.draw/r.runs*100).toFixed(1);
-  const winner = r.aWin > r.bWin ? "a" : (r.bWin > r.aWin ? "b" : "tie");
-  const winLabel = winner === "a" ? `${aLabel} ✔` : (winner === "b" ? `${bLabel} ✔` : "접전");
-  const diff = (scoreA!=null && scoreB!=null) ? scoreB - scoreA : null;
-  const diffPct = (diff!=null && Math.abs(scoreA)>1) ? (diff/Math.abs(scoreA)*100) : null;
-
-  const box = h("div",{class:"slot",style:"margin-top:10px"},
-    h("h4",null,title + ` (${r.runs}회 시뮬)`),
-    kv("우세", h("b",{class:winner==="a"?"pos":(winner==="b"?"neg":"")}, winLabel))
-  );
-  if(scoreA!=null && scoreB!=null){
-    box.append(
-      kv(`${aLabel} 전투력`, Math.round(scoreA).toLocaleString()),
-      kv(`${bLabel} 전투력`, Math.round(scoreB).toLocaleString() + (diffPct!=null ? `  (${diff>=0?"+":""}${diffPct.toFixed(2)}%)` : ""))
-    );
-  }
-  box.append(
-    kv(`${aLabel} 승`, `${r.aWin}회 (${aPct}%)`),
-    kv(`${bLabel} 승`, `${r.bWin}회 (${bPct}%)`),
-    kv("무승부", `${r.draw}회 (${drawPct}%)`),
-    h("p",{class:"muted",style:"margin-top:8px"},
-      winner==="b" ? `→ ${bLabel}이(가) 더 강합니다.` :
-      winner==="a" ? `→ ${aLabel}이(가) 더 강합니다.` :
-      "→ 거의 대등합니다."
-    )
-  );
-  return box;
-}
-
-// 프리셋 더미 기준 전투력 점수 (표준 지표)
-function cpAgainstPreset(me){
-  const en = buildPresetEnemy(state, me.totalHp, me.totalAtk);
-  return cpFormula(me, en).score;
-}
-
-// 보관함 펫과 장착 펫 교체 시, 두 빌드를 서로 싸우게 해 승자 판정
-async function simulatePetSwap(petIdx, invIdx, resultDiv, btn){
-  const origText = btn.textContent;
-  btn.disabled = true; btn.textContent = "계산 중…";
-  resultDiv.innerHTML = "";
-  await new Promise(r=>setTimeout(r, 30));
-  try {
-    const meA = buildMe(state);
-    const origPet = state.pets[petIdx];
-    const origInv = state.petInventory[invIdx];
-    let meB;
-    try {
-      state.pets[petIdx] = origInv;
-      state.petInventory[invIdx] = origPet;
-      meB = buildMe(state);
-    } finally {
-      state.pets[petIdx] = origPet;
-      state.petInventory[invIdx] = origInv;
-    }
-    const labelA = `현재(펫${petIdx+1})`;
-    const labelB = `교체(보관${invIdx+1})`;
-    const scoreA = cpAgainstPreset(meA);
-    const scoreB = cpAgainstPreset(meB);
-    const result = await runBattleRepeats(meA, meB, 1000, btn);
-    resultDiv.append(renderWinRateBox(`⚡ 펫${petIdx+1} 자리 교체 비교`, labelA, labelB, result, scoreA, scoreB));
-    const logEl = renderCombatLog(result.sampleSim, labelA, labelB);
-    if(logEl) resultDiv.append(logEl);
-  } finally {
-    btn.disabled = false; btn.textContent = origText;
-  }
-}
-
-function simulateVsCustom(btn){
-  const resultDiv = document.getElementById("enemy-sim-result");
-  if(!resultDiv) return;
-  const origText = btn.textContent;
-  btn.disabled = true; btn.textContent = "계산 중…";
-  resultDiv.innerHTML = "";
-  setTimeout(()=>{
-    try {
-      const me = buildMe(state);
-      const isShadow = (+state.enemy.hp||0) <= 0 && (+state.enemy.atk||0) <= 0;
-      if(isShadow){
-        resultDiv.append(h("p",{class:"neg",style:"padding:10px"},"상대 체력과 공격력을 먼저 입력해주세요."));
-        return;
-      }
-      const en = buildCustomEnemy(state, me.totalHp, me.totalAtk);
-      const sim = simulate(me, en, false, true);
-      resultDiv.append(h("div",{class:"slot",style:"margin-top:10px"},
-        h("h4",null,"결과"),
-        kv("승패", h("b",{class:sim.winner==="me"?"pos":(sim.winner==="en"?"neg":"")},
-          sim.winner==="me"?"승리 ✔":(sim.winner==="en"?"패배 ✘":"무승부"))),
-        kv("소요 시간", `${sim.t.toFixed(1)} 초${sim.timeout?" (타임아웃)":""}`),
-        kv("내 남은 체력", `${Math.round(sim.myHp).toLocaleString()} / ${Math.round(sim.myMax).toLocaleString()}`),
-        kv("적 남은 체력", `${Math.round(sim.enHp).toLocaleString()} / ${Math.round(sim.enMax).toLocaleString()}`),
-        kv("내 가한 총 피해", Math.round(sim.myTotalDealt).toLocaleString()),
-        kv("적 가한 총 피해", Math.round(sim.enTotalDealt).toLocaleString())
-      ));
-      const logEl = renderCombatLog(sim, "나", "적");
-      if(logEl) resultDiv.append(logEl);
-    } finally {
-      btn.disabled = false; btn.textContent = origText;
-    }
-  }, 30);
-}
-
-function renderResult(){
-  const host = document.getElementById("result-body");
-  if(!host) return;
-  host.innerHTML = "";
-
-  const me = buildMe(state);
-  const enPreset = buildPresetEnemy(state, me.totalHp, me.totalAtk);
-  const formula = cpFormula(me, enPreset);
-
-  host.append(
-    h("div",{class:"lbl-sub", style:"margin-top:10px"}, `내 현재 DPS (auto + 스킬, 표준 더미 기준)`),
-    h("div",{class:"big good", style:"color:#fff; margin-bottom:0"}, Math.round(formula.myDPS).toLocaleString()),
-    h("p", {class:"muted", style:"margin:6px 0 0; line-height:1.4"},
-      "※ DPS = 일반공격 DPS + 스킬 DPS. 치명/더블/블록 등 확률 옵션을 기댓값으로 반영합니다.")
-  );
-
-  // 내 스탯 요약
-  const myAtkP = attackPeriod(me.opts.atkSpd);
-  const myS1CdReal = realCd(FIXED_SKILLS.s1.cd, me.opts.skillCd);
-  const myS2CdReal = realCd(FIXED_SKILLS.s2.cd, me.opts.skillCd);
-  const myBuffCdReal = realCd(FIXED_SKILLS.buff.cd, me.opts.skillCd);
-  const buffUptime = FIXED_SKILLS.buff.duration / (FIXED_SKILLS.buff.duration + myBuffCdReal);
-
-  const aggMe = me.opts;
-  const dmgMult = (1 + (aggMe.dmg||0)/100) * (1 + (aggMe.ranged||0)/100);
-  const hpNoBuff = me._rawHp * (1 + (aggMe.hp||0)/100) + (+state.buff.hpFlat||0);
-  const hpBuffOn = hpNoBuff + FIXED_SKILLS.buff.hp;
-  const atkNoBuff = me._rawAtk * dmgMult + (+state.buff.atkFlat||0);
-  const atkBuffOn = atkNoBuff + FIXED_SKILLS.buff.atk;
-  const equipHpUI = me._equipHp + (+state.buff.hpFlat||0);
-  const equipAtkUI = me._equipAtk * dmgMult + (+state.buff.atkFlat||0);
-
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"내 최종 스탯"),
-    kv("평소 체력 (버프 OFF, 게임 UI)", Math.round(hpNoBuff).toLocaleString()),
-    kv("└ 장비만 체력 (펫·탈것 제외)", Math.round(equipHpUI).toLocaleString()),
-    kv("버프 ON 최대 체력", Math.round(hpBuffOn).toLocaleString()),
-    kv("평소 공격력 (버프 OFF)", Math.round(atkNoBuff).toLocaleString()),
-    kv("└ 장비만 공격력 (펫·탈것 제외)", Math.round(equipAtkUI).toLocaleString()),
-    kv("버프 ON 최대 공격력", Math.round(atkBuffOn).toLocaleString())
-  ));
-
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"공격 주기 · 스킬 실쿨 · DPS"),
-    kv("일반공격 주기", `${myAtkP.toFixed(2)} 초`),
-    kv("스킬1 실쿨타임", `${myS1CdReal.toFixed(2)} 초`),
-    kv("스킬2 실쿨타임", `${myS2CdReal.toFixed(2)} 초`),
-    kv("버프스킬 가동률", `${(buffUptime*100).toFixed(1)}% (${FIXED_SKILLS.buff.duration}s on / ${myBuffCdReal.toFixed(1)}s 대기)`),
-    kv("내 기댓값 DPS (auto)", Math.round(formula.myAutoDPS).toLocaleString()),
-    kv("내 기댓값 DPS (스킬)", Math.round(formula.mySkillDPS).toLocaleString()),
-    kv("내 기댓값 DPS (합계)", h("b",{class:"pos"}, Math.round(formula.myDPS).toLocaleString())),
-    kv("흡혈 회복률 /초", Math.round(formula.myHealRate).toLocaleString())
-  ));
-
-  // 합산 옵션 표시
-  const optBox = h("div",{class:"slot"}, h("h4",null,"합산 옵션치"));
-  const optRow = h("div",{class:"row"});
-  for(const [k,v] of Object.entries(me.opts)){
-    if(v === 0) continue;
-    optRow.append(h("div",{style:"padding:4px 0"},
-      h("span",{class:"muted",style:"font-size:11px"}, ENEMY_LABELS[k]||k),
-      h("div",{style:"font-weight:700"}, `${v.toFixed(1)}%`)
-    ));
-  }
-  optBox.append(optRow);
-  host.append(optBox);
-}
-
 function kv(label, val){
   const row = h("div",{class:"kv"});
   row.append(h("span",null,label));
   const b = h("b"); b.append(val && val.nodeType ? val : String(val));
   row.append(b);
   return row;
-}
-
-function fmtN(n){
-  n = Math.round(n);
-  if(Math.abs(n) >= 1e9) return (n/1e9).toFixed(2)+"b";
-  if(Math.abs(n) >= 1e6) return (n/1e6).toFixed(2)+"m";
-  if(Math.abs(n) >= 1e3) return (n/1e3).toFixed(1)+"k";
-  return n.toLocaleString();
-}
-
-function hitTag(hit){
-  if(hit.blocked) return "BLOCK";
-  if(hit.crit) return "치명";
-  return "일반";
-}
-function hitEventEl(hit, action, i, totalHits, heal, firstMark){
-  const isDbl = !!hit.double;
-  const idx = totalHits > 1 ? (isDbl ? "[더블]" : "[1타]") : "";
-  const tag = hitTag(hit);
-  const dmg = fmtN(hit.dmg);
-  let cls = "log-evt";
-  if(hit.blocked) cls += " block";
-  else if(hit.crit) cls += " crit";
-  if(action.startsWith("스킬")) cls += " skill";
-  const mark = (i===0 && firstMark) ? " ★" : "";
-  const healStr = (i===0 && heal>0 && !hit.blocked && action==="일반공격") ? ` +${fmtN(heal)}흡` : "";
-  return h("div",{class:cls}, `${action}${idx} ${tag} ${dmg}${healStr}${mark}`);
-}
-
-function renderSideEvents(e, side, firsts){
-  const container = h("div",{class:"log-side"+(side==="en"?" en":"")});
-  const hp = side==="me" ? e.myHp : e.enHp;
-  const hpMax = side==="me" ? (e.myMaxSnap||e.myHp) : (e.enMaxSnap||e.enHp);
-  const ratio = Math.max(0, Math.min(1, hp/Math.max(1,hpMax)));
-  const barWrap = h("div",{class:"hpbar"});
-  barWrap.append(h("div",{class:"hpfill "+side, style:`width:${(ratio*100).toFixed(1)}%`}));
-  container.append(barWrap);
-  container.append(h("div",{class:"hplabel"}, `${side==="me"?"나":"적"} ${fmtN(hp)} / ${fmtN(hpMax)}`));
-
-  // 이벤트들
-  if(side==="me"){
-    if(e.myBuffStarted) container.append(h("div",{class:"log-evt buff"}, "★ 버프스킬 발동 (8초)"));
-    if(e.myBuffEnded) container.append(h("div",{class:"log-evt buff"}, "☆ 버프스킬 종료"));
-    if(e.myAuto>0) (e.myAutoHits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"일반공격",i,arr.length,e.myHeal,false)));
-    if(e.myS1>0){ (e.myS1Hits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"스킬1",i,arr.length,0,firsts.s1&&i===0))); if(firsts.s1) firsts.s1=false; }
-    if(e.myS2>0){ (e.myS2Hits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"스킬2",i,arr.length,0,firsts.s2&&i===0))); if(firsts.s2) firsts.s2=false; }
-  } else {
-    if(e.enBuffStarted) container.append(h("div",{class:"log-evt buff"}, "★ 버프스킬 발동 (8초)"));
-    if(e.enBuffEnded) container.append(h("div",{class:"log-evt buff"}, "☆ 버프스킬 종료"));
-    if(e.enAuto>0) (e.enAutoHits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"일반공격",i,arr.length,e.enHeal,false)));
-    if(e.enS1>0){ (e.enS1Hits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"스킬1",i,arr.length,0,firsts.es1&&i===0))); if(firsts.es1) firsts.es1=false; }
-    if(e.enS2>0){ (e.enS2Hits||[]).forEach((hit,i,arr)=>container.append(hitEventEl(hit,"스킬2",i,arr.length,0,firsts.es2&&i===0))); if(firsts.es2) firsts.es2=false; }
-  }
-  return container;
-}
-
-function renderCombatLog(sim, labelMe, labelEn){
-  if(!sim.log || sim.log.length === 0) return null;
-  // 각 tick의 myMaxTick/enMaxTick 사용 (버프 발동 시 max 변화 반영)
-  sim.log.forEach(e => {
-    e.myMaxSnap = e.myMaxTick || sim.myMax;
-    e.enMaxSnap = e.enMaxTick || sim.enMax;
-  });
-
-  const det = h("details",{style:"margin-top:10px;background:var(--panel2)"});
-  det.append(h("summary",{style:"padding:10px 12px;font-size:13px;color:var(--muted)"},
-    `📜 전투 로그 (${sim.log.length}개 tick, 총 ${sim.t.toFixed(1)}초)`));
-  const wrap = h("div",{style:"max-height:480px;overflow:auto;border-top:1px solid var(--border);background:#0c0e13"});
-  const firsts = { s1:true, s2:true, es1:true, es2:true };
-  for(const e of sim.log){
-    const tick = h("div",{class:"log-tick"});
-    tick.append(h("div",{class:"log-time"}, `[${e.t.toFixed(1)}s]`));
-    const sides = h("div",{class:"log-sides"});
-    sides.append(renderSideEvents(e, "me", firsts));
-    sides.append(renderSideEvents(e, "en", firsts));
-    tick.append(sides);
-    wrap.append(tick);
-  }
-  det.append(wrap);
-  return det;
-}
-
-function gearOptions(){
-  const list = [];
-  GEAR_GRID_LABELS.forEach(lbl => list.push({id:`${lbl.type}-${lbl.idx}`, name:lbl.name, kind:lbl.type, idx:lbl.idx}));
-  PET_LABELS.forEach((lbl, i) => list.push({id:`pets-${i}`, name:lbl.name, kind:"pets", idx:i}));
-  return list;
-}
-
-function renderCompare(){
-  const host = document.getElementById("cmp-body");
-  if(!host) return;
-  host.innerHTML = "";
-  const slots = gearOptions();
-  const slotSel = selectUI(slots, state.cmp.slot, v=>{ state.cmp.slot=v; onAnyChange(); render(); });
-
-  host.append(h("div",{class:"slot"}, h("h4",null,"교체해볼 부위 (기존 장비 vs 새 장비)"), slotSel));
-
-  const loc = slots.find(s=>s.id===state.cmp.slot) || slots[0];
-  const curSlot = loc.kind==="mount" ? state.mount : state[loc.kind][loc.idx];
-
-  const editor = h("div", {class:"slot"});
-  editor.append(h("h4",null,"새로운 장비 세팅 입력"));
-  editor.append(h("div",{class:"row"},
-    h("div", null, h("label",null,"기본 체력"), unitNumInput(state.cmp.item.hp, v=>{state.cmp.item.hp=v; onAnyChange(); render();})),
-    h("div", null, h("label",null,"기본 공격력"), unitNumInput(state.cmp.item.atk, v=>{state.cmp.item.atk=v; onAnyChange(); render();}))
-  ));
-
-  const optCount = loc.kind==="mount" ? 1 : 2;
-  for(let i=0; i<optCount; i++){
-    if(!state.cmp.item.opts[i]) state.cmp.item.opts[i] = emptyOpt();
-    editor.append(h("div",{class:"lbl-sub", style:"text-align:left;margin:8px 0 2px"}, `새 옵션 ${i+1}`));
-    editor.append(renderOptRow(state.cmp.item.opts[i], t=>{state.cmp.item.opts[i].type=t; onAnyChange(); render();}, v=>{state.cmp.item.opts[i].val=v; onAnyChange();}));
-  }
-  host.append(editor);
-
-  const baseDPS = currentDPS(state);
-  const backup = JSON.stringify(curSlot);
-  let newDPS = 0;
-  try {
-    Object.assign(curSlot, JSON.parse(JSON.stringify(state.cmp.item)));
-    if (loc.kind==="mount") curSlot.opts = [curSlot.opts[0]];
-    newDPS = currentDPS(state);
-  } finally {
-    Object.assign(curSlot, JSON.parse(backup));
-  }
-
-  const gain = newDPS - baseDPS;
-  const gainPct = (gain / Math.max(1, Math.abs(baseDPS))) * 100;
-
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"교체 시 DPS 변화"),
-    h("p",{class:"muted",style:"margin-top:0"},"※ 표준 더미 기준 DPS(auto + 스킬)를 즉시 계산해 비교합니다."),
-    kv("현재 DPS", Math.round(baseDPS).toLocaleString()),
-    kv("새 장비 착용 시 DPS", Math.round(newDPS).toLocaleString()),
-    (()=>{
-      const row = h("div",{class:"kv"}); row.append(h("span",null,"증감"));
-      row.append(h("b",{class:gain>=0?"pos":"neg"}, `${gain>=0?"+":""}${Math.round(gain).toLocaleString()} (${gain>=0?"+":""}${gainPct.toFixed(2)}%)`)); return row;
-    })(),
-    h("div",{class:"lbl-sub",style:"text-align:left;margin-top:6px"}, gain>0?"✔ 더 강해집니다":(gain<0?"✘ 더 약해집니다":"변화 없음"))
-  ));
-}
-
-async function simulateGearSwap(loc, resultDiv, btn){
-  const origText = btn.textContent;
-  btn.disabled = true; btn.textContent = "계산 중…";
-  resultDiv.innerHTML = "";
-  await new Promise(r=>setTimeout(r, 30));
-  try {
-    const meA = buildMe(state);
-    const slot = loc.kind==="mount" ? state.mount : state[loc.kind][loc.idx];
-    const backup = JSON.stringify(slot);
-    let meB;
-    try {
-      Object.assign(slot, JSON.parse(JSON.stringify(state.cmp.item)));
-      if(loc.kind==="mount") slot.opts = [slot.opts[0]];
-      meB = buildMe(state);
-    } finally {
-      Object.assign(slot, JSON.parse(backup));
-    }
-    const labelA = "현재 장비";
-    const labelB = "새 장비";
-    const scoreA = cpAgainstPreset(meA);
-    const scoreB = cpAgainstPreset(meB);
-    const result = await runBattleRepeats(meA, meB, 1000, btn);
-    resultDiv.append(renderWinRateBox(`⚔️ 장비 교체 비교`, labelA, labelB, result, scoreA, scoreB));
-    const logEl = renderCombatLog(result.sampleSim, labelA, labelB);
-    if(logEl) resultDiv.append(logEl);
-  } finally {
-    btn.disabled = false; btn.textContent = origText;
-  }
-}
-
-/* --- 추천 섹션: 버튼으로 트리거, onAnyChange/render에서 자동 호출 안 함 --- */
-function renderRecommendPlaceholder(){
-  const host = document.getElementById("rec-body");
-  if(!host) return;
-  host.innerHTML = "";
-  host.append(h("div",{class:"slot"},
-    h("h4",null,"④ 최대 DPS 옵션 추천"),
-    h("p",{class:"muted", style:"margin:4px 0 10px; line-height:1.5"},
-      "모든 슬롯·옵션 조합에 대해 DPS(표준 더미 기준 auto + 스킬 기댓값)로 계산해 교체 가치가 가장 큰 슬롯을 찾습니다.")
-  ));
-  const btn = h("button",{class:"btn", onclick:function(){ runRecommend(this); }}, "🔍 추천 계산 시작");
-  host.append(h("div",{class:"btnrow"}, btn));
-}
-
-let _recBusy = false;
-async function runRecommend(btn){
-  if(_recBusy) return;
-  _recBusy = true;
-  btn.disabled = true;
-  const origText = btn.textContent;
-  btn.textContent = "계산 중…";
-  // 한 프레임 yield 후 실행 (UI가 텍스트 업데이트 반영하도록)
-  await new Promise(r => setTimeout(r, 30));
-  try {
-    const cur = currentCPScore(state);
-    let bestGain = -Infinity, target = null;
-    const iter = [
-      ...state.equips.map((s,i)=>({kind:"equips",idx:i})),
-      ...state.pets.map((s,i)=>({kind:"pets",idx:i})),
-      { kind:"mount", idx:0 }
-    ];
-    const usedCands = OPT.filter(o=>o.used && o.id!=="none");
-    const totalSlots = iter.reduce((n,l)=> n + (l.kind==="mount" ? state.mount.opts.length : 2), 0);
-    let slotDone = 0;
-
-    for(const loc of iter){
-      const slot = loc.kind==="mount" ? state.mount : state[loc.kind][loc.idx];
-      for(let k=0; k<slot.opts.length; k++){
-        const opt = slot.opts[k];
-        const saveType = opt.type, saveVal = opt.val;
-        let slotBest = -Infinity;
-        try {
-          for(const cand of usedCands){
-            if(cand.id === saveType && cand.max === saveVal) continue;
-            opt.type = cand.id; opt.val = cand.max;
-            const s = currentCPScore(state);
-            if(s > slotBest) slotBest = s;
-          }
-        } finally { opt.type = saveType; opt.val = saveVal; }
-        const gain = slotBest - cur;
-        if(gain > bestGain){
-          bestGain = gain;
-          target = { kind:loc.kind, idx:loc.idx, optIdx:k, current:{type:saveType,val:saveVal}, slotBest };
-        }
-        slotDone++;
-        btn.textContent = `탐색 중 ${slotDone}/${totalSlots}`;
-        await new Promise(r => setTimeout(r, 0)); // UI yield
-      }
-    }
-
-    if(!target){
-      const host = document.getElementById("rec-body");
-      host.innerHTML = "";
-      host.append(h("p",null,"슬롯 정보가 부족합니다."));
-      return;
-    }
-
-    const locLabel = (() => {
-      if(target.kind === "equips") return `장비 #${target.idx+1} / 옵션${target.optIdx+1}`;
-      if(target.kind === "pets")   return `펫 #${target.idx+1} / 옵션${target.optIdx+1}`;
-      return `탈것 / 옵션${target.optIdx+1}`;
-    })();
-    const curOpt = target.current;
-    const curOptDef = OPT.find(o=>o.id===curOpt.type);
-    const curOptLabel = curOpt.type==="none" ? "비어있음" : `${curOptDef?.name||curOpt.type} ${curOpt.val}%`;
-
-    // 최적 슬롯 13종 랭킹
-    btn.textContent = "랭킹 산출 중…";
-    await new Promise(r => setTimeout(r, 0));
-    const out = [];
-    const curSlot = target.kind==="mount" ? state.mount : state[target.kind][target.idx];
-    const optToChange = curSlot.opts[target.optIdx];
-    const saveType2 = optToChange.type, saveVal2 = optToChange.val;
-    try {
-      for(const cand of usedCands){
-        if(cand.id === target.current.type && cand.max === target.current.val) continue;
-        optToChange.type = cand.id; optToChange.val = cand.max;
-        const s = currentCPScore(state);
-        out.push({ id:cand.id, name:cand.name, val:cand.max, score:s, gain:s-cur });
-        await new Promise(r => setTimeout(r, 0));
-      }
-    } finally { optToChange.type = saveType2; optToChange.val = saveVal2; }
-    out.sort((a,b)=>b.gain-a.gain);
-
-    const host = document.getElementById("rec-body");
-    host.innerHTML = "";
-    host.append(h("div",{class:"slot"}, h("h4",null,"교체 가치가 가장 큰 슬롯"),
-      kv("슬롯", locLabel), kv("현재 옵션", curOptLabel),
-      kv("현재 DPS", Math.round(cur).toLocaleString())
-    ));
-
-    const table = h("table", null,
-      h("thead",null, h("tr",null, h("th",null,"옵션"), h("th",null,"수치"), h("th",{class:"num"},"DPS 증감"), h("th",{class:"num"},"교체 후 DPS"))),
-      h("tbody",null)
-    );
-    const tbody = table.querySelector("tbody");
-    const denom = Math.max(1, Math.abs(cur));
-    for(const r of out){
-      const pct = (r.gain / denom) * 100;
-      tbody.append(h("tr",null,
-        h("td",null,r.name), h("td",null,`${r.val}%`),
-        h("td",{class:"num "+(r.gain>=0?"pos":"neg")}, `${r.gain>=0?"+":""}${Math.round(r.gain).toLocaleString()} (${r.gain>=0?"+":""}${pct.toFixed(2)}%)`),
-        h("td",{class:"num"}, Math.round(r.score).toLocaleString())
-      ));
-    }
-    host.append(h("div",{class:"slot"}, h("h4",null,"이 슬롯을 13종 최대치로 바꿔본 결과"), table));
-    host.append(h("div",{class:"btnrow"},
-      h("button",{class:"btn alt", onclick:function(){ runRecommend(this); }}, "🔄 다시 계산")
-    ));
-  } catch(e){
-    alert("계산 실패: " + e.message);
-    btn.textContent = origText;
-    btn.disabled = false;
-  } finally {
-    _recBusy = false;
-  }
 }
 
 /* ==========================================================================
@@ -3478,14 +2159,12 @@ h("button",{class:"btn alt", onclick:()=>{
    부트스트랩 & 이벤트
    ========================================================================== */
 function onAnyChange(){
-  saveState(); renderResult(); renderCompare();
+  saveState();
   renderForgeResult(); renderForgeClan();
   renderAscendNow(); renderAscendGrade(); renderAscendTable();
   // 추천 섹션은 수동 버튼으로만 실행. 입력이 바뀌면 플레이스홀더로 되돌리지 않고 기존 결과 유지.
 }
 function render(){
-  renderResult(); renderMe(); renderBuff(); renderCompare();
-  renderRecommendPlaceholder();
   renderForgeMe(); renderForgeResearch(); renderForgeClan(); renderForgeTable(); renderForgeResult();
   renderAscendInput(); renderAscendNow(); renderAscendGrade(); renderAscendTable();
   renderSave();
@@ -3512,7 +2191,7 @@ document.addEventListener("mouseup", (e)=>{
   }
 });
 
-setActiveTab(state._activeTab || "combat");
+setActiveTab(state._activeTab || "miraesee");
 render();
 
 /* === MIRAESEE INJECTED JS (Scoped) === */
@@ -17349,22 +16028,26 @@ function doPetSummon(state, { amount, times }, petData) {
   for (let t = 0; t < times; t++) {
     let totalTarget = amount, pullIdx = 0, bonusCnt = 0;
     while (pullIdx < totalTarget) {
-      const pcg = new MetaplayPCG(curSeed);
       const isBonusPull = pullIdx >= amount;
 
+      // 등급: 보너스 체크 같은 인스턴스(draw0) → 기본 등급=draw1, 보너스=draw0
+      const tierPcg = new MetaplayPCG(curSeed);
       if (!isBonusPull) {
-        const bonusPcg = new MetaplayPCG(curSeed);
-        if (bonusPcg.nextPcg32() < bonusThreshold) {
+        if (tierPcg.nextPcg32() < bonusThreshold) {
           totalTarget++; bonusCnt++;
         }
       }
 
       const lvlData = levels[Math.min(curLevel, levels.length - 1)];
-      const rolled = petRollRarity(pcg, lvlData);
+      const rolled = petRollRarity(tierPcg, lvlData);
 
       const pets = petsByRarity[rolled];
       const chosenPet = pets[0];
       const petType = petLibrary[chosenPet].Type;
+
+      // 서브스탯: 별도 read (draw0 skip + guid → draws5-8)
+      const pcg = new MetaplayPCG(curSeed);
+      pcg.nextPcg32();
       pcg.nextGuid();
 
       const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
@@ -17447,13 +16130,13 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
 
   const cacheA = new Map(), cacheB = new Map();
   function evalSeed(seedOffset, lvlData, isBase) {
-    const pcg = new MetaplayPCG(startSeed + BigInt(seedOffset));
+    // 등급: 보너스 체크 같은 인스턴스 → 기본=draw1, 보너스=draw0
+    const tierPcg = new MetaplayPCG(startSeed + BigInt(seedOffset));
     let genBonus = false;
     if (isBase) {
-      const bonusPcg = new MetaplayPCG(startSeed + BigInt(seedOffset));
-      if (bonusPcg.nextPcg32() < bonusThreshold) genBonus = true;
+      if (tierPcg.nextPcg32() < bonusThreshold) genBonus = true;
     }
-    const rRaw = pcg.nextPcg32();
+    const rRaw = tierPcg.nextPcg32();
     let acc = 0, rVal = 'Common';
     for (const r of RARITIES) {
       acc += Math.round((lvlData[r] || 0) * 4294967296);
@@ -17462,6 +16145,9 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
     const pets = petsByRarity[rVal];
     const chosenPet = pets[0];
     const petType = petLibrary[chosenPet].Type;
+    // 서브스탯: 별도 read (draw0 skip + guid → draws5-8)
+    const pcg = new MetaplayPCG(startSeed + BigInt(seedOffset));
+    pcg.nextPcg32();
     pcg.nextGuid();
     const nSubs = (['Legendary','Ultimate','Mythic'].includes(rVal) || isAscended) ? 2 : 1;
     const { detailed, f64Sum } = petRollSubstats(pcg, nSubs, petType);
@@ -17589,21 +16275,24 @@ function doPetOptimize(state, { amount, mode = 'bonus', tier = 'Mythic', filterF
     for (const cost of best.path) {
       let totalTarget = cost, pullIdx = 0;
       while (pullIdx < totalTarget) {
-        const pcg = new MetaplayPCG(cS);
         const isBonusPull = pullIdx >= cost;
-        
+
+        // 등급: 보너스 체크 같은 인스턴스 → 기본=draw1, 보너스=draw0
+        const tierPcg = new MetaplayPCG(cS);
         if (!isBonusPull) {
-          const bonusPcg = new MetaplayPCG(cS);
-          if (bonusPcg.nextPcg32() < bonusThreshold) {
+          if (tierPcg.nextPcg32() < bonusThreshold) {
             totalTarget++;
           }
         }
 
         const lvlData = levels[Math.min(cLv, levels.length - 1)];
-        const rolled = petRollRarity(pcg, lvlData);
+        const rolled = petRollRarity(tierPcg, lvlData);
         const pets = petsByRarity[rolled];
         const chosenPet = pets[0];
         const petType = petLibrary[chosenPet].Type;
+        // 서브스탯: 별도 read (draw0 skip + guid → draws5-8)
+        const pcg = new MetaplayPCG(cS);
+        pcg.nextPcg32();
         pcg.nextGuid();
         const nSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
         const { detailed, f64Sum } = petRollSubstats(pcg, nSubs, petType);
@@ -17702,9 +16391,10 @@ function findPetPastSeed(state, config, petData) {
     const lvlData = levels[Math.min(level, levels.length - 1)];
 
     for (const isBonus of [false, true]) {
-      const pcg = new MetaplayPCG(startSeed);
-
-      const rolled = petRollRarity(pcg, lvlData);
+      // 등급: 기본 뽑기는 보너스체크가 draw0 소비 → 등급=draw1, 보너스 뽑기는 draw0
+      const tierPcg = new MetaplayPCG(startSeed);
+      if (!isBonus) tierPcg.nextPcg32();
+      const rolled = petRollRarity(tierPcg, lvlData);
       if (rolled !== reqRarity) continue;
 
       const pets = petsByRarity[rolled];
@@ -17712,6 +16402,9 @@ function findPetPastSeed(state, config, petData) {
       const petType = petLibrary[chosenPet].Type;
       if (reqType !== 'all' && petType !== reqType) continue;
 
+      // 서브스탯: 별도 read (draw0 skip + guid → draws5-8)
+      const pcg = new MetaplayPCG(startSeed);
+      pcg.nextPcg32();
       pcg.nextGuid();
 
       const numSubs = (['Legendary','Ultimate','Mythic'].includes(rolled) || isAscended) ? 2 : 1;
