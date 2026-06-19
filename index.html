@@ -703,6 +703,8 @@ table td.center { text-align: center; }
             </div>
         </div>
 
+        <div id="init-filter-host" style="margin-bottom: 18px;"></div>
+
         <button id="btn-apply" style="width: 100%; padding: 14px; background: #2ecc71; color: white; border: none; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background 0.2s;">프론트 로컬 일괄 적용 (서버리스)</button>
         <div id="init-err" style="color: #e74c3c; margin-top: 12px; font-weight: bold; text-align: center; font-size: 14px;"></div>
     </div>
@@ -723,6 +725,8 @@ table td.center { text-align: center; }
                 <select id="forge-amount"><option value="10">10회</option><option value="50">50회</option><option value="100">100회</option></select>
                 <label>배수:</label>
                 <input type="number" id="forge-times" value="1" style="width:60px;">
+                <label>현재 망치:</label>
+                <input type="number" id="forge-current-hammers" min="0" placeholder="망치 수" style="width:80px;" title="현재 보유한 망치 수를 입력하면 각 결과가 '남은 망치 몇 개일 때' 나오는지 표시합니다.">
                 <button id="forge-go" style="background:#3498db; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">미래시 전개</button>
                 <button id="forge-reset-run" style="background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer;">히스토리 리셋</button>
                 <button id="forge-clear" style="background:#7f8c8d; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; padding:4px 8px; margin-left:5px;">결과 비우기</button>
@@ -753,6 +757,7 @@ table td.center { text-align: center; }
                             <option value="9">신성 이상</option>
                         </select>
                     </div>
+                    <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 10px;">
@@ -885,6 +890,7 @@ table td.center { text-align: center; }
                             <option value="Mythic">신화 이상</option>
                         </select>
                     </div>
+                    <button id="pet-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="pet-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 10px;">
@@ -1035,6 +1041,7 @@ table td.center { text-align: center; }
                             <option value="Mythic">신화 이상</option>
                         </select>
                     </div>
+                    <button id="mount-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="mount-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
                  <div id="mount-filter-grid" class="stat-filter-grid"></div>
@@ -17034,14 +17041,45 @@ function renderStatus(target, state, mode) {
   `;
 }
 
+// 전체 히스토리를 순서대로 훑어 각 결과에 '실제 망치 소모 순번(_strikeNo)'과
+// '이 결과 직전까지 소모된 망치 수(_priorConsumed)'를 부여한다.
+// 무료(IsFree)는 망치를 소모하지 않으므로 _strikeNo=0(🍀)으로 둔다.
+function annotateForgeHammers(history) {
+  let consumed = 0;
+  for (const it of history) {
+    it._priorConsumed = consumed;
+    if (it.IsFree) { it._strikeNo = 0; }
+    else { it._strikeNo = ++consumed; }
+  }
+}
+
 function renderForgeResults(target, title, results, meta = '') {
   if (!results || !results.length) {
     target.innerHTML = `<div class="output-section"><h4>${title}</h4><p class="hint">결과 없음</p></div>`;
     return;
   }
-  const rows = results.map(r => `
+  // 전체 히스토리 기준으로 망치 소모 순번을 계산 (필터된 부분집합이 아닌 전체 순서가 기준)
+  annotateForgeHammers(state.Forge.history);
+  const curHammerEl = document.getElementById('forge-current-hammers');
+  const curHammers = curHammerEl ? parseInt(curHammerEl.value, 10) : NaN;
+  const hasCur = Number.isFinite(curHammers);
+
+  const rows = results.map(r => {
+    const strikeCell = r.IsFree
+      ? `<td class="num" style="color:#27ae60;">🍀</td>`
+      : `<td class="num">${r._strikeNo ?? '-'}</td>`;
+    let remainCell = `<td class="num">-</td>`;
+    if (hasCur) {
+      const remain = curHammers - (r._priorConsumed || 0); // 이 결과가 나올 때(직전) 남은 망치
+      remainCell = remain > 0
+        ? `<td class="num">${remain}</td>`
+        : `<td class="num" style="color:#e74c3c; font-weight:bold;">${remain} (부족)</td>`;
+    }
+    return `
     <tr class="clickable-row" data-mode="Forge" data-seed="${r.nextSeed || ''}">
       <td class="num">${r.index}</td>
+      ${strikeCell}
+      ${remainCell}
       <td>${ageChip(r.Age)}</td>
       <td>${TYPE_KOR[r.Type] || r.Type}</td>
       <td class="num">${r.Type.includes('Weapon') ? r.Windup.toFixed(3) : '-'}</td>
@@ -17050,7 +17088,8 @@ function renderForgeResults(target, title, results, meta = '') {
       ${perfCell(r.Perf)}
       <td class="center">${r.IsFree ? '🍀' : ''}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
   target.innerHTML = `
     <div class="output-section">
       <h4>${title}</h4>
@@ -17058,7 +17097,7 @@ function renderForgeResults(target, title, results, meta = '') {
       <div class="miraesee-subtable-wrap">
         <table>
           <thead><tr>
-            <th>#</th><th>티어</th><th>타입</th><th>윈드업</th>
+            <th>#</th><th>망치#</th><th>남은망치</th><th>티어</th><th>타입</th><th>윈드업</th>
             <th>스탯1</th><th>스탯2</th><th>완성도</th><th>무료</th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -17560,6 +17599,9 @@ $('#btn-apply').addEventListener('click', async () => {
       state.ascend.mount.level = getMinAscendLevel('mount', state.Mount.ascensionLevel);
     }
 
+    // 재설정창에서 설정한 필터 수치를 결과창 필터에 한 번에 반영
+    ['Forge', 'Pet', 'Mount'].forEach(mode => copyFilterState(initFilterRoot(mode), cardFilterRoot(mode)));
+
     state.initialized = true;
     persist();
     showInitOrTabs();
@@ -17755,33 +17797,78 @@ function clearFilters(mode) {
   applyFilterAndRender(mode);
 }
 
+// 결과창 필터 카드(<details>)의 루트를 반환
+function cardFilterRoot(mode) {
+  const g = document.getElementById(mode.toLowerCase() + '-filter-grid');
+  return g ? g.closest('details') : null;
+}
+// 재설정창에 복제된 필터 카드의 루트를 반환
+function initFilterRoot(mode) {
+  return document.getElementById(mode.toLowerCase() + 'init-filter-card');
+}
+
+// 클론 내부의 id / name / exc-type 클래스를 'xxxinit' 네임스페이스로 치환 (충돌 방지)
+function nsRewriteFilter(root, mode) {
+  const lower = mode.toLowerCase();       // forge
+  const cap = mode;                       // Forge
+  const nsLower = lower + 'init';         // forgeinit
+  const nsCap = cap + 'Init';             // ForgeInit
+  const remap = v => (v || '').split(cap).join(nsCap).split(lower).join(nsLower);
+  root.querySelectorAll('[id]').forEach(el => { el.id = remap(el.id); });
+  root.querySelectorAll('[name]').forEach(el => { el.setAttribute('name', remap(el.getAttribute('name'))); });
+  root.querySelectorAll('.' + lower + '-exc-type').forEach(el => {
+    el.classList.remove(lower + '-exc-type');
+    el.classList.add(nsLower + '-exc-type');
+  });
+}
+
+// 구조가 동일한 두 필터 루트 사이에서 input/select 값을 순서 기반으로 복사
+function copyFilterState(srcRoot, dstRoot) {
+  if (!srcRoot || !dstRoot) return;
+  const src = srcRoot.querySelectorAll('input, select');
+  const dst = dstRoot.querySelectorAll('input, select');
+  const n = Math.min(src.length, dst.length);
+  for (let i = 0; i < n; i++) {
+    const s = src[i], d = dst[i];
+    if (s.type === 'checkbox' || s.type === 'radio') d.checked = s.checked;
+    else d.value = s.value;
+  }
+}
+
+// 재설정창(#init-screen)에 결과창 필터 카드를 통째로 복제해 넣는다 (버튼 제거, 네임스페이스 치환)
+function buildInitFilterClones() {
+  const host = document.getElementById('init-filter-host');
+  if (!host) return;
+  host.innerHTML = '<div style="font-weight:bold; color:#34495e; margin-bottom:10px; border-top:1px solid #ddd; padding-top:14px;">🔍 결과 필터 수치 설정 — 여기서 값을 맞춘 뒤 아래 \'일괄 적용\'을 누르면 결과창 필터에 한 번에 반영됩니다.</div>';
+  ['Forge', 'Pet', 'Mount'].forEach(mode => {
+    const card = cardFilterRoot(mode);
+    if (!card) return;
+    const clone = card.cloneNode(true);
+    clone.querySelectorAll('button').forEach(b => b.remove());
+    nsRewriteFilter(clone, mode);
+    clone.id = mode.toLowerCase() + 'init-filter-card';
+    clone.open = false;
+    host.appendChild(clone);
+  });
+}
+
 function initFilters() {
+  const curHammerEl = $('#forge-current-hammers');
+  if (curHammerEl) {
+    curHammerEl.addEventListener('input', () => applyFilterAndRender('Forge'));
+  }
   initFilterUI($('#forge-filter-grid'), 'Forge');
   initFilterUI($('#pet-filter-grid'), 'Pet');
   initFilterUI($('#mount-filter-grid'), 'Mount');
 
+  // 재설정창에 필터 카드 복제 (그리드가 채워진 직후)
+  buildInitFilterClones();
+
   ['Forge', 'Pet', 'Mount'].forEach(mode => {
-    const grid = $(`#${mode.toLowerCase()}-filter-grid`);
-    if (grid) {
-      grid.addEventListener('change', () => applyFilterAndRender(mode));
-      grid.addEventListener('input', () => applyFilterAndRender(mode));
-    }
-    const radios = $$(`input[name="${mode.toLowerCase()}-match-mode"]`);
-    radios.forEach(radio => {
-      radio.addEventListener('change', () => applyFilterAndRender(mode));
-    });
-    const minTierEl = $(`#${mode.toLowerCase()}-min-tier`);
-    if (minTierEl) {
-      minTierEl.addEventListener('change', () => applyFilterAndRender(mode));
-    }
-    if (mode === 'Forge') {
-      $$('.forge-exc-type').forEach(cb => {
-        cb.addEventListener('change', () => applyFilterAndRender(mode));
-      });
-    } else if (mode === 'Pet') {
-      $$('.pet-exc-type').forEach(cb => {
-        cb.addEventListener('change', () => applyFilterAndRender(mode));
-      });
+    // 실시간 필터링 제거 → '필터 적용' 버튼 클릭 시에만 반영
+    const applyBtn = $(`#${mode.toLowerCase()}-filter-apply`);
+    if (applyBtn) {
+      applyBtn.addEventListener('click', () => applyFilterAndRender(mode));
     }
     const clearBtn = $(`#${mode.toLowerCase()}-filter-clear`);
     if (clearBtn) {
@@ -17933,7 +18020,11 @@ if ($('#mount-reset-run')) {
 }
 
 // 상단 및 하단 글로벌 제어 리스너 연결
-$('#btn-init').addEventListener('click', () => { state.initialized = false; persist(); showInitOrTabs(); });
+$('#btn-init').addEventListener('click', () => {
+  // 재설정창 진입 시 현재 결과창 필터 값을 재설정창 클론에 반영
+  ['Forge', 'Pet', 'Mount'].forEach(mode => copyFilterState(cardFilterRoot(mode), initFilterRoot(mode)));
+  state.initialized = false; persist(); showInitOrTabs();
+});
 $('#btn-save').addEventListener('click', () => { persist(); alert('브라우저에 상태가 백업되었습니다.'); });
 $('#btn-load').addEventListener('click', () => { const loaded = loadState(); if(loaded) { Object.assign(state, loaded); showInitOrTabs(); } });
 $('#btn-reset').addEventListener('click', () => { if(confirm('전체 포맷할까요?')) { clearSavedState(); location.reload(); } });
