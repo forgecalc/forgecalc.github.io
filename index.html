@@ -655,6 +655,32 @@ table td.center { text-align: center; }
     <div class="tab" data-tab="forge">🔨 대장간</div>
     <div class="tab" data-tab="ascend">🌟 승천</div>
     <div class="tab active" data-tab="miraesee">🔮 미래시</div>
+    <div class="tab" data-tab="combatsim">⚔️ 전투 시뮬</div>
+  </div>
+
+  <div class="tab-panel" id="panel-combatsim">
+    <div style="max-width:920px;margin:0 auto;padding:12px;">
+      <h2 style="text-align:center;color:var(--accent);">⚔️ 1v1 전투 시뮬</h2>
+      <p class="muted" style="text-align:center;font-size:12px;">디컴파일 검증 공식: 공속 주기(0.1초 양자화) · 크리 평타=일반×((치피+120)/100) · 더블 가속 · 흡혈 · 블록. 회피는 장비로 못 얻어 0.</p>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;">
+        <div style="flex:1;min-width:280px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--panel);">
+          <h3 style="margin:0 0 8px;color:#4aa3ff;">🟦 내 스탯</h3>
+          <div style="margin-bottom:8px;font-size:12px;">📷 OCR 캡쳐: <input type="file" id="cs-ocr-file-me" accept="image/*" style="font-size:11px;"> <span id="cs-ocr-status-me" class="muted"></span></div>
+          <div id="cs-me-fields"></div>
+          <textarea id="cs-ocr-raw-me" placeholder="OCR 원본(수정하면 다시 파싱)" style="width:100%;height:48px;margin-top:6px;font-size:11px;font-family:monospace;box-sizing:border-box;"></textarea>
+        </div>
+        <div style="flex:1;min-width:280px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--panel);">
+          <h3 style="margin:0 0 8px;color:#ff6b6b;">🟥 상대 스탯</h3>
+          <div style="margin-bottom:8px;font-size:12px;">📷 OCR 캡쳐: <input type="file" id="cs-ocr-file" accept="image/*" style="font-size:11px;"> <span id="cs-ocr-status" class="muted"></span></div>
+          <div id="cs-foe-fields"></div>
+          <textarea id="cs-ocr-raw" placeholder="OCR 원본(수정하면 다시 파싱)" style="width:100%;height:48px;margin-top:6px;font-size:11px;font-family:monospace;box-sizing:border-box;"></textarea>
+        </div>
+      </div>
+      <div style="text-align:center;margin:14px 0;">
+        <button id="cs-run" style="background:var(--accent);color:#00233a;border:none;border-radius:6px;padding:10px 30px;font-weight:bold;font-size:15px;cursor:pointer;">⚔️ 시뮬 돌리기</button>
+      </div>
+      <div id="cs-result"></div>
+    </div>
   </div>
 
   <div class="tab-panel" id="panel-forge">
@@ -17090,9 +17116,23 @@ function renderForgeResults(target, title, results, meta = '') {
     </tr>
   `;
   }).join('');
+
+  // 복사용 텍스트 (필터된 결과: 부위 / 옵션 / 남은망치)
+  const copyText = ['부위\t옵션\t남은망치'].concat(results.map(r => {
+    const part = TYPE_KOR[r.Type] || r.Type;
+    const opt = [r.DetailedStats[0], r.DetailedStats[1]]
+      .filter(Boolean)
+      .map(ds => `+${ds.value.toFixed(2)}% ${SUBSTATS_KOR[ds.name] || ds.name}`)
+      .join(' / ');
+    const remain = hasCur ? (curHammers - (r._priorConsumed || 0)) : '-';
+    return `${part}\t${opt}\t${remain}`;
+  })).join('\n');
+
   target.innerHTML = `
     <div class="output-section">
-      <h4>${title}</h4>
+      <h4 style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">${title}
+        <button type="button" class="forge-copy-btn" style="font-size:12px; padding:3px 10px; background:#27ae60; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">📋 복사</button>
+      </h4>
       ${meta ? `<div class="meta">${meta}</div>` : ''}
       <div class="miraesee-subtable-wrap">
         <table>
@@ -17105,6 +17145,23 @@ function renderForgeResults(target, title, results, meta = '') {
       </div>
     </div>
   `;
+
+  const copyBtn = target.querySelector('.forge-copy-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      const done = () => { copyBtn.textContent = '복사됨!'; setTimeout(() => { copyBtn.textContent = '📋 복사'; }, 1200); };
+      const fallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = copyText; ta.style.position = 'fixed'; ta.style.left = '-9999px';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) { alert('복사 실패 — 수동으로 복사하세요.'); }
+        document.body.removeChild(ta);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(copyText).then(done).catch(fallback);
+      } else { fallback(); }
+    });
+  }
 }
 
 function renderForgeSearch(target, results, tier) {
@@ -18907,6 +18964,184 @@ showInitOrTabs();
   }
 })();
 /* === MIRAESEE INJECTED JS END === */
+</script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+/* ===== 전투 시뮬 (디컴파일 검증 공식) ===== */
+(function(){
+  const TICK=0.1, AD=1.5;
+  const periodTicks=a=>Math.ceil(AD/(TICK*(1+a/100)))+1, periodSec=a=>periodTicks(a)*TICK;
+  function mul32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  const FIELDS=[['dmg','총 피해'],['hp','총 체력'],['asp','공속 %'],['chipi','치피 %(게임 표시값)'],['crit','치확 %'],['dbl','더블 %'],['ls','생흡 %'],['block','블록 %']];
+  const ME_DEF ={asp:'154',chipi:'364',crit:'70',dbl:'47',ls:'40',block:'0'};
+  const FOE_DEF={asp:'150',chipi:'280',crit:'60',dbl:'40',ls:'30',block:'5'};
+  // 무기별 windup(초) — 디컴파일/1.html에서 추출. [이름, windup, 근접M/원거리R, 아이콘파일]. windup은 공격주기엔 무관, 더블어택 가속 타이밍에만 영향.
+  const WEAPONS={
+    'Primitive':[['Axe',0.767,'M','IconPrimitiveWeaponAxe.png'],['Blowgun',0.467,'R','IconPrimitiveWeaponBlowgun.png'],['Branch',0.783,'M','IconPrimitiveWeaponBranch.png'],['Club',0.933,'M','IconPrimitiveWeaponClub.png'],['Rock',0.683,'R','IconPrimitiveWeaponRock.png'],['Slinger',1.083,'R','IconPrimitiveWeaponSlinger.png'],['Bone',0.6,'M','IconPrimitiveWeaponBone.png']],
+    'Medieval':[['Sword&Shield',0.567,'M','IconMedievalWeaponSwordandshield.png'],['Spear&Shield',0.65,'M','IconMedievalWeaponSpearandshield.png'],['Scythe',0.567,'M','IconMedievalWeaponScythe.png'],['WarHammer',0.783,'M','IconMedievalWeaponWarhammer.png'],['Bow',1.083,'R','IconMedievalWeaponBow.png'],['Katana',0.9,'M','IconMedievalWeaponKatana.png'],['Tomahawk',0.683,'R','IconMedievalWeaponTomahawk.png']],
+    'Earlymodern':[['Crossbow',0.567,'R','IconEarlymodernWeaponCrossbow.png'],['Musket',0.667,'R','IconEarlymodernWeaponMusket.png'],['Executioner',0.667,'M','IconEarlymodernWeaponExecutioner.png'],['DualPistols',0.833,'R','IconEarlymodernWeaponDualpistols.png'],['PirateSword',0.767,'M','IconEarlymodernWeaponPiratessword.png'],['Rapier',0.667,'M','IconEarlymodernWeaponRapier.png']],
+    'Modern':[['AK',0.5,'R','IconModernWeaponAk.png'],['Baton',0.583,'M','IconModernWeaponBaton.png'],['KnuckleDusters',0.667,'M','IconModernWeaponKnuckledusters.png'],['M4',0.5,'R','IconModernWeaponM4.png'],['RiotShield',0.733,'M','IconModernWeaponRiotshield.png'],['Sniper',0.833,'R','IconModernWeaponSniper.png'],['Uzi',0.333,'R','IconModernWeaponUzi.png'],['Wrench',0.783,'M','IconModernWeaponWrench.png']],
+    'Space':[['Blaster',0.667,'R','IconSpaceWeaponBlaster.png'],['RobotSword',0.767,'M','IconSpaceWeaponRobotsword.png'],['Saber',0.783,'M','IconSpaceWeaponSaber.png'],['SpaceGun',0.717,'R','IconSpaceWeaponSpacegun.png'],['SpacePistol',0.917,'R','IconSpaceWeaponSpacepistol.png']],
+    'Interstellar':[['DoubleSaber',0.75,'M','IconInterstellarWeaponDualwieldmelee.png'],['IonicBlaster',0.667,'R','IconInterstellarWeaponIonicblaster.png'],['IsobaricCutter',0.717,'M','IconInterstellarWeaponIsobariccutter.png'],['Light&Shield',0.75,'M','IconInterstellarWeaponLightswordandshield.png'],['PlasmaRifle',0.833,'R','IconInterstellarWeaponPlasmarifle.png'],['RayGun',0.967,'R','IconInterstellarWeaponRaygun.png']],
+    'Multiverse':[['ProjectedCutlass',0.7,'M','IconMultiverseWeaponProjectedcutlass.png'],['MentalSpear',0.7,'M','IconMultiverseWeaponMentalspear.png'],['Trident',0.7,'M','IconMultiverseWeaponHolographictrident.png'],['VirtualBow',1.083,'R','IconMultiverseWeaponSimulatedbow.png'],['VirtualGun',0.833,'R','IconMultiverseWeaponVirtualgun.png'],['VirtualSword',0.883,'M','IconMultiverseWeaponVirtualsword.png']],
+    'Quantum':[['BlackBow',0.833,'R','IconQuantumWeaponBlackbow.png'],['BlackGun',1.0,'R','IconQuantumWeaponBlackgun.png'],['BlackHammer',1.1,'M','IconQuantumWeaponBlackhammer.png'],['BlackSpear',0.9,'M','IconQuantumWeaponBlackspear.png'],['QuantumStaff',0.95,'R','IconQuantumWeaponQuantumstaff.png'],['BlackSword&Shield',0.567,'M','IconQuantumWeaponBlackswordandshield.png']],
+    'Underworld':[['InfernalTrident',1.0,'R','IconUnderworldWeaponInfernalTrident.png'],['AbyssalFork',0.817,'R','IconUnderworldWeaponAbyssalFork.png'],['Soulpiercer',0.817,'M','IconUnderworldWeaponSoulpiercer.png'],['DoomMace',0.9,'M','IconUnderworldWeaponDoomMace.png'],['ShadowScimitar',0.383,'M','IconUnderworldWeaponShadowScimitar.png']],
+    'Divine':[['AngelicPitchfork',0.667,'M','IconDivineWeaponAngelicpitchfork.png'],['DragonDagger',0.733,'M','IconDivineWeaponDragondagger.png'],['SerpentSword',0.733,'M','IconDivineWeaponSerpentsword.png'],['SirenSong',0.317,'M','IconDivineWeaponSirenssong.png'],['Staff',0.833,'R','IconDivineWeaponStaff.png'],['StaffOfWisdom',0.717,'R','IconDivineWeaponStaffofwisdom.png']]
+  };
+  const WP_ICON='weapon-icons/';
+  const WP_DEF='Modern|3'; // 기본: Modern M4 (windup 0.5)
+  function weaponAt(val){var p=String(val||WP_DEF).split('|'),a=WEAPONS[p[0]];return(a&&a[+p[1]])||WEAPONS.Modern[3];}
+  function weaponWindup(val){return weaponAt(val)[1];}
+  // 아이콘 picker: 선택버튼(현재 무기 아이콘) + 팝오버(연대별 아이콘 그리드)
+  function weaponPicker(prefix){
+    var rows='';for(var age in WEAPONS){
+      rows+=`<div style="display:flex;align-items:center;gap:6px;margin:2px 0;"><span style="width:74px;font-size:10px;color:var(--muted);flex-shrink:0;">${age}</span><div style="display:flex;gap:3px;flex-wrap:wrap;">`+
+        WEAPONS[age].map((w,i)=>`<button type="button" class="cs-wp-pick" data-wp="${age}|${i}" title="${w[0]} · ${w[2]==='R'?'원거리':'근접'} · windup ${w[1].toFixed(3)}s" style="width:30px;height:30px;border:1px solid var(--border);border-radius:5px;background:#0d1b2a center/76% no-repeat url('${WP_ICON}${w[3]}');cursor:pointer;padding:0;"></button>`).join('')+
+        `</div></div>`;
+    }
+    return `<div style="display:flex;align-items:center;gap:6px;margin:5px 0 2px;position:relative;"><label style="flex:1;font-size:12px;">무기(windup)</label>
+      <input type="hidden" id="${prefix}weapon" value="${WP_DEF}">
+      <button type="button" class="cs-wp-trigger" data-prefix="${prefix}" style="display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:6px;background:var(--panel);padding:3px 8px;cursor:pointer;font-size:12px;color:var(--text,#cfe);">
+        <span class="cs-wp-ico" style="width:26px;height:26px;background:#0d1b2a center/76% no-repeat;border-radius:4px;display:inline-block;"></span>
+        <span class="cs-wp-name">—</span> <span style="opacity:.6;">▾</span>
+      </button>
+      <div class="cs-wp-pop" style="display:none;position:absolute;z-index:50;top:100%;right:0;margin-top:4px;background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:8px;box-shadow:0 8px 24px #000a;width:300px;">${rows}</div>
+    </div>`;
+  }
+  function syncWeaponTrigger(prefix){
+    var w=weaponAt(document.getElementById(prefix+'weapon').value),tr=document.querySelector('.cs-wp-trigger[data-prefix="'+prefix+'"]');if(!tr)return;
+    tr.querySelector('.cs-wp-ico').style.backgroundImage="url('"+WP_ICON+w[3]+"')";
+    tr.querySelector('.cs-wp-name').textContent=w[0]+' ('+w[1].toFixed(2)+'s)';
+  }
+  function build(c,prefix,defs){ c.innerHTML=FIELDS.map(([k,lbl])=>`<div style="display:flex;align-items:center;gap:6px;margin:3px 0;"><label style="flex:1;font-size:12px;">${lbl}</label><input id="${prefix}${k}" type="number" step="any" value="${defs[k]||''}" style="width:120px;padding:4px;font-size:12px;"></div>`).join('')+weaponPicker(prefix); }
+  const gv=id=>{const e=document.getElementById(id);return e?parseFloat(e.value)||0:0;};
+  const wsel=id=>{const e=document.getElementById(id);return e?e.value:WP_DEF;};
+  function unit(p){return{dmg:gv(p+'dmg'),asp:gv(p+'asp'),cm:(gv(p+'chipi')+120)/100,crit:gv(p+'crit')/100,dbl:gv(p+'dbl')/100,ls:gv(p+'ls')/100,block:gv(p+'block')/100,dodge:0,hp:gv(p+'hp')||1,wu:weaponWindup(wsel(p+'weapon'))};}
+  function rollDmg(att,tgt,r){if(r()<=tgt.dodge)return 0;if(r()<=tgt.block)return 0;if(r()<att.crit)return att.dmg*att.cm;return att.dmg;}
+  function duel(a,b,r,maxSec){var U=[a,b],hp=[a.hp,b.hp],st=[0,0],tm=[0,0],du=[false,false],asm=[1+a.asp/100,1+b.asp/100],N=maxSec/TICK;
+    for(var t=0;t<N;t++)for(var i=0;i<2;i++){var j=1-i,u=U[i];
+      if(st[i]===0)st[i]=1;
+      else if(st[i]===1){tm[i]+=TICK*asm[i];if(tm[i]>=u.wu){var d=rollDmg(u,U[j],r);hp[j]-=d;if(d>0)hp[i]=Math.min(hp[i]+d*u.ls,u.hp);st[i]=2;if(!du[i]&&r()<=u.dbl){tm[i]=u.wu*0.75;du[i]=true;}}}
+      else if(st[i]===2){tm[i]+=TICK*asm[i];if(tm[i]>=AD){st[i]=0;tm[i]=0;du[i]=false;}}
+      if(hp[j]<=0)return{w:i,t:t*TICK};}
+    return{w:-1,t:maxSec};}
+  const avgHit=(a,t)=>(1-t.block)*a.dmg*((1-a.crit)+a.crit*a.cm);
+  const dps=(a,t)=>avgHit(a,t)/periodSec(a.asp);
+  const fmt=n=>n.toLocaleString(undefined,{maximumFractionDigits:0});
+  function run(){
+    const me=unit('cs-me-'),foe=unit('cs-foe-'),R=document.getElementById('cs-result');
+    if(me.dmg<=0||foe.dmg<=0||me.hp<=1||foe.hp<=1){R.innerHTML='<p style="color:#ff6b6b;text-align:center;">양쪽 총피해·총체력을 입력하세요.</p>';return;}
+    const T=3000;var w=0,ts=0,dr=0;
+    for(var s=0;s<T;s++){var r=mul32((s*2654435761)>>>0),res=duel(me,foe,r,400);if(res.w===0){w++;ts+=res.t;}else if(res.w===1)ts+=res.t;else dr++;}
+    const wr=w/T,myD=dps(me,foe),foeD=dps(foe,me),myH=myD*me.ls,foeH=foeD*foe.ls;
+    R.innerHTML=`<div style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--panel);max-width:520px;margin:0 auto;">
+      <div style="font-size:22px;text-align:center;font-weight:bold;margin-bottom:10px;">승률 <span style="color:${wr>=0.5?'#4aff9d':'#ff6b6b'};">${(wr*100).toFixed(1)}%</span>${dr?` <span class="muted" style="font-size:12px;">(무 ${(dr/T*100).toFixed(0)}%)</span>`:''}</div>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;text-align:center;">
+        <tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;"></th><th style="color:#4aa3ff;">나</th><th style="color:#ff6b6b;">상대</th></tr>
+        <tr><td style="text-align:left;">공격 주기</td><td>${periodSec(me.asp).toFixed(1)}초</td><td>${periodSec(foe.asp).toFixed(1)}초</td></tr>
+        <tr><td style="text-align:left;">평타 DPS</td><td>${fmt(myD)}</td><td>${fmt(foeD)}</td></tr>
+        <tr><td style="text-align:left;">초당 회복(흡혈)</td><td>${fmt(myH)}</td><td>${fmt(foeH)}</td></tr>
+        <tr><td style="text-align:left;">무적(상대딜≤내회복)</td><td>${foeD<=myH?'✅':'❌'}</td><td>${myD<=foeH?'✅':'❌'}</td></tr>
+      </table>
+      <p class="muted" style="font-size:11px;margin-top:8px;text-align:center;">평균 결판 ${(ts/T).toFixed(1)}초 · 몬테카를로 ${T}판 · 회피 0</p></div>`;
+  }
+  function parseK(s,u){var n=parseFloat(String(s).replace(',','.'))||0;u=(u||'').toLowerCase();return n*({b:1e9,m:1e6,k:1e3,'억':1e8,'만':1e4,'천':1e3}[u]||1);}
+  const setVal=(prefix,k,v)=>{var e=document.getElementById(prefix+k);if(e)e.value=v;};
+  /* 줄 단위 파서 (1.html 검증 방식): 키워드 직전 숫자만 anchor-매칭, 스탯은 '+' 분리 후 어말 기준.
+     OCR이 라벨 앞부분을 깨도 어말(확률/피해/흡수/찬스/속도)은 살아남는 경우가 많음.
+     prefix='cs-me-' 또는 'cs-foe-' — 나/상대 둘 다 채울 수 있게 대상 일반화. */
+  function ocrFill(text,prefix){
+    prefix=prefix||'cs-foe-';
+    var norm=String(text).replace(/[ \t]+/g,' '),lines=norm.split(/\r?\n/),got={};
+    // 프로필 화면은 각 스탯이 단일 총합 줄 → 첫 매칭만 채택(합산 X).
+    for(var li=0;li<lines.length;li++){
+      var line=lines[li].trim();if(!line)continue;
+      [['dmg',/총\s*피해/],['hp',/총\s*체력/]].forEach(function(p){
+        if(got[p[0]])return;var kw=line.match(p[1]);if(!kw)return;
+        var before=line.slice(0,kw.index),m=before.match(/(\d+(?:[.,]\d+)?)\s*([kmb억만천])?\s*$/i);
+        if(m){setVal(prefix,p[0],parseK(m[1],m[2]));got[p[0]]=1;}
+      });
+      var segs=line.split('+');
+      for(var i=1;i<segs.length;i++){
+        var seg=segs[i].trim(),m=seg.match(/^(\d+(?:[.,]\d+)?)\s*%?\s*(\S.*?)\s*$/);if(!m)continue;
+        var num=parseFloat(m[1].replace(',','.'));if(!isFinite(num))continue;
+        var tail=m[2].replace(/\s+/g,''),key=null;
+        if(/거리피해$/.test(tail))   continue; // 원거리/근거리 피해 = 안 쓰는 옵션
+        if(/확률$/.test(tail))      key=/블록/.test(tail)?'block':'crit';
+        else if(/흡수$/.test(tail)) key='ls';
+        else if(/찬스$/.test(tail)) key='dbl';
+        else if(/속도$/.test(tail)) key='asp';
+        else if(/피해$/.test(tail)&&tail.length>2) key='chipi'; // '치명타 피해'만 치피
+        if(key&&!got[key]){setVal(prefix,key,num);got[key]=1;}
+      }
+    }
+  }
+  function init(){
+    var mc=document.getElementById('cs-me-fields'),fc=document.getElementById('cs-foe-fields');if(!mc||!fc)return;
+    build(mc,'cs-me-',ME_DEF);build(fc,'cs-foe-',FOE_DEF);
+    syncWeaponTrigger('cs-me-');syncWeaponTrigger('cs-foe-');
+    // 무기 아이콘 picker 상호작용
+    document.addEventListener('click',function(e){
+      var tr=e.target.closest('.cs-wp-trigger');
+      if(tr){var pop=tr.parentNode.querySelector('.cs-wp-pop');var open=pop.style.display!=='none';
+        document.querySelectorAll('.cs-wp-pop').forEach(function(p){p.style.display='none';});
+        pop.style.display=open?'none':'block';e.stopPropagation();return;}
+      var pk=e.target.closest('.cs-wp-pick');
+      if(pk){var pop=pk.closest('.cs-wp-pop'),trg=pop.parentNode.querySelector('.cs-wp-trigger'),prefix=trg.getAttribute('data-prefix');
+        document.getElementById(prefix+'weapon').value=pk.getAttribute('data-wp');syncWeaponTrigger(prefix);pop.style.display='none';e.stopPropagation();return;}
+      document.querySelectorAll('.cs-wp-pop').forEach(function(p){p.style.display='none';}); // 바깥 클릭 닫기
+    });
+    document.getElementById('cs-run').addEventListener('click',run);
+    document.getElementById('cs-ocr-raw').addEventListener('change',e=>ocrFill(e.target.value,'cs-foe-'));
+    var rawMe=document.getElementById('cs-ocr-raw-me');if(rawMe)rawMe.addEventListener('change',e=>ocrFill(e.target.value,'cs-me-'));
+    // 캐시 워커 (1.html 검증 방식): createWorker로 1회 초기화 후 worker.recognize(file).
+    // 일회용 Tesseract.recognize(file)은 CDN 빌드에서 "File could not be read! Code=0" 발생 → 워커 방식이 안정적.
+    var _worker=null,_logger=null;
+    function getWorker(){
+      if(_worker)return _worker;
+      _worker=Tesseract.createWorker('kor+eng',1,{logger:function(m){if(_logger)_logger(m);}}).catch(function(e){_worker=null;throw e;});
+      return _worker;
+    }
+    // File을 워커에 직접 넘기면 "File could not be read! Code=0"(워커가 파일 못 읽는 환경) 발생.
+    // → 메인스레드에서 브라우저 네이티브 디코더(createImageBitmap)로 캔버스에 그린 뒤 캔버스를 인식시켜 파일읽기 경로를 우회.
+    function toCanvas(f){
+      if(typeof createImageBitmap==='function'){
+        return createImageBitmap(f).then(function(bmp){
+          var cv=document.createElement('canvas');cv.width=bmp.width;cv.height=bmp.height;
+          cv.getContext('2d').drawImage(bmp,0,0);bmp.close&&bmp.close();return cv;});
+      }
+      return new Promise(function(res,rej){
+        var u=URL.createObjectURL(f),img=new Image();
+        img.onload=function(){try{var cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);URL.revokeObjectURL(u);res(cv);}catch(e){rej(e);}};
+        img.onerror=function(){URL.revokeObjectURL(u);rej(new Error('이미지 디코드 실패(HEIC?) — PNG/JPG로 캡쳐'));};
+        img.src=u;});
+    }
+    function ocrImage(f,st,prefix,rawId){
+      prefix=prefix||'cs-foe-';rawId=rawId||'cs-ocr-raw';
+      if(typeof Tesseract==='undefined'){st.textContent='Tesseract 로드 실패(인터넷 확인) — 수동 입력';return;}
+      st.textContent='📷 이미지 분석 중… (첫 실행은 언어데이터 다운로드로 수십초)';
+      _logger=function(m){if(m&&m.status==='recognizing text'&&typeof m.progress==='number')st.textContent='📷 인식 중 '+Math.round(m.progress*100)+'%';else if(m&&m.status)st.textContent='📷 '+m.status+'…';};
+      Promise.all([getWorker(),toCanvas(f)]).then(function(a){return a[0].recognize(a[1]);})
+        .then(function(res){var t=(res.data&&res.data.text)||'';var rb=document.getElementById(rawId);if(rb)rb.value=t;ocrFill(t,prefix);st.textContent='완료 ✓ (값 확인·수정)';})
+        .catch(function(err){st.textContent='OCR 실패: '+(err&&err.message||err)+' — raw칸/입력칸에 직접 입력하세요';})
+        .then(function(){_logger=null;},function(){_logger=null;});
+    }
+    var fi=document.getElementById('cs-ocr-file');
+    fi.addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];if(f)ocrImage(f,document.getElementById('cs-ocr-status'),'cs-foe-','cs-ocr-raw');});
+    var fiMe=document.getElementById('cs-ocr-file-me');
+    if(fiMe)fiMe.addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];if(f)ocrImage(f,document.getElementById('cs-ocr-status-me'),'cs-me-','cs-ocr-raw-me');});
+    // 붙여넣기: 마지막으로 포커스/클릭한 OCR 입력 쪽으로. 기본은 상대. me 파일칸을 만진 직후엔 me로.
+    var pasteTarget={st:'cs-ocr-status',pre:'cs-foe-',raw:'cs-ocr-raw'};
+    fi.addEventListener('focus',function(){pasteTarget={st:'cs-ocr-status',pre:'cs-foe-',raw:'cs-ocr-raw'};});
+    if(fiMe)fiMe.addEventListener('focus',function(){pasteTarget={st:'cs-ocr-status-me',pre:'cs-me-',raw:'cs-ocr-raw-me'};});
+    document.addEventListener('paste',function(e){
+      var p=document.getElementById('panel-combatsim');if(!p||p.className.indexOf('active')<0)return;
+      var items=(e.clipboardData||{}).items||[];
+      for(var i=0;i<items.length;i++){if(items[i].type.indexOf('image')===0){var f=items[i].getAsFile();if(f)ocrImage(f,document.getElementById(pasteTarget.st),pasteTarget.pre,pasteTarget.raw);break;}}
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
 </script>
 </body>
 </html>
