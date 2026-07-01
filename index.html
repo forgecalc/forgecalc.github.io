@@ -716,10 +716,6 @@ table td.center { text-align: center; }
                 <input type="number" id="ch-forge" value="14" step="0.1" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
             </div>
             <div style="flex: 1;">
-                <label style="font-size: 12px; font-weight: bold; color: #555;">스킬 보너스 (%)</label>
-                <input type="number" id="ch-skill" value="25" step="0.1" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
-            </div>
-            <div style="flex: 1;">
                 <label style="font-size: 12px; font-weight: bold; color: #555;">펫 보너스 (%)</label>
                 <input type="number" id="ch-pet" value="22" step="0.1" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
             </div>
@@ -15473,9 +15469,20 @@ function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, it
   }
 
   pcg.nextGuid();
-  const specificItems = itemsByAgeAndType[rolledAge][chosenType];
-  const chosenItem = specificItems[pcg.nextInt(specificItems.length)];
-  pcg.nextInt(100); // discarded roll
+  let chosenItem;
+  if (chosenType === 'Weapon') {
+    // 패치 후 로직: 타입(근/원거리) 먼저 뽑고 → 그 타입 무기 중 선택. (버리는 nextInt(100) 없음, draw 2개로 동일)
+    const weapons = itemsByAgeAndType[rolledAge]['Weapon'];
+    const melee = weapons.filter(w => !w.IsRanged);
+    const ranged = weapons.filter(w => w.IsRanged);
+    let subpool = pcg.nextInt(2) === 0 ? melee : ranged; // 0=근거리, 1=원거리
+    if (subpool.length === 0) subpool = weapons;
+    chosenItem = subpool[pcg.nextInt(subpool.length)];
+  } else {
+    const specificItems = itemsByAgeAndType[rolledAge][chosenType];
+    chosenItem = specificItems[pcg.nextInt(specificItems.length)];
+    pcg.nextInt(100); // discarded roll
+  }
 
   let numSubs = statUnlocks[String(rolledAge)]?.NumberOfSecondStats || 0;
   if (isAscended) {
@@ -17117,15 +17124,16 @@ function renderForgeResults(target, title, results, meta = '') {
   `;
   }).join('');
 
-  // 복사용 텍스트 (필터된 결과: 부위 / 옵션 / 남은망치)
-  const copyText = ['부위\t옵션\t남은망치'].concat(results.map(r => {
+  // 복사용 텍스트 (필터된 결과: 등급 / 부위 / 옵션 / 남은망치)
+  const copyText = ['등급\t부위\t옵션\t남은망치'].concat(results.map(r => {
+    const tier = AGE_KOR[r.Age] || r.Age;
     const part = TYPE_KOR[r.Type] || r.Type;
     const opt = [r.DetailedStats[0], r.DetailedStats[1]]
       .filter(Boolean)
       .map(ds => `+${ds.value.toFixed(2)}% ${SUBSTATS_KOR[ds.name] || ds.name}`)
       .join(' / ');
     const remain = hasCur ? (curHammers - (r._priorConsumed || 0)) : '-';
-    return `${part}\t${opt}\t${remain}`;
+    return `${tier}\t${part}\t${opt}\t${remain}`;
   })).join('\n');
 
   target.innerHTML = `
@@ -17606,7 +17614,7 @@ $('#btn-apply').addEventListener('click', async () => {
     state.Skill.count = Number(BigInt('0x' + lines[4]) & 0xFFFFFFFFn);
     state.Skill.ascensionLevel = parseInt(lines[5], 16);
     state.Skill.isAscended = state.Skill.ascensionLevel > 0;
-    state.Skill.chance = parseFloat($('#ch-skill').value) || 0.0;
+    state.Skill.chance = 0.0; // 스킬은 추가뽑기(보너스) 없음
     state.Skill.history = [];
 
     state.Pet.seed = BigInt('0x' + lines[6]);
@@ -17628,7 +17636,7 @@ $('#btn-apply').addEventListener('click', async () => {
     state.lastInputText = $('#total-12-lines').value;
     state.lastChances = {
       forge: parseFloat($('#ch-forge').value) || 14,
-      skill: parseFloat($('#ch-skill').value) || 25,
+      skill: 0,
       pet: parseFloat($('#ch-pet').value) || 22,
       mount: parseFloat($('#ch-mount').value) || 20
     };
@@ -18970,11 +18978,14 @@ showInitOrTabs();
 /* ===== 전투 시뮬 (디컴파일 검증 공식) ===== */
 (function(){
   const TICK=0.1, AD=1.5;
+  // 결투장(PvP) 보정 — SharedGameConfig.mpa 디코딩 + 실측. PvpMatchTimerSeconds=60.
+  // 결투장 HP = 총체력 × HP배수. 배수 = 1(유닛) + Base1.0 + Pet0.5 + Skill0.5 + Mount2.0 = 풀보유시 5.0 (보유 구성에 따라 달라짐 → 편집 가능). 실측 기본350m→~5.6×.
+  const MATCH_TIMER=60;  // 매치 제한시간 60초 — 초과 시 잔여 HP% 높은 쪽 승
   const periodTicks=a=>Math.ceil(AD/(TICK*(1+a/100)))+1, periodSec=a=>periodTicks(a)*TICK;
   function mul32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
-  const FIELDS=[['dmg','총 피해'],['hp','총 체력'],['asp','공속 %'],['chipi','치피 %(게임 표시값)'],['crit','치확 %'],['dbl','더블 %'],['ls','생흡 %'],['block','블록 %']];
-  const ME_DEF ={asp:'154',chipi:'364',crit:'70',dbl:'47',ls:'40',block:'0'};
-  const FOE_DEF={asp:'150',chipi:'280',crit:'60',dbl:'40',ls:'30',block:'5'};
+  const FIELDS=[['dmg','총 피해'],['hp','총 체력'],['hpmult','결투장 HP배수'],['asp','공속 %'],['chipi','치피 %(게임 표시값)'],['crit','치확 %'],['dbl','더블 %'],['ls','생흡 %'],['block','블록 %']];
+  const ME_DEF ={hpmult:'5',asp:'154',chipi:'364',crit:'70',dbl:'47',ls:'40',block:'0'};
+  const FOE_DEF={hpmult:'5',asp:'150',chipi:'280',crit:'60',dbl:'40',ls:'30',block:'5'};
   // 무기별 windup(초) — 디컴파일/1.html에서 추출. [이름, windup, 근접M/원거리R, 아이콘파일]. windup은 공격주기엔 무관, 더블어택 가속 타이밍에만 영향.
   const WEAPONS={
     'Primitive':[['Axe',0.767,'M','IconPrimitiveWeaponAxe.png'],['Blowgun',0.467,'R','IconPrimitiveWeaponBlowgun.png'],['Branch',0.783,'M','IconPrimitiveWeaponBranch.png'],['Club',0.933,'M','IconPrimitiveWeaponClub.png'],['Rock',0.683,'R','IconPrimitiveWeaponRock.png'],['Slinger',1.083,'R','IconPrimitiveWeaponSlinger.png'],['Bone',0.6,'M','IconPrimitiveWeaponBone.png']],
@@ -18986,9 +18997,11 @@ showInitOrTabs();
     'Multiverse':[['ProjectedCutlass',0.7,'M','IconMultiverseWeaponProjectedcutlass.png'],['MentalSpear',0.7,'M','IconMultiverseWeaponMentalspear.png'],['Trident',0.7,'M','IconMultiverseWeaponHolographictrident.png'],['VirtualBow',1.083,'R','IconMultiverseWeaponSimulatedbow.png'],['VirtualGun',0.833,'R','IconMultiverseWeaponVirtualgun.png'],['VirtualSword',0.883,'M','IconMultiverseWeaponVirtualsword.png']],
     'Quantum':[['BlackBow',0.833,'R','IconQuantumWeaponBlackbow.png'],['BlackGun',1.0,'R','IconQuantumWeaponBlackgun.png'],['BlackHammer',1.1,'M','IconQuantumWeaponBlackhammer.png'],['BlackSpear',0.9,'M','IconQuantumWeaponBlackspear.png'],['QuantumStaff',0.95,'R','IconQuantumWeaponQuantumstaff.png'],['BlackSword&Shield',0.567,'M','IconQuantumWeaponBlackswordandshield.png']],
     'Underworld':[['InfernalTrident',1.0,'R','IconUnderworldWeaponInfernalTrident.png'],['AbyssalFork',0.817,'R','IconUnderworldWeaponAbyssalFork.png'],['Soulpiercer',0.817,'M','IconUnderworldWeaponSoulpiercer.png'],['DoomMace',0.9,'M','IconUnderworldWeaponDoomMace.png'],['ShadowScimitar',0.383,'M','IconUnderworldWeaponShadowScimitar.png']],
-    'Divine':[['AngelicPitchfork',0.667,'M','IconDivineWeaponAngelicpitchfork.png'],['DragonDagger',0.733,'M','IconDivineWeaponDragondagger.png'],['SerpentSword',0.733,'M','IconDivineWeaponSerpentsword.png'],['SirenSong',0.317,'M','IconDivineWeaponSirenssong.png'],['Staff',0.833,'R','IconDivineWeaponStaff.png'],['StaffOfWisdom',0.717,'R','IconDivineWeaponStaffofwisdom.png']]
+    'Divine':[['AngelicPitchfork',0.667,'M','IconDivineWeaponAngelicpitchfork.png'],['DragonDagger',0.733,'M','IconDivineWeaponDragondagger.png'],['SerpentSword',0.733,'M','IconDivineWeaponSerpentsword.png'],['SirenSong',0.317,'M','IconDivineWeaponSirenssong.png'],['Staff',0.833,'R','IconDivineWeaponStaff.png'],['StaffOfWisdom',0.717,'R','IconDivineWeaponStaffofwisdom.png']],
+    // 스킨 (SkinsLibrary.json, Age=-1000) — 별도 아이콘·windup, 전부 원거리. 시뮬엔 windup만 반영.
+    'Skins (스킨)':[['Leprechaun',0.3167,'R','skin3.png'],['Flower',0.7833,'R','skin4.png'],['Druid',0.6667,'R','skin5.png'],['Bunny',0.9333,'R','skin6.png'],['Clown',0.7667,'R','skin7.png'],['Millionaire',0.6667,'R','skin8.png'],['Fishbowl',0.9333,'R','skin9.png'],['Eagle',0.9,'R','skin10.png'],['Skater',0.7333,'R','skin11.png'],['Cat',0.2,'R','skin12.png'],['Shark',0.9,'R','skin13.png'],['Mushroom',0.7333,'R','skin14.png']]
   };
-  const WP_ICON='weapon-icons/';
+  const wIcon=w=>(w[3].charAt(0)==='s'?'weapon-skin-icons/':'weapon-icons/')+w[3]; // 스킨(skinN.png)은 별도 폴더
   const WP_DEF='Modern|3'; // 기본: Modern M4 (windup 0.5)
   function weaponAt(val){var p=String(val||WP_DEF).split('|'),a=WEAPONS[p[0]];return(a&&a[+p[1]])||WEAPONS.Modern[3];}
   function weaponWindup(val){return weaponAt(val)[1];}
@@ -18996,7 +19009,7 @@ showInitOrTabs();
   function weaponPicker(prefix){
     var rows='';for(var age in WEAPONS){
       rows+=`<div style="display:flex;align-items:center;gap:6px;margin:2px 0;"><span style="width:74px;font-size:10px;color:var(--muted);flex-shrink:0;">${age}</span><div style="display:flex;gap:3px;flex-wrap:wrap;">`+
-        WEAPONS[age].map((w,i)=>`<button type="button" class="cs-wp-pick" data-wp="${age}|${i}" title="${w[0]} · ${w[2]==='R'?'원거리':'근접'} · windup ${w[1].toFixed(3)}s" style="width:30px;height:30px;border:1px solid var(--border);border-radius:5px;background:#0d1b2a center/76% no-repeat url('${WP_ICON}${w[3]}');cursor:pointer;padding:0;"></button>`).join('')+
+        WEAPONS[age].map((w,i)=>`<button type="button" class="cs-wp-pick" data-wp="${age}|${i}" title="${w[0]} · ${w[2]==='R'?'원거리':'근접'} · windup ${w[1].toFixed(3)}s" style="width:30px;height:30px;border:1px solid var(--border);border-radius:5px;background:#0d1b2a center/76% no-repeat url('${wIcon(w)}');cursor:pointer;padding:0;"></button>`).join('')+
         `</div></div>`;
     }
     return `<div style="display:flex;align-items:center;gap:6px;margin:5px 0 2px;position:relative;"><label style="flex:1;font-size:12px;">무기(windup)</label>
@@ -19010,29 +19023,29 @@ showInitOrTabs();
   }
   function syncWeaponTrigger(prefix){
     var w=weaponAt(document.getElementById(prefix+'weapon').value),tr=document.querySelector('.cs-wp-trigger[data-prefix="'+prefix+'"]');if(!tr)return;
-    tr.querySelector('.cs-wp-ico').style.backgroundImage="url('"+WP_ICON+w[3]+"')";
+    tr.querySelector('.cs-wp-ico').style.backgroundImage="url('"+wIcon(w)+"')";
     tr.querySelector('.cs-wp-name').textContent=w[0]+' ('+w[1].toFixed(2)+'s)';
   }
   function build(c,prefix,defs){ c.innerHTML=FIELDS.map(([k,lbl])=>`<div style="display:flex;align-items:center;gap:6px;margin:3px 0;"><label style="flex:1;font-size:12px;">${lbl}</label><input id="${prefix}${k}" type="number" step="any" value="${defs[k]||''}" style="width:120px;padding:4px;font-size:12px;"></div>`).join('')+weaponPicker(prefix); }
   const gv=id=>{const e=document.getElementById(id);return e?parseFloat(e.value)||0:0;};
   const wsel=id=>{const e=document.getElementById(id);return e?e.value:WP_DEF;};
-  function unit(p){return{dmg:gv(p+'dmg'),asp:gv(p+'asp'),cm:(gv(p+'chipi')+120)/100,crit:gv(p+'crit')/100,dbl:gv(p+'dbl')/100,ls:gv(p+'ls')/100,block:gv(p+'block')/100,dodge:0,hp:gv(p+'hp')||1,wu:weaponWindup(wsel(p+'weapon'))};}
+  function unit(p){var mult=gv(p+'hpmult')||5;return{dmg:gv(p+'dmg'),asp:gv(p+'asp'),cm:(gv(p+'chipi')+120)/100,crit:gv(p+'crit')/100,dbl:gv(p+'dbl')/100,ls:gv(p+'ls')/100,block:gv(p+'block')/100,dodge:0,hp:(gv(p+'hp')*mult)||1,hpmult:mult,wu:weaponWindup(wsel(p+'weapon'))};}
   function rollDmg(att,tgt,r){if(r()<=tgt.dodge)return 0;if(r()<=tgt.block)return 0;if(r()<att.crit)return att.dmg*att.cm;return att.dmg;}
-  function duel(a,b,r,maxSec){var U=[a,b],hp=[a.hp,b.hp],st=[0,0],tm=[0,0],du=[false,false],asm=[1+a.asp/100,1+b.asp/100],N=maxSec/TICK;
+  function duel(a,b,r){var U=[a,b],mh=[a.hp,b.hp],hp=[mh[0],mh[1]],st=[0,0],tm=[0,0],du=[false,false],asm=[1+a.asp/100,1+b.asp/100],N=MATCH_TIMER/TICK;
     for(var t=0;t<N;t++)for(var i=0;i<2;i++){var j=1-i,u=U[i];
       if(st[i]===0)st[i]=1;
-      else if(st[i]===1){tm[i]+=TICK*asm[i];if(tm[i]>=u.wu){var d=rollDmg(u,U[j],r);hp[j]-=d;if(d>0)hp[i]=Math.min(hp[i]+d*u.ls,u.hp);st[i]=2;if(!du[i]&&r()<=u.dbl){tm[i]=u.wu*0.75;du[i]=true;}}}
+      else if(st[i]===1){tm[i]+=TICK*asm[i];if(tm[i]>=u.wu){var d=rollDmg(u,U[j],r);hp[j]-=d;if(d>0)hp[i]=Math.min(hp[i]+d*u.ls,mh[i]);st[i]=2;if(!du[i]&&r()<=u.dbl){var d2=rollDmg(u,U[j],r);hp[j]-=d2;if(d2>0)hp[i]=Math.min(hp[i]+d2*u.ls,mh[i]);du[i]=true;}}} /* 더블=추가타(한번더 때림) */
       else if(st[i]===2){tm[i]+=TICK*asm[i];if(tm[i]>=AD){st[i]=0;tm[i]=0;du[i]=false;}}
-      if(hp[j]<=0)return{w:i,t:t*TICK};}
-    return{w:-1,t:maxSec};}
+      if(hp[j]<=0)return{w:i,t:t*TICK,ko:true};}
+    var rA=hp[0]/mh[0],rB=hp[1]/mh[1];return{w:rA>rB?0:(rB>rA?1:-1),t:MATCH_TIMER,ko:false,rA:rA,rB:rB};}
   const avgHit=(a,t)=>(1-t.block)*a.dmg*((1-a.crit)+a.crit*a.cm);
-  const dps=(a,t)=>avgHit(a,t)/periodSec(a.asp);
+  const dps=(a,t)=>avgHit(a,t)*(1+a.dbl)/periodSec(a.asp); /* 더블=추가타라 사이클당 평균 (1+더블)회 타격 */
   const fmt=n=>n.toLocaleString(undefined,{maximumFractionDigits:0});
   function run(){
     const me=unit('cs-me-'),foe=unit('cs-foe-'),R=document.getElementById('cs-result');
     if(me.dmg<=0||foe.dmg<=0||me.hp<=1||foe.hp<=1){R.innerHTML='<p style="color:#ff6b6b;text-align:center;">양쪽 총피해·총체력을 입력하세요.</p>';return;}
-    const T=3000;var w=0,ts=0,dr=0;
-    for(var s=0;s<T;s++){var r=mul32((s*2654435761)>>>0),res=duel(me,foe,r,400);if(res.w===0){w++;ts+=res.t;}else if(res.w===1)ts+=res.t;else dr++;}
+    const T=3000;var w=0,ts=0,dr=0,ko=0,to=0;
+    for(var s=0;s<T;s++){var r=mul32((s*2654435761)>>>0),res=duel(me,foe,r);if(res.ko)ko++;else to++;if(res.w===0){w++;ts+=res.t;}else if(res.w===1)ts+=res.t;else dr++;}
     const wr=w/T,myD=dps(me,foe),foeD=dps(foe,me),myH=myD*me.ls,foeH=foeD*foe.ls;
     R.innerHTML=`<div style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--panel);max-width:520px;margin:0 auto;">
       <div style="font-size:22px;text-align:center;font-weight:bold;margin-bottom:10px;">승률 <span style="color:${wr>=0.5?'#4aff9d':'#ff6b6b'};">${(wr*100).toFixed(1)}%</span>${dr?` <span class="muted" style="font-size:12px;">(무 ${(dr/T*100).toFixed(0)}%)</span>`:''}</div>
@@ -19042,8 +19055,9 @@ showInitOrTabs();
         <tr><td style="text-align:left;">평타 DPS</td><td>${fmt(myD)}</td><td>${fmt(foeD)}</td></tr>
         <tr><td style="text-align:left;">초당 회복(흡혈)</td><td>${fmt(myH)}</td><td>${fmt(foeH)}</td></tr>
         <tr><td style="text-align:left;">무적(상대딜≤내회복)</td><td>${foeD<=myH?'✅':'❌'}</td><td>${myD<=foeH?'✅':'❌'}</td></tr>
+        <tr><td style="text-align:left;">결투장 유효 체력</td><td>${fmt(me.hp)} <span class="muted">(×${me.hpmult})</span></td><td>${fmt(foe.hp)} <span class="muted">(×${foe.hpmult})</span></td></tr>
       </table>
-      <p class="muted" style="font-size:11px;margin-top:8px;text-align:center;">평균 결판 ${(ts/T).toFixed(1)}초 · 몬테카를로 ${T}판 · 회피 0</p></div>`;
+      <p class="muted" style="font-size:11px;margin-top:8px;text-align:center;">결투장HP=총체력×배수(풀보유 5≈1+1+.5+.5+2) · 매치 ${MATCH_TIMER}초(초과 시 잔여HP% 판정) · KO결판 ${(ko/T*100).toFixed(0)}% / 시간초과 ${(to/T*100).toFixed(0)}% · 평균 ${(ts/T).toFixed(1)}초 · ${T}판</p></div>`;
   }
   function parseK(s,u){var n=parseFloat(String(s).replace(',','.'))||0;u=(u||'').toLowerCase();return n*({b:1e9,m:1e6,k:1e3,'억':1e8,'만':1e4,'천':1e3}[u]||1);}
   const setVal=(prefix,k,v)=>{var e=document.getElementById(prefix+k);if(e)e.value=v;};
