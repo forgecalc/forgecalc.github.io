@@ -1,3 +1,4 @@
+코드 크기로 인해 구문 강조가 비활성화되었습니다.
 <!doctype html>
 <html lang="ko">
 <head>
@@ -723,6 +724,11 @@ table td.center { text-align: center; }
                 <label style="font-size: 12px; font-weight: bold; color: #555;">탈것 보너스 (%)</label>
                 <input type="number" id="ch-mount" value="20" step="0.1" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center;">
             </div>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label style="font-size: 12px; font-weight: bold; color: #555;">무기 라운드로빈 — 덤프 [ITEM_ROUND_ROBIN]의 무기줄(5로 시작) 붙여넣기 (선택, 무기 종류 예측에 필수)</label>
+            <input type="text" id="rr-forge" placeholder="예: 50015165522C53FF541C5531563F573F" style="width: 100%; font-family: monospace; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px;">
         </div>
 
         <div id="init-filter-host" style="margin-bottom: 18px;"></div>
@@ -15500,7 +15506,25 @@ async function loadForgeData(baseUrl = '.') {
   return _forgeCache;
 }
 
-function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, itemsByAgeAndType, statUnlocks, isAscended) {
+function decodeRoundRobin(hexText) {
+  // 덤프 [ITEM_ROUND_ROBIN]에서 무기(타입5) 라운드로빈 추출 → {age: [idx...]}.
+  // 2바이트 청크 = [타입니블][시대니블][비트마스크] (예: 541C = 무기/시대4/{2,3,4})
+  const rr = {};
+  for (const line of String(hexText).trim().split(/\s+/)) {
+    for (let i = 0; i + 4 <= line.length; i += 4) {
+      const t = parseInt(line[i], 16);
+      const age = parseInt(line[i + 1], 16);
+      const mask = parseInt(line.slice(i + 2, i + 4), 16);
+      if (Number.isNaN(t) || Number.isNaN(age) || Number.isNaN(mask)) break;
+      if (t !== 5) continue;
+      rr[age] = [];
+      for (let b = 0; b < 8; b++) if ((mask >> b) & 1) rr[age].push(b);
+    }
+  }
+  return rr;
+}
+
+function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, itemsByAgeAndType, statUnlocks, isAscended, weaponRR = null) {
   const pcg = new MetaplayPCG(currentSeed);
   const ageRoll = pcg.nextF64();
   let acc = 0, rolledAge = 0;
@@ -15523,20 +15547,25 @@ function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, it
   }
 
   pcg.nextGuid();
-  let chosenItem;
+  const specificItems = itemsByAgeAndType[rolledAge][chosenType];
+  let chosenItem, chosenIdx;
   if (chosenType === 'Weapon') {
-    // 패치 후 로직: 타입(근/원거리) 먼저 뽑고 → 그 타입 무기 중 선택. (버리는 nextInt(100) 없음, draw 2개로 동일)
-    const weapons = itemsByAgeAndType[rolledAge]['Weapon'];
-    const melee = weapons.filter(w => !w.IsRanged);
-    const ranged = weapons.filter(w => w.IsRanged);
-    let subpool = pcg.nextInt(2) === 0 ? melee : ranged; // 0=근거리, 1=원거리
-    if (subpool.length === 0) subpool = weapons;
-    chosenItem = subpool[pcg.nextInt(subpool.length)];
+    // fm_mrs 확정 로직(2026-07-08 덤프 7318크래프트 검증): 라운드로빈 제외 후보에서 단일뽑.
+    // 근/원 선행뽑(nextInt(2)) 없음 — 근/원은 뽑힌 무기의 IsRanged 속성일 뿐.
+    const pool = [...specificItems].sort((a, b) => (a.ItemId.Idx ?? 0) - (b.ItemId.Idx ?? 0));
+    const rolled = weaponRR ? (weaponRR[rolledAge] = weaponRR[rolledAge] || []) : [];
+    if (rolled.length >= pool.length) rolled.length = 0; // lazy 리셋 (RNG 소비 없음)
+    let candidates = pool.filter(w => !rolled.includes(w.ItemId.Idx ?? 0));
+    if (candidates.length === 0) candidates = pool;
+    chosenItem = candidates[pcg.nextInt(candidates.length)];
+    chosenIdx = chosenItem.ItemId.Idx ?? 0;
+    if (rolled.length < pool.length && !rolled.includes(chosenIdx)) rolled.push(chosenIdx);
+    else rolled.length = 0;
   } else {
-    const specificItems = itemsByAgeAndType[rolledAge][chosenType];
     chosenItem = specificItems[pcg.nextInt(specificItems.length)];
-    pcg.nextInt(100); // discarded roll
+    chosenIdx = chosenItem.ItemId.Idx ?? 0;
   }
+  pcg.nextInt(100); // 아이템 레벨 롤 (fm_mrs _roll_item_level, 값 미사용 — draw 1개 소비)
 
   let numSubs = statUnlocks[String(rolledAge)]?.NumberOfSecondStats || 0;
   if (isAscended) {
@@ -15564,6 +15593,9 @@ function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, it
     if (availStats.length === 0) break;
     const idx = pcg.nextInt(availStats.length);
     const sName = availStats.splice(idx, 1)[0];
+    // 근접/원거리 피해 상호 배제 (게임 GenerateSecondaryStats 확정). 무기는 위에서 이미 반대타입 제외됨.
+    if (sName === 'Melee Damage') { const j = availStats.indexOf('Ranged Damage'); if (j >= 0) availStats.splice(j, 1); }
+    else if (sName === 'Ranged Damage') { const j = availStats.indexOf('Melee Damage'); if (j >= 0) availStats.splice(j, 1); }
     const f64Val = pcg.nextF64();
     f64Sum += f64Val;
     const sVal = getSubstatValue(sName, f64Val);
@@ -15575,6 +15607,7 @@ function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, it
     Type: displayType,
     IsRanged: isRanged,
     Windup: windup,
+    Idx: chosenIdx,
     DetailedStats: detailedStats,
     Perf: numSubs > 0 ? (f64Sum / numSubs) * 100 : 0,
     IsFree: pcg.nextF64() < (freeChancePct / 100),
@@ -15591,11 +15624,12 @@ function doForge(state, { amount, times }, forgeData) {
   const extraChance = f.chance;
   const isAscended = !!(f.is_ascended || f.isAscended);
 
+  const rrState = f.roundRobin = f.roundRobin || {};
   const results = [];
   const ageCounts = {}; for (let i = 0; i < 10; i++) ageCounts[i] = 0;
   let freeCount = 0;
   for (let i = 0; i < batch; i++) {
-    const res = simulateSingleForge(curSeed, curLevel, extraChance, ageDrop, itemsByAgeAndType, statUnlocks, isAscended);
+    const res = simulateSingleForge(curSeed, curLevel, extraChance, ageDrop, itemsByAgeAndType, statUnlocks, isAscended, rrState);
     if (res) {
       ageCounts[res.Age]++;
       if (res.IsFree) freeCount++;
@@ -16101,6 +16135,9 @@ function petRollSubstats(pcg, numSubs, petType) {
   for (let i = 0; i < numSubs; i++) {
     if (avail.length === 0) break;
     const name = avail.splice(pcg.nextInt(avail.length), 1)[0];
+    // 근접/원거리 피해 상호 배제 (게임 GenerateSecondaryStats 확정, 펫 실측검증)
+    if (name === 'Melee Damage') { const j = avail.indexOf('Ranged Damage'); if (j >= 0) avail.splice(j, 1); }
+    else if (name === 'Ranged Damage') { const j = avail.indexOf('Melee Damage'); if (j >= 0) avail.splice(j, 1); }
     const f64Val = pcg.nextF64();
     f64Sum += f64Val;
     const val = getSubstatValue(name, f64Val);
@@ -16575,6 +16612,9 @@ function mountRollSubstats(pcg, numSubs) {
   let f64Sum = 0;
   for (let i = 0; i < numSubs; i++) {
     const name = avail.splice(pcg.nextInt(avail.length), 1)[0];
+    // 근접/원거리 피해 상호 배제 (게임 GenerateSecondaryStats 확정)
+    if (name === 'Melee Damage') { const j = avail.indexOf('Ranged Damage'); if (j >= 0) avail.splice(j, 1); }
+    else if (name === 'Ranged Damage') { const j = avail.indexOf('Melee Damage'); if (j >= 0) avail.splice(j, 1); }
     const f64Val = pcg.nextF64();
     f64Sum += f64Val;
     const val = getSubstatValue(name, f64Val);
@@ -17520,12 +17560,19 @@ async function refreshAllStatus() {
       // Forge
       const f_stars = "★".repeat(Math.min(4, state.Forge.ascensionLevel)) + "☆".repeat(4 - Math.min(4, state.Forge.ascensionLevel));
       const f_seed = state.Forge.seed.toString(16).toUpperCase().padStart(16, '0');
+      const rrAgeKor = ['원시','중세','근대초기','현대','우주','항성','다중우주','양자','지하세계','신성'];
+      const rrObj = state.Forge.roundRobin || {};
+      const rrDesc = Object.keys(rrObj).filter(a => (rrObj[a] || []).length)
+        .sort((a, b) => a - b)
+        .map(a => `${rrAgeKor[a] ?? a}[${[...rrObj[a]].sort((x, y) => x - y).join(',')}]`)
+        .join(' ') || '없음 (무기 종류 예측 불가 — 재설정창에서 입력)';
       if ($('#forge-status')) {
         $('#forge-status').innerHTML = `
           <div style="padding:15px; background:#eef2f7; border-radius:6px; font-family:monospace; font-size:13px; line-height:1.7; border-left:4px solid #3498db; color:#2c3e50;">
             <strong style="font-size:14px; color:#2c3e50;">⚙️ 로컬 실시간 대장간 상태 (Forge)</strong><br>
             • Seed : <span style="color:#2980b9; font-weight:bold;">${f_seed}</span><br>
             • Level : <span style="color:#e67e22; font-weight:bold;">Level ${state.Forge.level}</span><br>
+            • 무기RR : <span style="color:#16a085;">${rrDesc}</span><br>
             • Ascension : <span style="color:#f1c40f;">${f_stars}</span> | Chance: ${state.Forge.chance.toFixed(1)}%${ascendBtnHtml('Forge', state.Forge.level)}
           </div>`;
       }
@@ -17669,6 +17716,7 @@ $('#btn-apply').addEventListener('click', async () => {
     state.Forge.isAscended = state.Forge.ascensionLevel > 0;
     state.Forge.chance = parseFloat($('#ch-forge').value) || 0.0;
     state.Forge.history = [];
+    state.Forge.roundRobin = decodeRoundRobin($('#rr-forge') ? $('#rr-forge').value : '');
 
     state.Skill.seed = BigInt('0x' + lines[3]);
     state.Skill.level = Number((BigInt('0x' + lines[4]) >> 32n) & 0xFFFFFFFFn);
@@ -17707,6 +17755,7 @@ $('#btn-apply').addEventListener('click', async () => {
       state[mode].initLevel = state[mode].level;
       state[mode].initCount = state[mode].count || 0;
       state[mode].initChance = state[mode].chance || 0;
+      state[mode].initRoundRobin = JSON.parse(JSON.stringify(state[mode].roundRobin || {}));
     }
 
     // 일괄 적용 시 승천 탭의 승천 레벨 초기값도 등급에 맞춰 친절하게 설정
@@ -18099,6 +18148,7 @@ if ($('#forge-reset-run')) {
     state.Forge.seed = state.Forge.initSeed ?? state.Forge.seed;
     state.Forge.level = state.Forge.initLevel ?? state.Forge.level;
     state.Forge.chance = state.Forge.initChance ?? state.Forge.chance;
+    state.Forge.roundRobin = JSON.parse(JSON.stringify(state.Forge.initRoundRobin || {}));
     state.Forge.history = [];
     lastResponse.Forge = null;
     persist();
@@ -19164,15 +19214,15 @@ showInitOrTabs();
 <script>
 /* ===== 전투 시뮬 (디컴파일 검증 공식) ===== */
 (function(){
-  const TICK=0.1, AD=1.5;
+  const TICK=0.1, AD=1.5, DBL_SPEEDUP=4;  // DBL_SPEEDUP=UnitConstants.DoubleAttackSpeedUp(디컴파일 확정): 더블 2타는 윈드업 1/4로 단축 재발사
   // 결투장(PvP) 보정 — SharedGameConfig.mpa 디코딩 + 실측. PvpMatchTimerSeconds=60.
-  // 결투장 HP = 총체력 × HP배수. 배수 = 1(유닛) + Base1.0 + Pet0.5 + Skill0.5 + Mount2.0 = 풀보유시 5.0 (보유 구성에 따라 달라짐 → 편집 가능). 실측 기본350m→~5.6×.
+  // 결투장 HP = 총체력 × HP배수. ★정확식(PvpCombatScene.GetMultiplier 디컴파일): 배수 = 1 + 0.5×펫수 + 0.5×스킬수 + 2×(탈것?1:0). count=장착(IsEquipped) 펫/스킬 수. 게임은 두 플레이어 배수 중 max를 양쪽에 적용. 풀장착(펫3·스킬3·탈것)≈6.0 → 기본값 6.
   const MATCH_TIMER=60;  // 매치 제한시간 60초 — 초과 시 잔여 HP% 높은 쪽 승
   const periodTicks=a=>Math.ceil(AD/(TICK*(1+a/100)))+1, periodSec=a=>periodTicks(a)*TICK;
   function mul32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
   const FIELDS=[['dmg','총 피해'],['hp','총 체력'],['hpmult','결투장 HP배수'],['asp','공속 %'],['chipi','치피 %(게임 표시값)'],['crit','치확 %'],['dbl','더블 %'],['ls','생흡 %'],['block','블록 %']];
-  const ME_DEF ={hpmult:'5',asp:'154',chipi:'364',crit:'70',dbl:'47',ls:'40',block:'0'};
-  const FOE_DEF={hpmult:'5',asp:'150',chipi:'280',crit:'60',dbl:'40',ls:'30',block:'5'};
+  const ME_DEF ={hpmult:'6',asp:'154',chipi:'364',crit:'70',dbl:'47',ls:'40',block:'0'};
+  const FOE_DEF={hpmult:'6',asp:'150',chipi:'280',crit:'60',dbl:'40',ls:'30',block:'5'};
   // 무기별 windup(초) — 디컴파일/1.html에서 추출. [이름, windup, 근접M/원거리R, 아이콘파일]. windup은 공격주기엔 무관, 더블어택 가속 타이밍에만 영향.
   const WEAPONS={
     'Primitive':[['Axe',0.767,'M','IconPrimitiveWeaponAxe.png'],['Blowgun',0.467,'R','IconPrimitiveWeaponBlowgun.png'],['Branch',0.783,'M','IconPrimitiveWeaponBranch.png'],['Club',0.933,'M','IconPrimitiveWeaponClub.png'],['Rock',0.683,'R','IconPrimitiveWeaponRock.png'],['Slinger',1.083,'R','IconPrimitiveWeaponSlinger.png'],['Bone',0.6,'M','IconPrimitiveWeaponBone.png']],
@@ -19221,7 +19271,7 @@ showInitOrTabs();
   function duel(a,b,r){var U=[a,b],mh=[a.hp,b.hp],hp=[mh[0],mh[1]],st=[0,0],tm=[0,0],du=[false,false],asm=[1+a.asp/100,1+b.asp/100],N=MATCH_TIMER/TICK;
     for(var t=0;t<N;t++)for(var i=0;i<2;i++){var j=1-i,u=U[i];
       if(st[i]===0)st[i]=1;
-      else if(st[i]===1){tm[i]+=TICK*asm[i];if(tm[i]>=u.wu){var d=rollDmg(u,U[j],r);hp[j]-=d;if(d>0)hp[i]=Math.min(hp[i]+d*u.ls,mh[i]);st[i]=2;if(!du[i]&&r()<=u.dbl){var d2=rollDmg(u,U[j],r);hp[j]-=d2;if(d2>0)hp[i]=Math.min(hp[i]+d2*u.ls,mh[i]);du[i]=true;}}} /* 더블=추가타(한번더 때림) */
+      else if(st[i]===1){tm[i]+=TICK*asm[i];if(tm[i]>=u.wu){var d=rollDmg(u,U[j],r);hp[j]-=d;if(d>0)hp[i]=Math.min(hp[i]+d*u.ls,mh[i]);st[i]=2;if(!du[i]&&r()<=u.dbl){du[i]=true;st[i]=1;tm[i]=u.wu*(1-1/DBL_SPEEDUP);}}} /* 더블=윈드업 재진입: 2타는 wu/4(정상윈드업 25%) 뒤 발사, du가 이미true라 2타땐 재롤 없음 */
       else if(st[i]===2){tm[i]+=TICK*asm[i];if(tm[i]>=AD){st[i]=0;tm[i]=0;du[i]=false;}}
       if(hp[j]<=0)return{w:i,t:t*TICK,ko:true};}
     var rA=hp[0]/mh[0],rB=hp[1]/mh[1];return{w:rA>rB?0:(rB>rA?1:-1),t:MATCH_TIMER,ko:false,rA:rA,rB:rB};}
@@ -19244,7 +19294,7 @@ showInitOrTabs();
         <tr><td style="text-align:left;">무적(상대딜≤내회복)</td><td>${foeD<=myH?'✅':'❌'}</td><td>${myD<=foeH?'✅':'❌'}</td></tr>
         <tr><td style="text-align:left;">결투장 유효 체력</td><td>${fmt(me.hp)} <span class="muted">(×${me.hpmult})</span></td><td>${fmt(foe.hp)} <span class="muted">(×${foe.hpmult})</span></td></tr>
       </table>
-      <p class="muted" style="font-size:11px;margin-top:8px;text-align:center;">결투장HP=총체력×배수(풀보유 5≈1+1+.5+.5+2) · 매치 ${MATCH_TIMER}초(초과 시 잔여HP% 판정) · KO결판 ${(ko/T*100).toFixed(0)}% / 시간초과 ${(to/T*100).toFixed(0)}% · 평균 ${(ts/T).toFixed(1)}초 · ${T}판</p></div>`;
+      <p class="muted" style="font-size:11px;margin-top:8px;text-align:center;">결투장HP=총체력×배수(1+0.5×펫+0.5×스킬+2×탈것, 풀장착≈6, 둘 중 max) · 매치 ${MATCH_TIMER}초(초과 시 잔여HP% 판정) · KO결판 ${(ko/T*100).toFixed(0)}% / 시간초과 ${(to/T*100).toFixed(0)}% · 평균 ${(ts/T).toFixed(1)}초 · ${T}판</p></div>`;
   }
   function parseK(s,u){var n=parseFloat(String(s).replace(',','.'))||0;u=(u||'').toLowerCase();return n*({b:1e9,m:1e6,k:1e3,'억':1e8,'만':1e4,'천':1e3}[u]||1);}
   const setVal=(prefix,k,v)=>{var e=document.getElementById(prefix+k);if(e)e.value=v;};
