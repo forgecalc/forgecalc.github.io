@@ -18457,6 +18457,7 @@ function aspFloorPct(sumPct) {
 // 고정 조건 + 최우선 스탯 (교체 플랜 v3)
 const SWAP_CONSTRAINT_DEFAULTS = {
   lineMins: { 'Life Steal': 2 },             // 고정 1: 옵션별 최소 줄 수 (세트 전체, 펫/탈것 포함) — {스탯명: 최소줄수}
+  lineMaxs: {},                              // 고정 1: 옵션별 최대 줄 수 — {스탯명: 최대줄수}. 초과분은 부족량과 동일하게 페널티로 최소화
   sumStat: 'Attack Speed', sumMin: 150,      // 고정 2: 이 스탯 값 합 최소 %
   priorityStat: 'Critical Chance',           // 조건 충족 후 이 스탯 합 최대화
   priorityCap: 0                             // 최우선 스탯 상한(%) — 0=제한 없음. 도달 후 남는 교체는 다른 매칭 스탯으로 유도
@@ -18468,12 +18469,17 @@ function swapConstraints() {
   const lineMins = raw.lineMins
     ? raw.lineMins
     : (raw.lineStat ? { [raw.lineStat]: raw.lineMin || 0 } : SWAP_CONSTRAINT_DEFAULTS.lineMins);
-  return Object.assign({}, SWAP_CONSTRAINT_DEFAULTS, raw, { lineMins });
+  const lineMaxs = raw.lineMaxs || SWAP_CONSTRAINT_DEFAULTS.lineMaxs;
+  return Object.assign({}, SWAP_CONSTRAINT_DEFAULTS, raw, { lineMins, lineMaxs });
 }
 
-// 조건 1에 실제로 최소줄수(>0)가 걸린 스탯 이름만 정렬된 배열로
+// 조건 1에 실제로 최소/최대 줄수가 걸린 스탯 이름만 정렬된 배열로 (합집합)
 function activeLineStats(cons) {
-  return Object.keys(cons.lineMins || {}).filter(s => (cons.lineMins[s] | 0) > 0).sort();
+  const set = new Set([
+    ...Object.keys(cons.lineMins || {}).filter(s => (cons.lineMins[s] | 0) > 0),
+    ...Object.keys(cons.lineMaxs || {}).filter(s => (cons.lineMaxs[s] | 0) > 0)
+  ]);
+  return [...set].sort();
 }
 
 // 아이템/스탯 목록의 조건 관련 지표: Lc=고정1 대상 스탯별 줄 수, A=고정2 값 합, C=최우선 값 합, M=최적구성 매칭 값 합
@@ -18571,10 +18577,11 @@ function initOptimalStatsUI() {
     const lineMinsHtml = SUBSTATS_POOL.map(s => `
       <label style="display:inline-flex; align-items:center; gap:4px; font-size:11px; border:1px solid var(--border, #dfe4ea); border-radius:4px; padding:2px 6px;">
         ${SUBSTATS_KOR[s] || s}
-        <input type="number" class="cons-line-min-input" data-stat="${s}" min="0" max="16" value="${(cons.lineMins && cons.lineMins[s]) || 0}" style="width:40px; font-size:11px; padding:2px 4px; height:auto;">
+        최소 <input type="number" class="cons-line-min-input" data-stat="${s}" min="0" max="16" value="${(cons.lineMins && cons.lineMins[s]) || 0}" style="width:36px; font-size:11px; padding:2px 4px; height:auto;">
+        최대 <input type="number" class="cons-line-max-input" data-stat="${s}" min="0" max="16" value="${(cons.lineMaxs && cons.lineMaxs[s]) || 0}" style="width:36px; font-size:11px; padding:2px 4px; height:auto;">
       </label>`).join('');
     consHost.innerHTML = `
-      <div style="${rowStyle}">📌 고정 조건 1: 옵션별 최소 줄 수 <span style="font-size:11px;">(세트 전체, 펫/탈것 포함 · 0 = 제한 없음)</span><div style="width:100%; display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">${lineMinsHtml}</div></div>
+      <div style="${rowStyle}">📌 고정 조건 1: 옵션별 최소/최대 줄 수 <span style="font-size:11px;">(세트 전체, 펫/탈것 포함 · 0 = 제한 없음)</span><div style="width:100%; display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">${lineMinsHtml}</div></div>
       <div style="${rowStyle}">📌 고정 조건 2: ${statSelectHtml('cons-sum-stat', cons.sumStat)} 합 ≥ <input type="number" id="cons-sum-min" min="0" step="1" value="${cons.sumMin}" style="width:60px; font-size:11px; padding:3px 6px; height:auto;"> %</div>
       <div style="${rowStyle}">⭐ 최우선 스탯: ${statSelectHtml('cons-priority-stat', cons.priorityStat)} 최대 <input type="number" id="cons-priority-cap" min="0" step="1" value="${cons.priorityCap || 0}" style="width:55px; font-size:11px; padding:3px 6px; height:auto;"> % <span style="font-size:11px;">(0=제한 없음 · 상한 도달 후 남는 교체는 다른 매칭 스탯으로) — 조건 충족 후 이 스탯 합 최대화 → 이후 매칭 합 최대화</span></div>`;
     const saveCons = () => {
@@ -18583,8 +18590,13 @@ function initOptimalStatsUI() {
         const v = Math.max(0, parseInt(inp.value, 10) || 0);
         if (v > 0) lineMins[inp.dataset.stat] = v;
       });
+      const lineMaxs = {};
+      consHost.querySelectorAll('.cons-line-max-input').forEach(inp => {
+        const v = Math.max(0, parseInt(inp.value, 10) || 0);
+        if (v > 0) lineMaxs[inp.dataset.stat] = v;
+      });
       state.swapConstraints = {
-        lineMins,
+        lineMins, lineMaxs,
         sumStat: $('#cons-sum-stat').value,
         sumMin: Math.max(0, parseFloat($('#cons-sum-min').value) || 0),
         priorityStat: $('#cons-priority-stat').value,
@@ -18592,7 +18604,7 @@ function initOptimalStatsUI() {
       };
       persist();
     };
-    consHost.querySelectorAll('.cons-line-min-input').forEach(el => el.addEventListener('change', saveCons));
+    consHost.querySelectorAll('.cons-line-min-input, .cons-line-max-input').forEach(el => el.addEventListener('change', saveCons));
     ['cons-sum-stat', 'cons-sum-min', 'cons-priority-stat', 'cons-priority-cap'].forEach(id => {
       const el = $('#' + id);
       if (el) el.addEventListener('change', saveCons);
@@ -18655,10 +18667,12 @@ function renderSwapRecommend() {
   for (const p of (col.pets || [])) if (p.isEq) petMountStats.push(...(p.stats || []));
   for (const m of (col.mounts || [])) if (m.isEq) petMountStats.push(...(m.stats || []));
 
-  // 고정 조건 1: 옵션별 최소 줄 수 (여러 스탯 동시 지정 가능)
+  // 고정 조건 1: 옵션별 최소/최대 줄 수 (여러 스탯 동시 지정 가능)
+  // 줄 수는 장비 슬롯 수(최대 8)로 자연히 bounded되므로 상태 키는 원본 값을 그대로 쓴다(캡 불필요).
   const lineStats = activeLineStats(cons);
-  const lineCaps = lineStats.map(s => cons.lineMins[s] | 0);
-  const lKey = Lc => lineStats.map((s, i) => Math.min(lineCaps[i], Lc[s] || 0)).join(',');
+  const lineMinCaps = lineStats.map(s => cons.lineMins[s] | 0);
+  const lineMaxCaps = lineStats.map(s => (cons.lineMaxs[s] | 0) > 0 ? (cons.lineMaxs[s] | 0) : Infinity);
+  const lKey = Lc => lineStats.map(s => Lc[s] || 0).join(',');
 
   const pmF = statFeatures(petMountStats, cons, optSet, lineStats);
 
@@ -18708,7 +18722,7 @@ function renderSwapRecommend() {
     ? (p) => aspFloorPct(p.C)
     : (p) => Math.min(p.C, priCap);
   const mRank = p => (p.M - p.Masp - p.Mpri) + aspFloorPct(p.Masp) + Math.min(p.Mpri, priCap);
-  const planRank = p => [p.lineShort, p.sumShort, -cRank(p), -mRank(p), p.used];
+  const planRank = p => [p.lineShort, p.lineOver, p.sumShort, -cRank(p), -mRank(p), p.used];
   const planBetter = (a, b) => {
     const ra = planRank(a), rb = planRank(b);
     for (let i = 0; i < ra.length; i++) {
@@ -18723,10 +18737,14 @@ function renderSwapRecommend() {
     const parts = key.split('|');
     const used = +parts[0];
     for (const e of entries) {
-      let lineShort = 0;
-      for (let i = 0; i < lineStats.length; i++) lineShort += Math.max(0, lineCaps[i] - (e.Lc[lineStats[i]] || 0));
+      let lineShort = 0, lineOver = 0;
+      for (let i = 0; i < lineStats.length; i++) {
+        const cnt = e.Lc[lineStats[i]] || 0;
+        lineShort += Math.max(0, lineMinCaps[i] - cnt);
+        if (lineMaxCaps[i] !== Infinity) lineOver += Math.max(0, cnt - lineMaxCaps[i]);
+      }
       const cand = {
-        lineShort,
+        lineShort, lineOver,
         sumShort: Math.max(0, cons.sumMin - e.A),
         C: e.C, M: e.M, Masp: e.Masp, Mpri: e.Mpri, Lc: e.Lc, used, picks: e.picks
       };
@@ -18774,11 +18792,21 @@ function renderSwapRecommend() {
 
   // 조건 달성 현황 (플랜 장비 + 장착 펫/탈것)
   const finalF = statFeatures(planStats, cons, optSet, lineStats);
-  const lineOks = lineStats.map((s, i) => (finalF.Lc[s] || 0) >= lineCaps[i]);
+  const lineOks = lineStats.map((s, i) => {
+    const cnt = finalF.Lc[s] || 0;
+    return cnt >= lineMinCaps[i] && cnt <= lineMaxCaps[i];
+  });
   const lineOk = lineOks.every(Boolean);
   const sumOk = finalF.A >= cons.sumMin - 1e-9;
   const lineStatusHtml = lineStats.length
-    ? lineStats.map((s, i) => `${SUBSTATS_KOR[s] || s} ${finalF.Lc[s] || 0}/${lineCaps[i]}줄 ${lineOks[i] ? '✅' : `⚠️${lineCaps[i] - (finalF.Lc[s] || 0)}부족`}`).join(' · ')
+    ? lineStats.map((s, i) => {
+        const cnt = finalF.Lc[s] || 0;
+        const capTxt = lineMaxCaps[i] === Infinity ? `${lineMinCaps[i]}+` : `${lineMinCaps[i]}~${lineMaxCaps[i]}`;
+        let badge = '✅';
+        if (cnt < lineMinCaps[i]) badge = `⚠️${lineMinCaps[i] - cnt}부족`;
+        else if (cnt > lineMaxCaps[i]) badge = `⚠️${cnt - lineMaxCaps[i]}초과`;
+        return `${SUBSTATS_KOR[s] || s} ${cnt}/${capTxt}줄 ${badge}`;
+      }).join(' · ')
     : '(설정 없음)';
   const consHtml = `
     <div style="margin-bottom:8px; padding:8px 10px; background:${lineOk && sumOk ? 'rgba(46,204,113,0.12)' : 'rgba(243,156,18,0.12)'}; border:1px solid ${lineOk && sumOk ? '#2ecc71' : '#f39c12'}; border-radius:4px; font-size:13px;">
