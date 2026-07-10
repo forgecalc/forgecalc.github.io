@@ -18456,67 +18456,87 @@ function aspFloorPct(sumPct) {
 
 // 고정 조건 + 최우선 스탯 (교체 플랜 v3)
 const SWAP_CONSTRAINT_DEFAULTS = {
-  lineStat: 'Life Steal', lineMin: 2,        // 고정 1: 이 스탯 최소 줄 수 (세트 전체, 펫/탈것 포함)
+  lineMins: { 'Life Steal': 2 },             // 고정 1: 옵션별 최소 줄 수 (세트 전체, 펫/탈것 포함) — {스탯명: 최소줄수}
   sumStat: 'Attack Speed', sumMin: 150,      // 고정 2: 이 스탯 값 합 최소 %
-  priorityStat: 'Critical Chance'            // 조건 충족 후 이 스탯 합 최대화
+  priorityStat: 'Critical Chance',           // 조건 충족 후 이 스탯 합 최대화
+  priorityCap: 0                             // 최우선 스탯 상한(%) — 0=제한 없음. 도달 후 남는 교체는 다른 매칭 스탯으로 유도
 };
 
 function swapConstraints() {
-  return Object.assign({}, SWAP_CONSTRAINT_DEFAULTS, state.swapConstraints || {});
+  const raw = state.swapConstraints || {};
+  // 구버전(lineStat/lineMin 단일 지정) 저장값 호환
+  const lineMins = raw.lineMins
+    ? raw.lineMins
+    : (raw.lineStat ? { [raw.lineStat]: raw.lineMin || 0 } : SWAP_CONSTRAINT_DEFAULTS.lineMins);
+  return Object.assign({}, SWAP_CONSTRAINT_DEFAULTS, raw, { lineMins });
 }
 
-// 아이템/스탯 목록의 조건 관련 지표: L=고정1 줄 수, A=고정2 값 합, C=최우선 값 합, M=최적구성 매칭 값 합
+// 조건 1에 실제로 최소줄수(>0)가 걸린 스탯 이름만 정렬된 배열로
+function activeLineStats(cons) {
+  return Object.keys(cons.lineMins || {}).filter(s => (cons.lineMins[s] | 0) > 0).sort();
+}
+
+// 아이템/스탯 목록의 조건 관련 지표: Lc=고정1 대상 스탯별 줄 수, A=고정2 값 합, C=최우선 값 합, M=최적구성 매칭 값 합
 // Masp=M 중 공속 성분만 별도 누적(원본 %, 합산 자체는 그대로 선형 — 최종 랭킹 단계에서만 구간 스냅 적용).
-// 공속은 원본 %를 그대로 M에 더하면 같은 구간 내 초과분(예: 150→190)도 실제 이득처럼 보여
-// 다른 매칭 스탯(생명흡수 등)을 깎아먹는 손해 교체를 유발하므로 분리 추적이 필요하다.
-function statFeatures(stats, cons, optSet) {
-  let L = 0, A = 0, C = 0, M = 0, Masp = 0;
+// Mpri=M 중 최우선 스탯 성분만 별도 누적(공속이 아닐 때만 — 공속이면 Masp와 중복이라 0 유지).
+// 공속/최우선 스탯을 원본 %로 그대로 M에 더하면 상한(공속 구간, 치확 100% 등) 초과분도 실제 이득처럼 보여
+// 다른 매칭 스탯(생명흡수, 치피 등)을 깎아먹는 손해 교체를 유발하므로 분리 추적이 필요하다.
+function statFeatures(stats, cons, optSet, lineStats) {
+  const Lc = {};
+  if (lineStats) for (const s of lineStats) Lc[s] = 0;
+  let A = 0, C = 0, M = 0, Masp = 0, Mpri = 0;
+  const priIsAsp = cons.priorityStat === 'Attack Speed';
   for (const s of stats || []) {
     if (!s) continue;
-    if (s.name === cons.lineStat) L += 1;
+    if (lineStats && s.name in Lc) Lc[s.name] += 1;
     if (s.name === cons.sumStat) A += s.value;
     if (s.name === cons.priorityStat) C += s.value;
     if (optSet.has(s.name)) {
       M += s.value;
       if (s.name === 'Attack Speed') Masp += s.value;
+      if (!priIsAsp && s.name === cons.priorityStat) Mpri += s.value;
     }
   }
-  return { L, A, C, M, Masp };
+  return { Lc, A, C, M, Masp, Mpri };
 }
 
 // (A, C, M) 지배당하는 항목 제거 — 목적함수가 이 3개 축으로만 결정되므로 안전한 압축
-// M은 M-Masp(공속 제외 매칭 합)와 Masp(공속 매칭 합, raw)로 쪼개 비교한다: 원본 공속 %는 단조증가라
-// raw 비교로도 안전(더 높은 raw Masp는 항상 같거나 더 빠른 실효 구간)하면서, 공속 초과분이
-// 다른 매칭 스탯을 부당하게 지배해버리는 걸 막는다.
+// M은 M-Masp-Mpri(공속·최우선 스탯 제외 매칭 합)와 Masp(공속), Mpri(최우선 스탯)로 쪼개 비교한다:
+// 원본 %는 단조증가라 raw 비교로도 안전(더 높은 raw는 항상 같거나 더 나은 실효값)하면서,
+// 공속/최우선 스탯 초과분이 다른 매칭 스탯을 부당하게 지배해버리는 걸 막는다.
 function paretoPrune(arr, cap) {
-  arr.sort((a, b) => b.A - a.A || b.C - a.C || (b.M - b.Masp) - (a.M - a.Masp) || b.Masp - a.Masp);
+  const rest = e => e.M - e.Masp - e.Mpri;
+  arr.sort((a, b) => b.A - a.A || b.C - a.C || rest(b) - rest(a) || b.Masp - a.Masp || b.Mpri - a.Mpri);
   const kept = [];
   for (const e of arr) {
     let dom = false;
     for (const k of kept) {
-      if (k.A >= e.A - 1e-9 && k.C >= e.C - 1e-9 && (k.M - k.Masp) >= (e.M - e.Masp) - 1e-9 && k.Masp >= e.Masp - 1e-9) { dom = true; break; }
+      if (k.A >= e.A - 1e-9 && k.C >= e.C - 1e-9 && rest(k) >= rest(e) - 1e-9 && k.Masp >= e.Masp - 1e-9 && k.Mpri >= e.Mpri - 1e-9) { dom = true; break; }
     }
     if (!dom) { kept.push(e); if (kept.length >= (cap || 60)) break; }
   }
   return kept;
 }
 
-// 슬롯 후보 압축: 고정1 줄 수(L)별로 (A, C, M-Masp, Masp) 파레토 최적만 유지
+// 슬롯 후보 압축: 고정1 대상 스탯별 줄 수(Lc) 조합별로 (A, C, M-Masp-Mpri, Masp, Mpri) 파레토 최적만 유지
 function compressCandidates(cands) {
+  const lKeyOf = f => Object.keys(f.Lc).sort().map(k => `${k}:${f.Lc[k]}`).join('|');
+  const rest = f => f.M - f.Masp - f.Mpri;
   const byL = new Map();
   for (const c of cands) {
-    const arr = byL.get(c.f.L) || [];
+    const key = lKeyOf(c.f);
+    const arr = byL.get(key) || [];
     arr.push(c);
-    byL.set(c.f.L, arr);
+    byL.set(key, arr);
   }
   const out = [];
   for (const [, list] of byL) {
-    list.sort((a, b) => b.f.A - a.f.A || b.f.C - a.f.C || (b.f.M - b.f.Masp) - (a.f.M - a.f.Masp) || b.f.Masp - a.f.Masp || a.r.index - b.r.index);
+    list.sort((a, b) => b.f.A - a.f.A || b.f.C - a.f.C || rest(b.f) - rest(a.f) || b.f.Masp - a.f.Masp || b.f.Mpri - a.f.Mpri || a.r.index - b.r.index);
     const kept = [];
     for (const c of list) {
       let dom = false;
       for (const k of kept) {
-        if (k.f.A >= c.f.A - 1e-9 && k.f.C >= c.f.C - 1e-9 && (k.f.M - k.f.Masp) >= (c.f.M - c.f.Masp) - 1e-9 && k.f.Masp >= c.f.Masp - 1e-9) { dom = true; break; }
+        if (k.f.A >= c.f.A - 1e-9 && k.f.C >= c.f.C - 1e-9 && rest(k.f) >= rest(c.f) - 1e-9 && k.f.Masp >= c.f.Masp - 1e-9 && k.f.Mpri >= c.f.Mpri - 1e-9) { dom = true; break; }
       }
       if (!dom) { kept.push(c); if (kept.length >= 20) break; }
     }
@@ -18548,21 +18568,32 @@ function initOptimalStatsUI() {
   if (consHost) {
     const cons = swapConstraints();
     const rowStyle = 'display:flex; align-items:center; gap:6px; font-size:12px; color: var(--muted); flex-wrap:wrap;';
+    const lineMinsHtml = SUBSTATS_POOL.map(s => `
+      <label style="display:inline-flex; align-items:center; gap:4px; font-size:11px; border:1px solid var(--border, #dfe4ea); border-radius:4px; padding:2px 6px;">
+        ${SUBSTATS_KOR[s] || s}
+        <input type="number" class="cons-line-min-input" data-stat="${s}" min="0" max="16" value="${(cons.lineMins && cons.lineMins[s]) || 0}" style="width:40px; font-size:11px; padding:2px 4px; height:auto;">
+      </label>`).join('');
     consHost.innerHTML = `
-      <div style="${rowStyle}">📌 고정 조건 1: ${statSelectHtml('cons-line-stat', cons.lineStat)} 최소 <input type="number" id="cons-line-min" min="0" max="16" value="${cons.lineMin}" style="width:50px; font-size:11px; padding:3px 6px; height:auto;"> 줄 <span style="font-size:11px;">(세트 전체, 펫/탈것 포함)</span></div>
+      <div style="${rowStyle}">📌 고정 조건 1: 옵션별 최소 줄 수 <span style="font-size:11px;">(세트 전체, 펫/탈것 포함 · 0 = 제한 없음)</span><div style="width:100%; display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">${lineMinsHtml}</div></div>
       <div style="${rowStyle}">📌 고정 조건 2: ${statSelectHtml('cons-sum-stat', cons.sumStat)} 합 ≥ <input type="number" id="cons-sum-min" min="0" step="1" value="${cons.sumMin}" style="width:60px; font-size:11px; padding:3px 6px; height:auto;"> %</div>
-      <div style="${rowStyle}">⭐ 최우선 스탯: ${statSelectHtml('cons-priority-stat', cons.priorityStat)} <span style="font-size:11px;">(조건 충족 후 이 스탯 합 최대화 → 이후 매칭 합 최대화)</span></div>`;
+      <div style="${rowStyle}">⭐ 최우선 스탯: ${statSelectHtml('cons-priority-stat', cons.priorityStat)} 최대 <input type="number" id="cons-priority-cap" min="0" step="1" value="${cons.priorityCap || 0}" style="width:55px; font-size:11px; padding:3px 6px; height:auto;"> % <span style="font-size:11px;">(0=제한 없음 · 상한 도달 후 남는 교체는 다른 매칭 스탯으로) — 조건 충족 후 이 스탯 합 최대화 → 이후 매칭 합 최대화</span></div>`;
     const saveCons = () => {
+      const lineMins = {};
+      consHost.querySelectorAll('.cons-line-min-input').forEach(inp => {
+        const v = Math.max(0, parseInt(inp.value, 10) || 0);
+        if (v > 0) lineMins[inp.dataset.stat] = v;
+      });
       state.swapConstraints = {
-        lineStat: $('#cons-line-stat').value,
-        lineMin: Math.max(0, parseInt($('#cons-line-min').value, 10) || 0),
+        lineMins,
         sumStat: $('#cons-sum-stat').value,
         sumMin: Math.max(0, parseFloat($('#cons-sum-min').value) || 0),
-        priorityStat: $('#cons-priority-stat').value
+        priorityStat: $('#cons-priority-stat').value,
+        priorityCap: Math.max(0, parseFloat($('#cons-priority-cap').value) || 0)
       };
       persist();
     };
-    ['cons-line-stat', 'cons-line-min', 'cons-sum-stat', 'cons-sum-min', 'cons-priority-stat'].forEach(id => {
+    consHost.querySelectorAll('.cons-line-min-input').forEach(el => el.addEventListener('change', saveCons));
+    ['cons-sum-stat', 'cons-sum-min', 'cons-priority-stat', 'cons-priority-cap'].forEach(id => {
       const el = $('#' + id);
       if (el) el.addEventListener('change', saveCons);
     });
@@ -18623,37 +18654,44 @@ function renderSwapRecommend() {
   const petMountStats = [];
   for (const p of (col.pets || [])) if (p.isEq) petMountStats.push(...(p.stats || []));
   for (const m of (col.mounts || [])) if (m.isEq) petMountStats.push(...(m.stats || []));
-  const pmF = statFeatures(petMountStats, cons, optSet);
+
+  // 고정 조건 1: 옵션별 최소 줄 수 (여러 스탯 동시 지정 가능)
+  const lineStats = activeLineStats(cons);
+  const lineCaps = lineStats.map(s => cons.lineMins[s] | 0);
+  const lKey = Lc => lineStats.map((s, i) => Math.min(lineCaps[i], Lc[s] || 0)).join(',');
+
+  const pmF = statFeatures(petMountStats, cons, optSet, lineStats);
 
   // 슬롯별 선택지: 장착 유지(비용 0) + 파레토 압축된 교체 후보(비용 1)
   const slotOptions = [];
   for (let t = 0; t < 8; t++) {
     const cur = equippedByType[t];
-    const opts = [{ cost: 0, f: statFeatures(cur ? cur.stats : [], cons, optSet), r: null }];
-    const cands = (candidatesByType[t] || []).map(r => ({ r, f: statFeatures(r.DetailedStats, cons, optSet) }));
+    const opts = [{ cost: 0, f: statFeatures(cur ? cur.stats : [], cons, optSet, lineStats), r: null }];
+    const cands = (candidatesByType[t] || []).map(r => ({ r, f: statFeatures(r.DetailedStats, cons, optSet, lineStats) }));
     for (const c of compressCandidates(cands)) opts.push({ cost: 1, f: c.f, r: c.r });
     slotOptions.push({ t, cur, opts });
   }
 
-  // 파레토 DP — 상태: (교체 사용 수, 고정1 줄 수 capped), 항목: (A, C, M, picks)
+  // 파레토 DP — 상태: (교체 사용 수, 고정1 대상 스탯별 줄 수 capped), 항목: (A, C, M, Lc, picks)
   // 목적: ① 고정1 줄 부족 최소 ② 고정2 합 부족 최소 ③ 최우선 스탯 합 최대 ④ 매칭 합 최대 ⑤ 교체 수 최소
-  const lineCap = Math.max(0, cons.lineMin | 0);
   let states = new Map();
-  states.set(`0|${Math.min(lineCap, pmF.L)}`, [{ A: pmF.A, C: pmF.C, M: pmF.M, Masp: pmF.Masp, picks: [] }]);
+  states.set(`0|${lKey(pmF.Lc)}`, [{ A: pmF.A, C: pmF.C, M: pmF.M, Masp: pmF.Masp, Mpri: pmF.Mpri, Lc: pmF.Lc, picks: [] }]);
 
   for (const so of slotOptions) {
     const next = new Map();
     for (const [key, entries] of states) {
       const parts = key.split('|');
-      const used = +parts[0], l = +parts[1];
+      const used = +parts[0];
       for (const opt of so.opts) {
         const u2 = used + opt.cost;
         if (u2 > nLimit) continue;
-        const k2 = `${u2}|${Math.min(lineCap, l + opt.f.L)}`;
-        let arr = next.get(k2);
-        if (!arr) { arr = []; next.set(k2, arr); }
         for (const e of entries) {
-          arr.push({ A: e.A + opt.f.A, C: e.C + opt.f.C, M: e.M + opt.f.M, Masp: e.Masp + opt.f.Masp, picks: e.picks.concat([opt.r]) });
+          const Lc2 = {};
+          for (const s of lineStats) Lc2[s] = (e.Lc[s] || 0) + (opt.f.Lc[s] || 0);
+          const k2 = `${u2}|${lKey(Lc2)}`;
+          let arr = next.get(k2);
+          if (!arr) { arr = []; next.set(k2, arr); }
+          arr.push({ A: e.A + opt.f.A, C: e.C + opt.f.C, M: e.M + opt.f.M, Masp: e.Masp + opt.f.Masp, Mpri: e.Mpri + opt.f.Mpri, Lc: Lc2, picks: e.picks.concat([opt.r]) });
         }
       }
     }
@@ -18661,10 +18699,15 @@ function renderSwapRecommend() {
     states = next;
   }
 
-  // 최우선 스탯(C)·매칭 합(M)이 공속이면 원본 %가 아니라 구간 스냅값으로 랭킹 —
-  // 150%와 190%처럼 같은 실효 구간이면 동률로 취급해 무의미한 교체(예: 생명흡수 줄을 깎아 공속만 더 쌓기)를 막는다.
-  const cRank = cons.priorityStat === 'Attack Speed' ? (p) => aspFloorPct(p.C) : (p) => p.C;
-  const mRank = p => (p.M - p.Masp) + aspFloorPct(p.Masp);
+  // 최우선 스탯(C)·매칭 합(M) 랭킹: 공속은 원본 %가 아니라 구간 스냅값으로, 최우선 스탯은
+  // priorityCap이 설정돼 있으면 그 값으로 클램프해서 랭킹 — 150%/190% 공속이 같은 실효 구간이면 동률로,
+  // 치확처럼 상한(예: 80%) 이상 쌓아봐야 실제 이득이 없는 스탯은 그 이상을 "개선"으로 치지 않아
+  // 무의미한 교체(예: 생명흡수·치피 줄을 깎아 공속·치확만 더 쌓기)를 막고 남는 교체를 다른 스탯으로 유도한다.
+  const priCap = cons.priorityCap > 0 ? cons.priorityCap : Infinity;
+  const cRank = cons.priorityStat === 'Attack Speed'
+    ? (p) => aspFloorPct(p.C)
+    : (p) => Math.min(p.C, priCap);
+  const mRank = p => (p.M - p.Masp - p.Mpri) + aspFloorPct(p.Masp) + Math.min(p.Mpri, priCap);
   const planRank = p => [p.lineShort, p.sumShort, -cRank(p), -mRank(p), p.used];
   const planBetter = (a, b) => {
     const ra = planRank(a), rb = planRank(b);
@@ -18678,12 +18721,14 @@ function renderSwapRecommend() {
   let bestPlan = null;
   for (const [key, entries] of states) {
     const parts = key.split('|');
-    const used = +parts[0], l = +parts[1];
+    const used = +parts[0];
     for (const e of entries) {
+      let lineShort = 0;
+      for (let i = 0; i < lineStats.length; i++) lineShort += Math.max(0, lineCaps[i] - (e.Lc[lineStats[i]] || 0));
       const cand = {
-        lineShort: Math.max(0, lineCap - l),
+        lineShort,
         sumShort: Math.max(0, cons.sumMin - e.A),
-        C: e.C, M: e.M, Masp: e.Masp, used, picks: e.picks
+        C: e.C, M: e.M, Masp: e.Masp, Mpri: e.Mpri, Lc: e.Lc, used, picks: e.picks
       };
       if (!bestPlan || planBetter(cand, bestPlan)) bestPlan = cand;
     }
@@ -18728,12 +18773,16 @@ function renderSwapRecommend() {
   }
 
   // 조건 달성 현황 (플랜 장비 + 장착 펫/탈것)
-  const finalF = statFeatures(planStats, cons, optSet);
-  const lineOk = finalF.L >= cons.lineMin;
+  const finalF = statFeatures(planStats, cons, optSet, lineStats);
+  const lineOks = lineStats.map((s, i) => (finalF.Lc[s] || 0) >= lineCaps[i]);
+  const lineOk = lineOks.every(Boolean);
   const sumOk = finalF.A >= cons.sumMin - 1e-9;
+  const lineStatusHtml = lineStats.length
+    ? lineStats.map((s, i) => `${SUBSTATS_KOR[s] || s} ${finalF.Lc[s] || 0}/${lineCaps[i]}줄 ${lineOks[i] ? '✅' : `⚠️${lineCaps[i] - (finalF.Lc[s] || 0)}부족`}`).join(' · ')
+    : '(설정 없음)';
   const consHtml = `
     <div style="margin-bottom:8px; padding:8px 10px; background:${lineOk && sumOk ? 'rgba(46,204,113,0.12)' : 'rgba(243,156,18,0.12)'}; border:1px solid ${lineOk && sumOk ? '#2ecc71' : '#f39c12'}; border-radius:4px; font-size:13px;">
-      <b>📌 ${SUBSTATS_KOR[cons.lineStat] || cons.lineStat} ${finalF.L}/${cons.lineMin}줄 ${lineOk ? '✅' : `⚠️ ${cons.lineMin - finalF.L}줄 부족`}
+      <b>📌 ${lineStatusHtml}
       · ${SUBSTATS_KOR[cons.sumStat] || cons.sumStat} ${finalF.A.toFixed(2)}/${cons.sumMin}% ${sumOk ? '✅' : `⚠️ ${(cons.sumMin - finalF.A).toFixed(2)}%p 부족`}
       · ⭐ ${SUBSTATS_KOR[cons.priorityStat] || cons.priorityStat} 합 ${finalF.C.toFixed(2)}%</b>
       ${lineOk && sumOk ? '' : '<br><span style="color:#f39c12; font-size:12px;">조건 완전 충족이 불가능해 부족량이 최소인 근사 플랜입니다. 미래시 범위를 늘리거나 필터를 완화해보세요.</span>'}
