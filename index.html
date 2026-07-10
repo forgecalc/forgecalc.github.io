@@ -1,4 +1,3 @@
-코드 크기로 인해 구문 강조가 비활성화되었습니다.
 <!doctype html>
 <html lang="ko">
 <head>
@@ -707,7 +706,7 @@ table td.center { text-align: center; }
         <h2 style="text-align: center; color: #2c3e50; margin-bottom: 20px; font-weight: 700;">🔮 ForgeMaster 통합 미래시 주입창</h2>
         
         <div style="margin-bottom: 15px;">
-            <label style="display: block; font-weight: bold; margin-bottom: 8px; color: #34495e;">게임가디언 12줄 HEX 코드 통째로 붙여넣기</label>
+            <label style="display: block; font-weight: bold; margin-bottom: 8px; color: #34495e;">게임가디언 12줄 HEX 코드 또는 전체 덤프([DUMP_VERSION]~[END]) 통째로 붙여넣기</label>
             <textarea id="total-12-lines" rows="13" style="width: 100%; font-family: monospace; padding: 12px; border: 1px solid #ccc; border-radius: 4px; resize: none; font-size: 13px; line-height: 1.5;" placeholder="7426D98CAD7B8B28&#10;000000000000001E&#10;...&#10;루아 스크립트 결과 복사본을 그대로 붙여넣으세요.">7426D98CAD7B8B28&#10;000000000000001E&#10;0000000000000000&#10;6713F7DF4E46B86E&#10;0000005700000028&#10;0000000000000000&#10;6713F7DF4E46B255&#10;0000006300000001&#10;0000000000000000&#10;6713F7DF4E46B312&#10;0000003F0000000C&#10;0000000000000000</textarea>
         </div>
 
@@ -746,6 +745,11 @@ table td.center { text-align: center; }
             <button id="btn-init" style="margin-left: auto; background: #e74c3c; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">재설정창 가기</button>
         </div>
 
+        <details id="equipped-panel" style="display:none; margin-bottom: 20px; background: #f8f9fa; border: 1px solid #dfe4ea; border-radius: 6px; padding: 10px 14px;">
+            <summary style="cursor: pointer; font-weight: bold; color: #2c3e50; user-select: none;">🎒 장착 현황 (덤프 기준) <button id="btn-copy-equipped" style="margin-left: 10px; background: #3498db; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px;">📋 장착 정보 클립보드 복사</button></summary>
+            <div id="equipped-panel-body" style="margin-top: 12px;"></div>
+        </details>
+
         <div id="forge-tab" class="miraesee-mode-tab">
             <div id="forge-status" class="status-box"></div>
             <div class="miraesee-control-panel">
@@ -758,6 +762,7 @@ table td.center { text-align: center; }
                 <button id="forge-go" style="background:#3498db; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">미래시 전개</button>
                 <button id="forge-reset-run" style="background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer;">히스토리 리셋</button>
                 <button id="forge-clear" style="background:#7f8c8d; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; padding:4px 8px; margin-left:5px;">결과 비우기</button>
+                <button id="forge-swap-recommend" style="background:#e67e22; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; padding:4px 8px; margin-left:5px;" title="전개된 미래시 히스토리 전체에서 장착 장비보다 총옵션이 높은 교체 후보를 타입별로 찾습니다.">🔁 교체 추천 (총옵션)</button>
             </div>
             
             <details class="card" style="margin: 12px 0;">
@@ -784,6 +789,8 @@ table td.center { text-align: center; }
                             <option value="8">지하세계 이상</option>
                             <option value="9">신성 이상</option>
                         </select>
+                        <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">최소 총옵션(%):</span>
+                        <input type="number" id="forge-min-total" min="0" step="0.1" placeholder="0" style="width: 70px; font-size: 11px; padding: 3px 6px; height: auto;" title="서브스탯 값(%) 합계가 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
                     <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
@@ -823,6 +830,19 @@ table td.center { text-align: center; }
 
 
 
+            <details class="card" style="margin: 12px 0;" id="optimal-stats-card">
+                <summary style="cursor: pointer; font-weight: bold; color: #e67e22; user-select: none;">🎯 최적 옵션 구성 — 교체 플랜 판정 기준</summary>
+                <div style="margin-top: 10px;">
+                    <div id="optimal-stats-host" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                    <div id="swap-constraints-host" style="margin-top: 10px; display: flex; flex-direction: column; gap: 6px;"></div>
+                    <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span style="font-size: 12px; color: var(--muted);">최대 교체 개수(n):</span>
+                        <input type="number" id="swap-limit" min="1" max="8" value="8" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;">
+                        <span style="font-size: 11px; color: var(--muted);">필터 통과 리스트에서 최대 n개 슬롯만 교체해 매칭 옵션 합을 최대화합니다. 체크한 스탯만 점수에 반영됩니다.</span>
+                    </div>
+                </div>
+            </details>
+            <div id="forge-swap-output"></div>
             <div id="forge-output" class="output-container"></div>
         </div>
 
@@ -17652,8 +17672,9 @@ function showInitOrTabs() {
   if (state.initialized) {
     if (initScreen) initScreen.style.setProperty('display', 'none', 'important');
     if (tabsContainer) tabsContainer.style.setProperty('display', 'block', 'important');
-    selectTab(currentMode); 
+    selectTab(currentMode);
     refreshAllStatus();
+    renderEquippedPanel();
   } else {
     if (initScreen) initScreen.style.setProperty('display', 'block', 'important');
     if (tabsContainer) tabsContainer.style.setProperty('display', 'none', 'important');
@@ -17674,6 +17695,290 @@ function toHex(value, width = 16) {
   return BigInt(value).toString(16).toUpperCase().padStart(width, '0');
 }
 
+// === 📦 루아 전체 덤프([DUMP_VERSION]~[END]) 파서 ===
+// 라인 포맷 계약: fm_miraesee/utils/dump/parser.py 와 동일
+// CombatSkill IntEnum (enums.py) 순서
+const SKILL_ENUM_NAMES = [
+  'Meat', 'Morale', 'Arrows', 'Shuriken', 'Shout', 'Meteorite', 'Berserk', 'Stampede',
+  'Thorns', 'Bomb', 'Worm', 'Lightning', 'Buff', 'HigherMorale', 'RainOfArrows',
+  'StrafeRun', 'CannonBarrage', 'Drone'
+];
+// ItemType IntEnum 0~7 순서 (= TYPE_JSON_ORDER)
+const EQUIP_TYPE_KOR = ['투구', '갑옷', '장갑', '목걸이', '반지', '무기', '신발', '벨트'];
+
+// 스탯 blob(10자 청크 ×2): '1' + 스탯니블(SecondaryStatType=SUBSTATS_POOL 순서) + raw u32(F64 보간값)
+function decodeStatsBlob(blob) {
+  const out = [];
+  for (let i = 0; i + 10 <= (blob || '').length; i += 10) {
+    const chunk = blob.slice(i, i + 10);
+    if (chunk === '0000000000' || chunk[0] !== '1') continue;
+    const name = SUBSTATS_POOL[parseInt(chunk[1], 16)];
+    const raw = parseInt(chunk.slice(2), 16);
+    if (!name || !raw) continue;
+    const t = raw / 4294967296;
+    out.push({ name, value: getSubstatValue(name, t) * 100, perf: t * 100 });
+  }
+  return out;
+}
+
+function parseSummonMetaLine(line) {
+  const m = (line || '').match(/^([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{16})/);
+  if (!m) return null;
+  return {
+    level: parseInt(m[1], 16),
+    count: parseInt(m[2], 16),
+    seed: m[3].toUpperCase(),
+    asc: line.length > 20 ? parseInt(line[line.length - 1], 16) : 0
+  };
+}
+
+function parseGameDump(rawText) {
+  if (!/\[FORGE\]/.test(rawText) || !/\[SKILL\]/.test(rawText)) return null;
+
+  const blocks = {};
+  let cur = null;
+  for (const raw of rawText.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const header = line.match(/^\[([A-Z_]+)\]$/);
+    if (header) { cur = header[1]; blocks[cur] = []; continue; }
+    if (cur) blocks[cur].push(line);
+  }
+
+  // --- 시드 메타 → 기존 12줄 형식으로 변환 ---
+  const forgeLine = (blocks.FORGE || [])[0] || '';
+  const fm = forgeLine.match(/^([0-9A-Fa-f]{2})([0-9A-Fa-f]{8})([0-9A-Fa-f]{16})([0-9A-Fa-f]{2})000([0-9A-Fa-f])/);
+  if (!fm) throw new Error('덤프의 [FORGE] 줄을 해석할 수 없습니다.');
+  const skillMeta = parseSummonMetaLine((blocks.SKILL || [])[0]);
+  const petMeta = parseSummonMetaLine((blocks.PET || [])[0]);
+  const mountMeta = parseSummonMetaLine((blocks.MOUNT || [])[0]);
+  if (!skillMeta || !petMeta || !mountMeta) throw new Error('덤프의 [SKILL]/[PET]/[MOUNT] 줄을 해석할 수 없습니다.');
+
+  const packLevelCount = m => toHex((BigInt(m.level) << 32n) | BigInt(m.count), 16);
+  const metaLines12 = [
+    fm[3].toUpperCase(), toHex(parseInt(fm[1], 16), 16), toHex(parseInt(fm[5], 16), 16),
+    skillMeta.seed, packLevelCount(skillMeta), toHex(skillMeta.asc, 16),
+    petMeta.seed, packLevelCount(petMeta), toHex(petMeta.asc, 16),
+    mountMeta.seed, packLevelCount(mountMeta), toHex(mountMeta.asc, 16)
+  ];
+
+  // --- 컬렉션 ---
+  const equipment = [];
+  for (const line of blocks.EQUIPMENT || []) {
+    if (line.length < 12 || line.startsWith('00000000')) continue;
+    equipment.push({
+      age: parseInt(line[1], 16),
+      type: parseInt(line[2], 16),
+      idx: parseInt(line[3], 16),
+      level: parseInt(line.slice(4, 6), 16),
+      stats: decodeStatsBlob(line.slice(12, 32))
+    });
+  }
+
+  const skills = [];
+  for (const line of blocks.SKILL_COLLECTION || []) {
+    const m = line.match(/^1([0-9A-Fa-f]{2})0([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})[0-9A-Fa-f]{20}$/);
+    if (!m) continue;
+    const enumVal = parseInt(m[1], 16);
+    skills.push({
+      enum: enumVal,
+      name: SKILL_ENUM_NAMES[enumVal] || `Skill#${enumVal}`,
+      level: parseInt(m[2], 16),
+      shard: parseInt(m[3], 16),
+      isEq: parseInt(m[4], 16) !== 0,
+      slot: parseInt(m[5], 16)
+    });
+  }
+
+  const pets = [], eggs = [];
+  for (const line of blocks.PET_EGG_COLLECTION || []) {
+    const h = line.match(/^([0-9A-Fa-f])([0-9A-Fa-f])([0-9A-Fa-f]{2})/);
+    if (!h) continue;
+    const rarity = parseInt(h[2], 16);
+    if (h[1] === '2' && line.length >= 44) {
+      const prog = line.slice(4, 26);
+      pets.push({
+        rarity,
+        id: parseInt(h[3], 16),
+        level: parseInt(prog.slice(0, 8), 16),
+        exp: parseInt(prog.slice(8, 16), 16),
+        isEq: parseInt(prog.slice(16, 18), 16) !== 0,
+        slot: parseInt(prog.slice(18, 20), 16),
+        locked: line.length >= 46 ? parseInt(prog.slice(20, 22), 16) !== 0 : false,
+        stats: decodeStatsBlob(line.length >= 46 ? line.slice(26, 46) : line.slice(24, 44))
+      });
+    } else if (h[1] === '3' && line.length >= 32) {
+      const prog = line.slice(4, 32);
+      const tStart = line.length >= 64 ? parseInt(line.slice(32, 48), 16) : 0;
+      const tEnd = line.length >= 64 ? parseInt(line.slice(48, 64), 16) : 0;
+      eggs.push({
+        rarity,
+        isEq: parseInt(prog.slice(4, 6), 16) !== 0,
+        slot: parseInt(prog.slice(6, 8), 16),
+        seed: prog.slice(12, 28).toUpperCase(),
+        hatching: tEnd > tStart && tStart > 0
+      });
+    }
+  }
+
+  const mounts = [];
+  for (const line of blocks.MOUNT_COLLECTION || []) {
+    const h = line.match(/^4([0-9A-Fa-f])([0-9A-Fa-f]{2})/);
+    if (!h || line.length < 44) continue;
+    const prog = line.slice(4, 26);
+    mounts.push({
+      rarity: parseInt(h[1], 16),
+      id: parseInt(h[2], 16),
+      level: parseInt(prog.slice(0, 8), 16),
+      exp: parseInt(prog.slice(8, 16), 16),
+      isEq: parseInt(prog.slice(16, 18), 16) !== 0,
+      locked: line.length >= 46 ? parseInt(prog.slice(20, 22), 16) !== 0 : false,
+      stats: decodeStatsBlob(line.length >= 46 ? line.slice(26, 46) : line.slice(24, 44))
+    });
+  }
+
+  return {
+    metaLines12,
+    rrText: (blocks.ITEM_ROUND_ROBIN || []).join(' '),
+    collections: { equipment, skills, pets, eggs, mounts }
+  };
+}
+
+// === 🎒 장착 현황 패널 ===
+function petTypeName(rarity, id) {
+  const lib = _INLINE_CONFIG_PetLibrary["{'Rarity': '" + RARITIES[rarity] + "', 'Id': " + id + "}"];
+  return lib ? lib.Type : null;
+}
+
+function equippedStatHtml(s) {
+  if (!s) return '<span style="color:#aaa">-</span>';
+  return `<span style="color:${perfColor(s.perf)}">+${s.value.toFixed(2)}%</span> <span style="color:#8b96a8">${SUBSTATS_KOR[s.name] || s.name}</span> <span style="color:#8b96a8; font-size:11px;">(${s.perf.toFixed(1)}%)</span>`;
+}
+
+function renderEquippedPanel() {
+  const panel = $('#equipped-panel');
+  const body = $('#equipped-panel-body');
+  if (!panel || !body) return;
+  const col = state.dumpCollections;
+  if (!col) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+
+  const th = 'padding:4px 8px; border-bottom:1px solid #dfe4ea; text-align:left; color:#7f8c8d; font-size:12px;';
+  const td = 'padding:4px 8px; border-bottom:1px solid #eef1f4; font-size:13px;';
+  let html = '';
+
+  // 장비 (8슬롯)
+  const equips = [...(col.equipment || [])].sort((a, b) => a.type - b.type);
+  html += `<div style="font-weight:bold; color:#2c3e50; margin-bottom:6px;">⚔️ 장비 (${equips.length}/8)</div>`;
+  if (equips.length) {
+    html += `<table style="width:100%; border-collapse:collapse; margin-bottom:14px;"><tr><th style="${th}">타입</th><th style="${th}">시대</th><th style="${th}">Lv</th><th style="${th}">스탯1</th><th style="${th}">스탯2</th></tr>`;
+    for (const e of equips) {
+      html += `<tr><td style="${td}">${EQUIP_TYPE_KOR[e.type] || '타입' + e.type} <span style="color:#8b96a8; font-size:11px;">#${e.idx}</span></td><td style="${td}">${ageChip(e.age)}</td><td style="${td}">${e.level}</td><td style="${td}">${equippedStatHtml(e.stats[0])}</td><td style="${td}">${equippedStatHtml(e.stats[1])}</td></tr>`;
+    }
+    html += '</table>';
+  } else {
+    html += '<div style="color:#8b96a8; margin-bottom:14px;">장비 정보 없음 (덤프에 [EQUIPMENT] 섹션 필요)</div>';
+  }
+
+  // 스킬
+  const eqSkills = (col.skills || []).filter(s => s.isEq).sort((a, b) => a.slot - b.slot);
+  html += `<div style="font-weight:bold; color:#2c3e50; margin-bottom:6px;">✨ 장착 스킬 (${eqSkills.length}) <span style="color:#8b96a8; font-weight:normal; font-size:12px;">/ 보유 ${(col.skills || []).length}</span></div>`;
+  html += eqSkills.length
+    ? '<div style="margin-bottom:14px;">' + eqSkills.map(s => `<span style="display:inline-block; background:#fff; border:1px solid #dfe4ea; border-radius:4px; padding:3px 8px; margin:0 6px 6px 0; font-size:13px;">슬롯${s.slot + 1} <b>${s.name}</b> Lv.${s.level} <span style="color:#8b96a8; font-size:11px;">파편 ${s.shard}</span></span>`).join('') + '</div>'
+    : '<div style="color:#8b96a8; margin-bottom:14px;">장착 스킬 없음</div>';
+
+  // 펫
+  const eqPets = (col.pets || []).filter(p => p.isEq).sort((a, b) => a.slot - b.slot);
+  const hatchingEggs = (col.eggs || []).filter(e => e.isEq);
+  html += `<div style="font-weight:bold; color:#2c3e50; margin-bottom:6px;">🐾 장착 펫 (${eqPets.length}) <span style="color:#8b96a8; font-weight:normal; font-size:12px;">/ 보유 ${(col.pets || []).length}, 알 ${(col.eggs || []).length}</span></div>`;
+  html += eqPets.length
+    ? '<div style="margin-bottom:6px;">' + eqPets.map(p => {
+        const t = petTypeName(p.rarity, p.id);
+        return `<span style="display:inline-block; background:#fff; border:1px solid #dfe4ea; border-radius:4px; padding:3px 8px; margin:0 6px 6px 0; font-size:13px;">슬롯${p.slot + 1} ${rarityChip(RARITIES[p.rarity])} #${p.id}${t ? ' ' + petTypeChip(t) : ''} Lv.${p.level}${p.locked ? ' 🔒' : ''}${p.stats.length ? '<br><span style="font-size:12px;">' + p.stats.map(equippedStatHtml).join(' · ') + '</span>' : ''}</span>`;
+      }).join('') + '</div>'
+    : '<div style="color:#8b96a8; margin-bottom:6px;">장착 펫 없음</div>';
+  if (hatchingEggs.length) {
+    html += '<div style="color:#8b96a8; font-size:12px; margin-bottom:14px;">부화 슬롯: ' + hatchingEggs.map(e => `${RARITY_KOR[RARITIES[e.rarity]]} 알 (슬롯${e.slot + 1}${e.hatching ? ', 부화중' : ''})`).join(' · ') + '</div>';
+  } else {
+    html += '<div style="margin-bottom:8px;"></div>';
+  }
+
+  // 탈것
+  const eqMounts = (col.mounts || []).filter(m => m.isEq);
+  html += `<div style="font-weight:bold; color:#2c3e50; margin-bottom:6px;">🐎 장착 탈것 (${eqMounts.length}) <span style="color:#8b96a8; font-weight:normal; font-size:12px;">/ 보유 ${(col.mounts || []).length}</span></div>`;
+  html += eqMounts.length
+    ? '<div>' + eqMounts.map(m => `<span style="display:inline-block; background:#fff; border:1px solid #dfe4ea; border-radius:4px; padding:3px 8px; margin:0 6px 6px 0; font-size:13px;">${rarityChip(RARITIES[m.rarity])} #${m.id} Lv.${m.level}${m.locked ? ' 🔒' : ''}${m.stats.length ? '<br><span style="font-size:12px;">' + m.stats.map(equippedStatHtml).join(' · ') + '</span>' : ''}</span>`).join('') + '</div>'
+    : '<div style="color:#8b96a8;">장착 탈것 없음</div>';
+
+  body.innerHTML = html;
+}
+
+// === 📋 장착 정보 클립보드 내보내기 ===
+function statTextLine(stats) {
+  if (!stats || !stats.length) return '';
+  return ' | ' + stats.map(s => `${SUBSTATS_KOR[s.name] || s.name} +${s.value.toFixed(2)}% (${s.perf.toFixed(1)}%)`).join(' / ');
+}
+
+function buildEquippedExportText() {
+  const col = state.dumpCollections;
+  if (!col) return null;
+  const out = ['=== 장착 현황 ==='];
+
+  out.push('', '[장비]');
+  const equips = [...(col.equipment || [])].sort((a, b) => a.type - b.type);
+  if (equips.length) {
+    for (const e of equips) {
+      out.push(`${EQUIP_TYPE_KOR[e.type] || '타입' + e.type} #${e.idx}: ${AGE_KOR[e.age] || e.age} Lv.${e.level}${statTextLine(e.stats)}`);
+    }
+  } else out.push('(없음)');
+
+  out.push('', '[장착 스킬]');
+  const eqSkills = (col.skills || []).filter(s => s.isEq).sort((a, b) => a.slot - b.slot);
+  if (eqSkills.length) {
+    for (const s of eqSkills) out.push(`슬롯${s.slot + 1}: ${s.name} Lv.${s.level} (파편 ${s.shard})`);
+  } else out.push('(없음)');
+
+  out.push('', '[장착 펫]');
+  const eqPets = (col.pets || []).filter(p => p.isEq).sort((a, b) => a.slot - b.slot);
+  if (eqPets.length) {
+    for (const p of eqPets) {
+      const t = petTypeName(p.rarity, p.id);
+      out.push(`슬롯${p.slot + 1}: ${RARITY_KOR[RARITIES[p.rarity]]} #${p.id}${t ? ` (${PET_TYPE_KOR[t] || t})` : ''} Lv.${p.level}${p.locked ? ' [잠금]' : ''}${statTextLine(p.stats)}`);
+    }
+  } else out.push('(없음)');
+
+  out.push('', '[장착 탈것]');
+  const eqMounts = (col.mounts || []).filter(m => m.isEq);
+  if (eqMounts.length) {
+    for (const m of eqMounts) {
+      out.push(`${RARITY_KOR[RARITIES[m.rarity]]} #${m.id} Lv.${m.level}${m.locked ? ' [잠금]' : ''}${statTextLine(m.stats)}`);
+    }
+  } else out.push('(없음)');
+
+  return out.join('\n');
+}
+
+$('#btn-copy-equipped').addEventListener('click', async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  const text = buildEquippedExportText();
+  if (!text) { alert('장착 정보가 없습니다. 전체 덤프를 다시 적용해주세요.'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (_) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+  const orig = btn.textContent;
+  btn.textContent = '✅ 복사됨!';
+  setTimeout(() => { btn.textContent = orig; }, 1500);
+});
+
 // === 🚀 12줄 통짜 코드 일괄 주입 제어 엔진 ===
 $('#btn-apply').addEventListener('click', async () => {
   const errEl = $('#init-err');
@@ -17681,15 +17986,24 @@ $('#btn-apply').addEventListener('click', async () => {
   
   try {
     const rawText = $('#total-12-lines').value.trim();
-    
+
+    // 📦 루아 전체 덤프([DUMP_VERSION]~[END]) 감지 시 자동 파싱
+    // → 시드 12줄 + 라운드로빈 자동 채움 + 장착 컬렉션 저장
+    const dump = parseGameDump(rawText);
+    let lines;
+    if (dump) {
+      lines = dump.metaLines12;
+      if (dump.rrText && $('#rr-forge')) $('#rr-forge').value = dump.rrText;
+      state.dumpCollections = dump.collections;
+    } else {
     // 💡 [초강력 지능형 16진수 추출기]
     // 줄바꿈으로 나누고 주석 및 설명문이 붙은 입력에서도 정확히 각 줄의 16진수만 분리
     const rawLines = rawText.split('\n');
-    const lines = [];
+    lines = [];
     for (let line of rawLines) {
       line = line.trim();
       if (!line) continue;
-      
+
       // 주석 기호 뒷부분 제거 (//, #, --, ;)
       const noComment = line.split(/\/\/|#|--|;/)[0].trim();
       if (!noComment) continue;
@@ -17703,6 +18017,7 @@ $('#btn-apply').addEventListener('click', async () => {
           break; // 한 줄당 한 개의 16진수 값만 인정
         }
       }
+    }
     }
 
     if (lines.length !== 12) {
@@ -17798,7 +18113,12 @@ function getStatsOfItem(item, mode) {
 }
 
 function filterItem(item, config, mode) {
-  const { includeSet, excludeSet, minPerfs, matchMode, minTier, excludeTypes } = config;
+  const { includeSet, excludeSet, minPerfs, matchMode, minTier, excludeTypes, minTotal } = config;
+
+  // 최소 총옵션(서브스탯 값 합계 %) 필터링
+  if (minTotal != null && totalOption(getStatsOfItem(item, mode)) < minTotal) {
+    return false;
+  }
 
   // 장비/펫 유형 제외 필터링
   if (excludeTypes && excludeTypes.size > 0) {
@@ -17911,7 +18231,14 @@ function readFilters(mode) {
   const minTierEl = $(`#${mode.toLowerCase()}-min-tier`);
   const minTier = minTierEl ? minTierEl.value : null;
 
-  return { includeSet, excludeSet, minPerfs, matchMode, minTier, excludeTypes };
+  let minTotal = null;
+  const minTotalEl = $(`#${mode.toLowerCase()}-min-total`);
+  if (minTotalEl) {
+    const v = parseFloat(minTotalEl.value);
+    if (!isNaN(v) && v > 0) minTotal = v;
+  }
+
+  return { includeSet, excludeSet, minPerfs, matchMode, minTier, excludeTypes, minTotal };
 }
 
 function applyFilterAndRender(mode) {
@@ -17968,6 +18295,9 @@ function clearFilters(mode) {
   if (minTierEl) {
     minTierEl.value = (mode === 'Forge') ? '0' : 'Common';
   }
+
+  const minTotalEl = $(`#${mode.toLowerCase()}-min-total`);
+  if (minTotalEl) minTotalEl.value = '';
 
   applyFilterAndRender(mode);
 }
@@ -18070,6 +18400,352 @@ $('#forge-go').addEventListener('click', async () => {
   } catch (e) {
     const outputBox = $('#forge-output');
     if (outputBox) outputBox.innerHTML = `<span style='color:red; font-weight:bold; display:block; margin-bottom:10px;'>❌ 대장간 연산 오류: ${e.message}</span>`;
+  }
+});
+
+// === 🔁 미래시 교체 장비 추천 (총옵션 = 서브스탯 값 합계 기준) ===
+function slotTypeOfForgeResult(r) {
+  if (r.Type === 'Melee Weapon' || r.Type === 'Ranged Weapon') return 5;
+  return TYPE_JSON_ORDER.indexOf(r.Type);
+}
+
+function totalOption(stats) {
+  return (stats || []).reduce((acc, s) => acc + (s ? s.value : 0), 0);
+}
+
+function swapStatDetailHtml(stats, optSet) {
+  if (!stats || !stats.length) return '<span style="color:#8b96a8;">옵션 없음</span>';
+  return stats.map(s => {
+    const matched = optSet && optSet.has(s.name);
+    return `<span style="color:${perfColor(s.perf)}">+${s.value.toFixed(2)}%</span> <span style="color:${matched ? '#2c3e50' : '#8b96a8'}; ${matched ? 'font-weight:bold;' : ''}">${SUBSTATS_KOR[s.name] || s.name}${matched ? ' ✓' : ''}</span>`;
+  }).join(' · ');
+}
+
+// 최적 옵션 구성 — 디폴트는 대장간 필터 프리셋 선호 스탯과 동일
+const OPTIMAL_DEFAULT_STATS = ['Critical Chance', 'Critical Damage', 'Double Chance', 'Attack Speed', 'Life Steal', 'Damage'];
+
+function optimalStatsSet() {
+  const arr = Array.isArray(state.optimalStats) && state.optimalStats.length ? state.optimalStats : OPTIMAL_DEFAULT_STATS;
+  return new Set(arr);
+}
+
+// 매칭 점수: 최적 구성에 포함된 옵션만 (개수, 값 합) 집계
+function matchScore(stats, optSet) {
+  let count = 0, sum = 0;
+  for (const s of stats || []) {
+    if (s && optSet.has(s.name)) { count += 1; sum += s.value; }
+  }
+  return { count, sum };
+}
+
+// (매칭 개수, 매칭 합) 사전식 비교 — a가 우위면 양수
+function cmpScore(a, b) {
+  return (a.count - b.count) || (a.sum - b.sum);
+}
+
+// 고정 조건 + 최우선 스탯 (교체 플랜 v3)
+const SWAP_CONSTRAINT_DEFAULTS = {
+  lineStat: 'Life Steal', lineMin: 2,        // 고정 1: 이 스탯 최소 줄 수 (세트 전체, 펫/탈것 포함)
+  sumStat: 'Attack Speed', sumMin: 150,      // 고정 2: 이 스탯 값 합 최소 %
+  priorityStat: 'Critical Chance'            // 조건 충족 후 이 스탯 합 최대화
+};
+
+function swapConstraints() {
+  return Object.assign({}, SWAP_CONSTRAINT_DEFAULTS, state.swapConstraints || {});
+}
+
+// 아이템/스탯 목록의 조건 관련 지표: L=고정1 줄 수, A=고정2 값 합, C=최우선 값 합, M=최적구성 매칭 값 합
+function statFeatures(stats, cons, optSet) {
+  let L = 0, A = 0, C = 0, M = 0;
+  for (const s of stats || []) {
+    if (!s) continue;
+    if (s.name === cons.lineStat) L += 1;
+    if (s.name === cons.sumStat) A += s.value;
+    if (s.name === cons.priorityStat) C += s.value;
+    if (optSet.has(s.name)) M += s.value;
+  }
+  return { L, A, C, M };
+}
+
+// (A, C, M) 지배당하는 항목 제거 — 목적함수가 이 3개 축으로만 결정되므로 안전한 압축
+function paretoPrune(arr, cap) {
+  arr.sort((a, b) => b.A - a.A || b.C - a.C || b.M - a.M);
+  const kept = [];
+  for (const e of arr) {
+    let dom = false;
+    for (const k of kept) {
+      if (k.A >= e.A - 1e-9 && k.C >= e.C - 1e-9 && k.M >= e.M - 1e-9) { dom = true; break; }
+    }
+    if (!dom) { kept.push(e); if (kept.length >= (cap || 60)) break; }
+  }
+  return kept;
+}
+
+// 슬롯 후보 압축: 고정1 줄 수(L)별로 (A, C, M) 파레토 최적만 유지
+function compressCandidates(cands) {
+  const byL = new Map();
+  for (const c of cands) {
+    const arr = byL.get(c.f.L) || [];
+    arr.push(c);
+    byL.set(c.f.L, arr);
+  }
+  const out = [];
+  for (const [, list] of byL) {
+    list.sort((a, b) => b.f.A - a.f.A || b.f.C - a.f.C || b.f.M - a.f.M || a.r.index - b.r.index);
+    const kept = [];
+    for (const c of list) {
+      let dom = false;
+      for (const k of kept) {
+        if (k.f.A >= c.f.A - 1e-9 && k.f.C >= c.f.C - 1e-9 && k.f.M >= c.f.M - 1e-9) { dom = true; break; }
+      }
+      if (!dom) { kept.push(c); if (kept.length >= 20) break; }
+    }
+    out.push(...kept);
+  }
+  return out;
+}
+
+function statSelectHtml(id, selected) {
+  return `<select id="${id}" style="font-size:11px; padding:3px 6px; height:auto;">${SUBSTATS_POOL.map(s => `<option value="${s}" ${s === selected ? 'selected' : ''}>${SUBSTATS_KOR[s] || s}</option>`).join('')}</select>`;
+}
+
+function initOptimalStatsUI() {
+  const host = $('#optimal-stats-host');
+  if (!host) return;
+  const optSet = optimalStatsSet();
+  host.innerHTML = SUBSTATS_POOL.map(s => `
+    <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:12px; border:1px solid var(--border, #dfe4ea); border-radius:4px; padding:3px 8px;">
+      <input type="checkbox" class="optimal-stat-cb" value="${s}" ${optSet.has(s) ? 'checked' : ''} style="margin:0; width:auto; height:auto;"> ${SUBSTATS_KOR[s] || s}
+    </label>`).join('');
+  host.querySelectorAll('.optimal-stat-cb').forEach(cb => {
+    cb.addEventListener('change', () => {
+      state.optimalStats = [...host.querySelectorAll('.optimal-stat-cb')].filter(c => c.checked).map(c => c.value);
+      persist();
+    });
+  });
+
+  const consHost = $('#swap-constraints-host');
+  if (consHost) {
+    const cons = swapConstraints();
+    const rowStyle = 'display:flex; align-items:center; gap:6px; font-size:12px; color: var(--muted); flex-wrap:wrap;';
+    consHost.innerHTML = `
+      <div style="${rowStyle}">📌 고정 조건 1: ${statSelectHtml('cons-line-stat', cons.lineStat)} 최소 <input type="number" id="cons-line-min" min="0" max="16" value="${cons.lineMin}" style="width:50px; font-size:11px; padding:3px 6px; height:auto;"> 줄 <span style="font-size:11px;">(세트 전체, 펫/탈것 포함)</span></div>
+      <div style="${rowStyle}">📌 고정 조건 2: ${statSelectHtml('cons-sum-stat', cons.sumStat)} 합 ≥ <input type="number" id="cons-sum-min" min="0" step="1" value="${cons.sumMin}" style="width:60px; font-size:11px; padding:3px 6px; height:auto;"> %</div>
+      <div style="${rowStyle}">⭐ 최우선 스탯: ${statSelectHtml('cons-priority-stat', cons.priorityStat)} <span style="font-size:11px;">(조건 충족 후 이 스탯 합 최대화 → 이후 매칭 합 최대화)</span></div>`;
+    const saveCons = () => {
+      state.swapConstraints = {
+        lineStat: $('#cons-line-stat').value,
+        lineMin: Math.max(0, parseInt($('#cons-line-min').value, 10) || 0),
+        sumStat: $('#cons-sum-stat').value,
+        sumMin: Math.max(0, parseFloat($('#cons-sum-min').value) || 0),
+        priorityStat: $('#cons-priority-stat').value
+      };
+      persist();
+    };
+    ['cons-line-stat', 'cons-line-min', 'cons-sum-stat', 'cons-sum-min', 'cons-priority-stat'].forEach(id => {
+      const el = $('#' + id);
+      if (el) el.addEventListener('change', saveCons);
+    });
+  }
+
+  const limitEl = $('#swap-limit');
+  if (limitEl) {
+    if (state.swapLimit >= 1 && state.swapLimit <= 8) limitEl.value = state.swapLimit;
+    limitEl.addEventListener('change', () => {
+      const v = parseInt(limitEl.value, 10);
+      state.swapLimit = (!isNaN(v) && v >= 1 && v <= 8) ? v : 8;
+      limitEl.value = state.swapLimit;
+      persist();
+    });
+  }
+}
+initOptimalStatsUI();
+
+function renderSwapRecommend() {
+  const out = $('#forge-swap-output');
+  if (!out) return;
+
+  const col = state.dumpCollections;
+  if (!col || !col.equipment || !col.equipment.length) {
+    out.innerHTML = `<div style="color:#e74c3c; font-weight:bold; margin:10px 0;">장착 장비 정보가 없습니다. 재설정창에서 루아 전체 덤프([EQUIPMENT] 포함)를 붙여넣어 적용해주세요.</div>`;
+    return;
+  }
+  const history = state.Forge.history || [];
+  if (!history.length) {
+    out.innerHTML = `<div style="color:#e67e22; font-weight:bold; margin:10px 0;">먼저 '미래시 전개'를 실행해주세요. 대장간 결과 필터를 통과한 항목에서 후보를 찾습니다.</div>`;
+    return;
+  }
+
+  const optSet = optimalStatsSet();
+  if (!optSet.size) {
+    out.innerHTML = `<div style="color:#e74c3c; font-weight:bold; margin:10px 0;">🎯 최적 옵션 구성에서 스탯을 1개 이상 선택해주세요.</div>`;
+    return;
+  }
+  const limitEl = $('#swap-limit');
+  const nLimit = Math.min(8, Math.max(1, parseInt(limitEl && limitEl.value, 10) || 8));
+  const cons = swapConstraints();
+
+  // 대장간 결과 필터 통과분만 후보로 사용, 근거리 무기는 후보에서 제외
+  const filterConfig = readFilters('Forge');
+  const pool = history.filter(item => item.Type !== 'Melee Weapon' && filterItem(item, filterConfig, 'Forge'));
+
+  const equippedByType = {};
+  for (const e of col.equipment) equippedByType[e.type] = e;
+
+  const candidatesByType = {};
+  for (const r of pool) {
+    const t = slotTypeOfForgeResult(r);
+    if (t < 0) continue;
+    (candidatesByType[t] = candidatesByType[t] || []).push(r);
+  }
+
+  // 장착 펫/탈것 기여 (교체 후보는 장비만, 조건·합계·커버리지에 고정 반영)
+  const petMountStats = [];
+  for (const p of (col.pets || [])) if (p.isEq) petMountStats.push(...(p.stats || []));
+  for (const m of (col.mounts || [])) if (m.isEq) petMountStats.push(...(m.stats || []));
+  const pmF = statFeatures(petMountStats, cons, optSet);
+
+  // 슬롯별 선택지: 장착 유지(비용 0) + 파레토 압축된 교체 후보(비용 1)
+  const slotOptions = [];
+  for (let t = 0; t < 8; t++) {
+    const cur = equippedByType[t];
+    const opts = [{ cost: 0, f: statFeatures(cur ? cur.stats : [], cons, optSet), r: null }];
+    const cands = (candidatesByType[t] || []).map(r => ({ r, f: statFeatures(r.DetailedStats, cons, optSet) }));
+    for (const c of compressCandidates(cands)) opts.push({ cost: 1, f: c.f, r: c.r });
+    slotOptions.push({ t, cur, opts });
+  }
+
+  // 파레토 DP — 상태: (교체 사용 수, 고정1 줄 수 capped), 항목: (A, C, M, picks)
+  // 목적: ① 고정1 줄 부족 최소 ② 고정2 합 부족 최소 ③ 최우선 스탯 합 최대 ④ 매칭 합 최대 ⑤ 교체 수 최소
+  const lineCap = Math.max(0, cons.lineMin | 0);
+  let states = new Map();
+  states.set(`0|${Math.min(lineCap, pmF.L)}`, [{ A: pmF.A, C: pmF.C, M: pmF.M, picks: [] }]);
+
+  for (const so of slotOptions) {
+    const next = new Map();
+    for (const [key, entries] of states) {
+      const parts = key.split('|');
+      const used = +parts[0], l = +parts[1];
+      for (const opt of so.opts) {
+        const u2 = used + opt.cost;
+        if (u2 > nLimit) continue;
+        const k2 = `${u2}|${Math.min(lineCap, l + opt.f.L)}`;
+        let arr = next.get(k2);
+        if (!arr) { arr = []; next.set(k2, arr); }
+        for (const e of entries) {
+          arr.push({ A: e.A + opt.f.A, C: e.C + opt.f.C, M: e.M + opt.f.M, picks: e.picks.concat([opt.r]) });
+        }
+      }
+    }
+    for (const [k, arr] of next) next.set(k, paretoPrune(arr, 60));
+    states = next;
+  }
+
+  const planRank = p => [p.lineShort, p.sumShort, -p.C, -p.M, p.used];
+  const planBetter = (a, b) => {
+    const ra = planRank(a), rb = planRank(b);
+    for (let i = 0; i < ra.length; i++) {
+      if (ra[i] < rb[i] - 1e-9) return true;
+      if (ra[i] > rb[i] + 1e-9) return false;
+    }
+    return false;
+  };
+
+  let bestPlan = null;
+  for (const [key, entries] of states) {
+    const parts = key.split('|');
+    const used = +parts[0], l = +parts[1];
+    for (const e of entries) {
+      const cand = {
+        lineShort: Math.max(0, lineCap - l),
+        sumShort: Math.max(0, cons.sumMin - e.A),
+        C: e.C, M: e.M, used, picks: e.picks
+      };
+      if (!bestPlan || planBetter(cand, bestPlan)) bestPlan = cand;
+    }
+  }
+  if (!bestPlan) {
+    out.innerHTML = `<div style="color:#e74c3c; font-weight:bold; margin:10px 0;">플랜 계산 실패 — 후보/장착 데이터를 확인해주세요.</div>`;
+    return;
+  }
+
+  // 선택된 플랜에서 표시용 수치 재집계
+  const planStats = [...petMountStats];
+  let curCount = 0, curSum = 0, newCount = 0, newSum = 0, swapCount = 0;
+  const th = 'padding:5px 8px; border-bottom:1px solid var(--border, #dfe4ea); text-align:left; color:#7f8c8d; font-size:12px;';
+  const td = 'padding:5px 8px; border-bottom:1px solid #eef1f4; font-size:13px; vertical-align:top;';
+  let rows = '';
+
+  for (let t = 0; t < 8; t++) {
+    const cur = equippedByType[t];
+    const curScore = matchScore(cur ? cur.stats : [], optSet);
+    const pick = bestPlan.picks[t]; // 교체할 미래시 아이템 or null(유지)
+    const chosenStats = pick ? pick.DetailedStats : (cur ? cur.stats : []);
+    const chosenScore = matchScore(chosenStats, optSet);
+    planStats.push(...(chosenStats || []));
+
+    curCount += curScore.count; curSum += curScore.sum;
+    newCount += chosenScore.count; newSum += chosenScore.sum;
+    if (pick) swapCount++;
+
+    const curHtml = cur
+      ? `${ageChip(cur.age)} Lv.${cur.level} <b>매칭 ${curScore.count}개 · ${curScore.sum.toFixed(2)}%</b><br><span style="font-size:12px;">${swapStatDetailHtml(cur.stats, optSet)}</span>`
+      : '<span style="color:#8b96a8;">미장착 (매칭 0개)</span>';
+
+    let planHtml;
+    if (pick) {
+      const weaponKind = pick.Type === 'Ranged Weapon' ? ` <span style="color:#8b96a8; font-size:11px;">(원거리)</span>` : '';
+      planHtml = `<div style="font-weight:bold;">🔼 <span style="color:#e67e22;">${pick.index}번째</span> ${ageChip(pick.Age)}${weaponKind} 매칭 ${chosenScore.count}개 · ${chosenScore.sum.toFixed(2)}% <span style="color:#2ecc71;">(+${(chosenScore.sum - curScore.sum).toFixed(2)}%p)</span><br><span style="font-size:12px; font-weight:normal;">${swapStatDetailHtml(pick.DetailedStats, optSet)}</span></div>`;
+    } else {
+      planHtml = '<span style="color:#8b96a8;">유지 — 조건·우선순위 기준으로 교체 없이 두는 게 최적</span>';
+    }
+
+    rows += `<tr style="${pick ? '' : 'opacity:0.65;'}"><td style="${td}"><b>${EQUIP_TYPE_KOR[t]}</b></td><td style="${td}">${curHtml}</td><td style="${td}">${planHtml}</td></tr>`;
+  }
+
+  // 조건 달성 현황 (플랜 장비 + 장착 펫/탈것)
+  const finalF = statFeatures(planStats, cons, optSet);
+  const lineOk = finalF.L >= cons.lineMin;
+  const sumOk = finalF.A >= cons.sumMin - 1e-9;
+  const consHtml = `
+    <div style="margin-bottom:8px; padding:8px 10px; background:${lineOk && sumOk ? 'rgba(46,204,113,0.12)' : 'rgba(243,156,18,0.12)'}; border:1px solid ${lineOk && sumOk ? '#2ecc71' : '#f39c12'}; border-radius:4px; font-size:13px;">
+      <b>📌 ${SUBSTATS_KOR[cons.lineStat] || cons.lineStat} ${finalF.L}/${cons.lineMin}줄 ${lineOk ? '✅' : `⚠️ ${cons.lineMin - finalF.L}줄 부족`}
+      · ${SUBSTATS_KOR[cons.sumStat] || cons.sumStat} ${finalF.A.toFixed(2)}/${cons.sumMin}% ${sumOk ? '✅' : `⚠️ ${(cons.sumMin - finalF.A).toFixed(2)}%p 부족`}
+      · ⭐ ${SUBSTATS_KOR[cons.priorityStat] || cons.priorityStat} 합 ${finalF.C.toFixed(2)}%</b>
+      ${lineOk && sumOk ? '' : '<br><span style="color:#f39c12; font-size:12px;">조건 완전 충족이 불가능해 부족량이 최소인 근사 플랜입니다. 미래시 범위를 늘리거나 필터를 완화해보세요.</span>'}
+      <br><span style="color:#8b96a8; font-size:12px;">장비 매칭: ${curCount}개 · ${curSum.toFixed(2)}% → ${newCount}개 · ${newSum.toFixed(2)}% (+${(newSum - curSum).toFixed(2)}%p) · 교체 ${swapCount}/${nLimit}개 · 펫/탈것 기여 포함 최종 매칭 합 ${finalF.M.toFixed(2)}%</span>
+    </div>`;
+
+  // 구성 커버리지
+  const coverage = {};
+  for (const name of optSet) coverage[name] = { count: 0, sum: 0 };
+  for (const s of planStats) if (s && coverage[s.name]) { coverage[s.name].count += 1; coverage[s.name].sum += s.value; }
+  const coverageHtml = [...optSet].map(name => {
+    const c = coverage[name];
+    return c.count
+      ? `<span style="display:inline-block; border:1px solid #2ecc71; border-radius:4px; padding:2px 8px; margin:0 6px 6px 0; font-size:12px;">${SUBSTATS_KOR[name] || name} ×${c.count} · ${c.sum.toFixed(2)}%</span>`
+      : `<span style="display:inline-block; border:1px solid #e74c3c; color:#e74c3c; border-radius:4px; padding:2px 8px; margin:0 6px 6px 0; font-size:12px;">${SUBSTATS_KOR[name] || name} 미확보</span>`;
+  }).join('');
+
+  out.innerHTML = `
+    <div class="card" style="margin:12px 0; padding:12px;">
+      <div style="font-weight:bold; color:#e67e22; margin-bottom:4px;">🔁 교체 플랜 — 고정 조건 + 최우선 스탯 최적화 (근거리 무기 제외, 최대 ${nLimit}개 교체)</div>
+      <div style="color:#8b96a8; font-size:12px; margin-bottom:8px;">검색 범위: 필터 통과 ${pool.length}개 / 전체 히스토리 ${history.length}개 · 판정: ① 고정 조건 충족(부족 시 최소화) ② 최우선 스탯 합 ③ 매칭 합 (✓ = 최적 구성 포함 옵션)</div>
+      ${consHtml}
+      <div style="margin-bottom:8px;"><span style="font-size:12px; color:#7f8c8d; font-weight:bold;">구성 커버리지 (플랜 장비 + 장착 펫/탈것):</span><br>${coverageHtml}</div>
+      <table style="width:100%; border-collapse:collapse;">
+        <tr><th style="${th}">타입</th><th style="${th}">현재 장착</th><th style="${th}">교체 플랜 (n번째 두들김)</th></tr>
+        ${rows}
+      </table>
+    </div>`;
+}
+
+$('#forge-swap-recommend').addEventListener('click', () => {
+  try {
+    renderSwapRecommend();
+  } catch (e) {
+    const out = $('#forge-swap-output');
+    if (out) out.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 교체 추천 오류: ${e.message}</span>`;
   }
 });
 
