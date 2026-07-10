@@ -18443,13 +18443,15 @@ function cmpScore(a, b) {
   return (a.count - b.count) || (a.sum - b.sum);
 }
 
-// 공속(%) → 실효 등급. 실제 공격 주기는 0.1초 틱 단위로 양자화돼 계단식으로만 변함
-// (예: 150~199%는 전부 같은 0.7초 주기). 전투 시뮬의 periodTicks 공식과 동일 상수(AD=1.5, TICK=0.1)를 사용.
+// 공속 합(%) → 실효 구간의 최저값으로 스냅. 실제 공격 주기는 0.1초 틱 단위로 양자화돼
+// 계단식으로만 변함(예: 150~199%는 전부 같은 0.7초 주기 → 150으로 스냅).
+// 전투 시뮬의 periodTicks 공식과 동일 상수(AD=1.5, TICK=0.1). 단조증가 함수라 랭킹/파레토 비교에 안전하게 쓸 수 있다.
 // 랭킹/비교 전용 — 원본 % 값은 화면 표시·고정조건 문턱값 계산에는 그대로 사용한다.
-function aspTierRank(pct) {
-  const v = Math.max(0, pct || 0);
+function aspFloorPct(sumPct) {
+  const v = Math.max(0, sumPct || 0);
   const ticks = Math.ceil(1.5 / (0.1 * (1 + v / 100))) + 1;
-  return -ticks; // 틱 수가 적을수록(공속이 빠를수록) 랭킹값이 커지도록 부호 반전
+  const n = ticks - 1;
+  return n > 0 ? Math.max(0, 100 * (15 / n - 1)) : 0;
 }
 
 // 고정 조건 + 최우선 스탯 (교체 플랜 v3)
@@ -18464,33 +18466,42 @@ function swapConstraints() {
 }
 
 // 아이템/스탯 목록의 조건 관련 지표: L=고정1 줄 수, A=고정2 값 합, C=최우선 값 합, M=최적구성 매칭 값 합
+// Masp=M 중 공속 성분만 별도 누적(원본 %, 합산 자체는 그대로 선형 — 최종 랭킹 단계에서만 구간 스냅 적용).
+// 공속은 원본 %를 그대로 M에 더하면 같은 구간 내 초과분(예: 150→190)도 실제 이득처럼 보여
+// 다른 매칭 스탯(생명흡수 등)을 깎아먹는 손해 교체를 유발하므로 분리 추적이 필요하다.
 function statFeatures(stats, cons, optSet) {
-  let L = 0, A = 0, C = 0, M = 0;
+  let L = 0, A = 0, C = 0, M = 0, Masp = 0;
   for (const s of stats || []) {
     if (!s) continue;
     if (s.name === cons.lineStat) L += 1;
     if (s.name === cons.sumStat) A += s.value;
     if (s.name === cons.priorityStat) C += s.value;
-    if (optSet.has(s.name)) M += s.value;
+    if (optSet.has(s.name)) {
+      M += s.value;
+      if (s.name === 'Attack Speed') Masp += s.value;
+    }
   }
-  return { L, A, C, M };
+  return { L, A, C, M, Masp };
 }
 
 // (A, C, M) 지배당하는 항목 제거 — 목적함수가 이 3개 축으로만 결정되므로 안전한 압축
+// M은 M-Masp(공속 제외 매칭 합)와 Masp(공속 매칭 합, raw)로 쪼개 비교한다: 원본 공속 %는 단조증가라
+// raw 비교로도 안전(더 높은 raw Masp는 항상 같거나 더 빠른 실효 구간)하면서, 공속 초과분이
+// 다른 매칭 스탯을 부당하게 지배해버리는 걸 막는다.
 function paretoPrune(arr, cap) {
-  arr.sort((a, b) => b.A - a.A || b.C - a.C || b.M - a.M);
+  arr.sort((a, b) => b.A - a.A || b.C - a.C || (b.M - b.Masp) - (a.M - a.Masp) || b.Masp - a.Masp);
   const kept = [];
   for (const e of arr) {
     let dom = false;
     for (const k of kept) {
-      if (k.A >= e.A - 1e-9 && k.C >= e.C - 1e-9 && k.M >= e.M - 1e-9) { dom = true; break; }
+      if (k.A >= e.A - 1e-9 && k.C >= e.C - 1e-9 && (k.M - k.Masp) >= (e.M - e.Masp) - 1e-9 && k.Masp >= e.Masp - 1e-9) { dom = true; break; }
     }
     if (!dom) { kept.push(e); if (kept.length >= (cap || 60)) break; }
   }
   return kept;
 }
 
-// 슬롯 후보 압축: 고정1 줄 수(L)별로 (A, C, M) 파레토 최적만 유지
+// 슬롯 후보 압축: 고정1 줄 수(L)별로 (A, C, M-Masp, Masp) 파레토 최적만 유지
 function compressCandidates(cands) {
   const byL = new Map();
   for (const c of cands) {
@@ -18500,12 +18511,12 @@ function compressCandidates(cands) {
   }
   const out = [];
   for (const [, list] of byL) {
-    list.sort((a, b) => b.f.A - a.f.A || b.f.C - a.f.C || b.f.M - a.f.M || a.r.index - b.r.index);
+    list.sort((a, b) => b.f.A - a.f.A || b.f.C - a.f.C || (b.f.M - b.f.Masp) - (a.f.M - a.f.Masp) || b.f.Masp - a.f.Masp || a.r.index - b.r.index);
     const kept = [];
     for (const c of list) {
       let dom = false;
       for (const k of kept) {
-        if (k.f.A >= c.f.A - 1e-9 && k.f.C >= c.f.C - 1e-9 && k.f.M >= c.f.M - 1e-9) { dom = true; break; }
+        if (k.f.A >= c.f.A - 1e-9 && k.f.C >= c.f.C - 1e-9 && (k.f.M - k.f.Masp) >= (c.f.M - c.f.Masp) - 1e-9 && k.f.Masp >= c.f.Masp - 1e-9) { dom = true; break; }
       }
       if (!dom) { kept.push(c); if (kept.length >= 20) break; }
     }
@@ -18628,7 +18639,7 @@ function renderSwapRecommend() {
   // 목적: ① 고정1 줄 부족 최소 ② 고정2 합 부족 최소 ③ 최우선 스탯 합 최대 ④ 매칭 합 최대 ⑤ 교체 수 최소
   const lineCap = Math.max(0, cons.lineMin | 0);
   let states = new Map();
-  states.set(`0|${Math.min(lineCap, pmF.L)}`, [{ A: pmF.A, C: pmF.C, M: pmF.M, picks: [] }]);
+  states.set(`0|${Math.min(lineCap, pmF.L)}`, [{ A: pmF.A, C: pmF.C, M: pmF.M, Masp: pmF.Masp, picks: [] }]);
 
   for (const so of slotOptions) {
     const next = new Map();
@@ -18642,7 +18653,7 @@ function renderSwapRecommend() {
         let arr = next.get(k2);
         if (!arr) { arr = []; next.set(k2, arr); }
         for (const e of entries) {
-          arr.push({ A: e.A + opt.f.A, C: e.C + opt.f.C, M: e.M + opt.f.M, picks: e.picks.concat([opt.r]) });
+          arr.push({ A: e.A + opt.f.A, C: e.C + opt.f.C, M: e.M + opt.f.M, Masp: e.Masp + opt.f.Masp, picks: e.picks.concat([opt.r]) });
         }
       }
     }
@@ -18650,10 +18661,11 @@ function renderSwapRecommend() {
     states = next;
   }
 
-  const cRank = cons.priorityStat === 'Attack Speed'
-    ? (p) => aspTierRank(p.C)   // 같은 공속 구간(예: 150~199%)이면 동률로 취급 — 불필요한 교체 방지
-    : (p) => p.C;
-  const planRank = p => [p.lineShort, p.sumShort, -cRank(p), -p.M, p.used];
+  // 최우선 스탯(C)·매칭 합(M)이 공속이면 원본 %가 아니라 구간 스냅값으로 랭킹 —
+  // 150%와 190%처럼 같은 실효 구간이면 동률로 취급해 무의미한 교체(예: 생명흡수 줄을 깎아 공속만 더 쌓기)를 막는다.
+  const cRank = cons.priorityStat === 'Attack Speed' ? (p) => aspFloorPct(p.C) : (p) => p.C;
+  const mRank = p => (p.M - p.Masp) + aspFloorPct(p.Masp);
+  const planRank = p => [p.lineShort, p.sumShort, -cRank(p), -mRank(p), p.used];
   const planBetter = (a, b) => {
     const ra = planRank(a), rb = planRank(b);
     for (let i = 0; i < ra.length; i++) {
@@ -18671,7 +18683,7 @@ function renderSwapRecommend() {
       const cand = {
         lineShort: Math.max(0, lineCap - l),
         sumShort: Math.max(0, cons.sumMin - e.A),
-        C: e.C, M: e.M, used, picks: e.picks
+        C: e.C, M: e.M, Masp: e.Masp, used, picks: e.picks
       };
       if (!bestPlan || planBetter(cand, bestPlan)) bestPlan = cand;
     }
