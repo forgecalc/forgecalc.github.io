@@ -18091,6 +18091,7 @@ $('#btn-apply').addEventListener('click', async () => {
 
     // 재설정창에서 설정한 필터 수치를 결과창 필터에 한 번에 반영
     ['Forge', 'Pet', 'Mount'].forEach(mode => copyFilterState(initFilterRoot(mode), cardFilterRoot(mode)));
+    saveFilterSettings();
 
     state.initialized = true;
     persist();
@@ -18299,6 +18300,7 @@ function clearFilters(mode) {
   const minTotalEl = $(`#${mode.toLowerCase()}-min-total`);
   if (minTotalEl) minTotalEl.value = '';
 
+  saveFilterSettings();
   applyFilterAndRender(mode);
 }
 
@@ -18357,6 +18359,59 @@ function buildInitFilterClones() {
   });
 }
 
+// === 💾 필터 설정 localStorage 영속화 ===
+// 결과창 필터 카드의 현재 상태를 state.filterSettings로 직렬화해 저장
+function saveFilterSettings() {
+  const settings = {};
+  ['Forge', 'Pet', 'Mount'].forEach(mode => {
+    const lower = mode.toLowerCase();
+    const grid = $(`#${lower}-filter-grid`);
+    if (!grid) return;
+    const s = { inc: [], exc: [], mins: {}, excTypes: [] };
+    grid.querySelectorAll('.filter-inc').forEach(cb => { if (cb.checked) s.inc.push(cb.dataset.stat); });
+    grid.querySelectorAll('.filter-exc').forEach(cb => { if (cb.checked) s.exc.push(cb.dataset.stat); });
+    grid.querySelectorAll('.filter-min').forEach(inp => { if (inp.value !== '') s.mins[inp.dataset.stat] = inp.value; });
+    $$(`.${lower}-exc-type`).forEach(cb => { if (cb.checked) s.excTypes.push(cb.value); });
+    const matchEl = $(`input[name="${lower}-match-mode"]:checked`);
+    if (matchEl) s.match = matchEl.value;
+    const tierEl = $(`#${lower}-min-tier`);
+    if (tierEl) s.minTier = tierEl.value;
+    const totalEl = $(`#${lower}-min-total`);
+    if (totalEl) s.minTotal = totalEl.value;
+    settings[mode] = s;
+  });
+  state.filterSettings = settings;
+  persist();
+}
+
+// 저장된 필터 설정을 결과창 필터 카드 DOM에 복원
+function restoreFilterSettings() {
+  const settings = state.filterSettings;
+  if (!settings) return;
+  ['Forge', 'Pet', 'Mount'].forEach(mode => {
+    const s = settings[mode];
+    const lower = mode.toLowerCase();
+    const grid = $(`#${lower}-filter-grid`);
+    if (!s || !grid) return;
+    const incSet = new Set(s.inc || []), excSet = new Set(s.exc || []);
+    grid.querySelectorAll('.filter-inc').forEach(cb => { cb.checked = incSet.has(cb.dataset.stat); });
+    grid.querySelectorAll('.filter-exc').forEach(cb => { cb.checked = excSet.has(cb.dataset.stat); });
+    grid.querySelectorAll('.filter-min').forEach(inp => {
+      inp.value = (s.mins && s.mins[inp.dataset.stat] !== undefined) ? s.mins[inp.dataset.stat] : '';
+    });
+    const excTypeSet = new Set(s.excTypes || []);
+    $$(`.${lower}-exc-type`).forEach(cb => { cb.checked = excTypeSet.has(cb.value); });
+    if (s.match) {
+      const radio = $(`#${lower}-match-${s.match.toLowerCase()}`);
+      if (radio) radio.checked = true;
+    }
+    const tierEl = $(`#${lower}-min-tier`);
+    if (tierEl && s.minTier !== undefined) tierEl.value = s.minTier;
+    const totalEl = $(`#${lower}-min-total`);
+    if (totalEl && s.minTotal !== undefined) totalEl.value = s.minTotal;
+  });
+}
+
 function initFilters() {
   const curHammerEl = $('#forge-current-hammers');
   if (curHammerEl) {
@@ -18366,8 +18421,15 @@ function initFilters() {
   initFilterUI($('#pet-filter-grid'), 'Pet');
   initFilterUI($('#mount-filter-grid'), 'Mount');
 
+  // 저장된 필터 설정 복원 (기본 프리셋 위에 덮어씀)
+  restoreFilterSettings();
+
   // 재설정창에 필터 카드 복제 (그리드가 채워진 직후)
   buildInitFilterClones();
+
+  // 복원된 현재 값을 클론에 동기화 — cloneNode는 checked/value의 '현재 속성'을 복사하지 못해서
+  // 이 동기화가 없으면 일괄 적용 시 클론의 기본값이 복원된 필터를 덮어써 버린다.
+  ['Forge', 'Pet', 'Mount'].forEach(mode => copyFilterState(cardFilterRoot(mode), initFilterRoot(mode)));
 
   ['Forge', 'Pet', 'Mount'].forEach(mode => {
     // 실시간 필터링 제거 → '필터 적용' 버튼 클릭 시에만 반영
@@ -18379,6 +18441,9 @@ function initFilters() {
     if (clearBtn) {
       clearBtn.addEventListener('click', () => clearFilters(mode));
     }
+    // 필터 값이 바뀔 때마다 localStorage에 저장 (결과창 카드 기준)
+    const card = cardFilterRoot(mode);
+    if (card) card.addEventListener('change', () => saveFilterSettings());
   });
 }
 
@@ -18454,13 +18519,43 @@ function aspFloorPct(sumPct) {
   return n > 0 ? Math.max(0, 100 * (15 / n - 1)) : 0;
 }
 
-// 고정 조건 + 최우선 스탯 (교체 플랜 v3)
+// === ⚔️ 전투 시뮬 정확 DPS 지수 (교체 플랜 목적함수) ===
+// duel()과 동일 상태기계로 사이클 틱을 계산 — 더블 발동 시 윈드업 재진입(tm=wu×3/4 리셋)으로
+// 사이클이 늘어나는 딜레이와, (공속×윈드업) 틱 양자화의 서브 브레이크포인트(예: wu0.77은 공속 156.7%부터
+// 더블 사이클 9→8틱)를 정확히 반영한다. 근사식 (1+더블)/주기 는 더블 가치를 과대평가하므로 쓰지 않는다.
+const _swapCycleCache = new Map();
+function swapCycleTicks(aspPct, wu, isDouble) {
+  const key = aspPct.toFixed(3) + '|' + wu + '|' + (isDouble ? 1 : 0);
+  if (_swapCycleCache.has(key)) return _swapCycleCache.get(key);
+  const step = 0.1 * (1 + aspPct / 100);
+  let ticks = 1, tm = 0; // state0 전환 1틱
+  while (tm < wu - 1e-12) { tm += step; ticks++; }
+  if (isDouble) {
+    tm = wu * 0.75; // DoubleAttackSpeedUp=4 → 재진입 지점
+    while (tm < wu - 1e-12) { tm += step; ticks++; }
+  }
+  while (tm < 1.5 - 1e-12) { tm += step; ticks++; } // AD=1.5
+  _swapCycleCache.set(key, ticks);
+  return ticks;
+}
+
+// D = {crit, chipi, dbl, asp, dmg} (% 합) → 스케일 무관 DPS 지수.
+// 베이스 치확 0 / 치피 기본 120(공식 내장) 가정 — 전투 시뮬 unit()과 동일.
+function dpsIndexOf(D, wu) {
+  const c = Math.min(D.crit / 100, 1);
+  const p = Math.min(D.dbl / 100, 1);
+  const avg = (1 - c) + c * (D.chipi + 120) / 100;
+  const tn = swapCycleTicks(D.asp, wu, false);
+  const td = swapCycleTicks(D.asp, wu, true);
+  return (1 + D.dmg / 100) * avg * (1 + p) / (((1 - p) * tn + p * td) * 0.1);
+}
+
+// 고정 조건 + DPS 최적화 (교체 플랜 v4)
 const SWAP_CONSTRAINT_DEFAULTS = {
   lineMins: { 'Life Steal': 2 },             // 고정 1: 옵션별 최소 줄 수 (세트 전체, 펫/탈것 포함) — {스탯명: 최소줄수}
   lineMaxs: {},                              // 고정 1: 옵션별 최대 줄 수 — {스탯명: 최대줄수}. 초과분은 부족량과 동일하게 페널티로 최소화
-  sumStat: 'Attack Speed', sumMin: 150,      // 고정 2: 이 스탯 값 합 최소 %
-  priorityStat: 'Critical Chance',           // 조건 충족 후 이 스탯 합 최대화
-  priorityCap: 0                             // 최우선 스탯 상한(%) — 0=제한 없음. 도달 후 남는 교체는 다른 매칭 스탯으로 유도
+  sumStat: 'Attack Speed', sumMin: 156.7,    // 고정 2: 이 스탯 값 합 최소 % — 156.7 = wu 0.77 더블 8틱 경계(정확히 156.667%). 랭킹 비교가 1e-9 허용오차라 부동소수점 합(156.6999…)도 통과
+  windup: 0.33                               // 기본 무기 윈드업(초) — DPS 지수의 더블 딜레이 계산에 사용
 };
 
 function swapConstraints() {
@@ -18470,7 +18565,13 @@ function swapConstraints() {
     ? raw.lineMins
     : (raw.lineStat ? { [raw.lineStat]: raw.lineMin || 0 } : SWAP_CONSTRAINT_DEFAULTS.lineMins);
   const lineMaxs = raw.lineMaxs || SWAP_CONSTRAINT_DEFAULTS.lineMaxs;
-  return Object.assign({}, SWAP_CONSTRAINT_DEFAULTS, raw, { lineMins, lineMaxs });
+  const merged = Object.assign({}, SWAP_CONSTRAINT_DEFAULTS, raw, { lineMins, lineMaxs });
+  // 구버전 저장값(windup 도입 전) 마이그레이션: 당시 기본이던 공속 150은 더블 사이클 경계(156.667%) 미달 → 157로 승급
+  if (raw.windup === undefined && (raw.sumMin === undefined || raw.sumMin === 150)) {
+    merged.sumMin = SWAP_CONSTRAINT_DEFAULTS.sumMin;
+  }
+  if (!merged.windup) merged.windup = SWAP_CONSTRAINT_DEFAULTS.windup;
+  return merged;
 }
 
 // 조건 1에 실제로 최소/최대 줄수가 걸린 스탯 이름만 정렬된 배열로 (합집합)
@@ -18482,52 +18583,47 @@ function activeLineStats(cons) {
   return [...set].sort();
 }
 
-// 아이템/스탯 목록의 조건 관련 지표: Lc=고정1 대상 스탯별 줄 수, A=고정2 값 합, C=최우선 값 합, M=최적구성 매칭 값 합
-// Masp=M 중 공속 성분만 별도 누적(원본 %, 합산 자체는 그대로 선형 — 최종 랭킹 단계에서만 구간 스냅 적용).
-// Mpri=M 중 최우선 스탯 성분만 별도 누적(공속이 아닐 때만 — 공속이면 Masp와 중복이라 0 유지).
-// 공속/최우선 스탯을 원본 %로 그대로 M에 더하면 상한(공속 구간, 치확 100% 등) 초과분도 실제 이득처럼 보여
-// 다른 매칭 스탯(생명흡수, 치피 등)을 깎아먹는 손해 교체를 유발하므로 분리 추적이 필요하다.
+// 아이템/스탯 목록의 지표: Lc=고정1 대상 스탯별 줄 수, A=고정2 값 합, M=최적구성 매칭 값 합(표시용),
+// D=DPS 관여 스탯 합(치확/치피/더블/공속/공격력) — 목적함수(dpsIndexOf)의 입력.
 function statFeatures(stats, cons, optSet, lineStats) {
   const Lc = {};
   if (lineStats) for (const s of lineStats) Lc[s] = 0;
-  let A = 0, C = 0, M = 0, Masp = 0, Mpri = 0;
-  const priIsAsp = cons.priorityStat === 'Attack Speed';
+  let A = 0, M = 0;
+  const D = { crit: 0, chipi: 0, dbl: 0, asp: 0, dmg: 0 };
   for (const s of stats || []) {
     if (!s) continue;
     if (lineStats && s.name in Lc) Lc[s.name] += 1;
     if (s.name === cons.sumStat) A += s.value;
-    if (s.name === cons.priorityStat) C += s.value;
-    if (optSet.has(s.name)) {
-      M += s.value;
-      if (s.name === 'Attack Speed') Masp += s.value;
-      if (!priIsAsp && s.name === cons.priorityStat) Mpri += s.value;
-    }
+    if (optSet.has(s.name)) M += s.value;
+    if (s.name === 'Critical Chance') D.crit += s.value;
+    else if (s.name === 'Critical Damage') D.chipi += s.value;
+    else if (s.name === 'Double Chance') D.dbl += s.value;
+    else if (s.name === 'Attack Speed') D.asp += s.value;
+    else if (s.name === 'Damage') D.dmg += s.value;
   }
-  return { Lc, A, C, M, Masp, Mpri };
+  return { Lc, A, M, D };
 }
 
-// (A, C, M) 지배당하는 항목 제거 — 목적함수가 이 3개 축으로만 결정되므로 안전한 압축
-// M은 M-Masp-Mpri(공속·최우선 스탯 제외 매칭 합)와 Masp(공속), Mpri(최우선 스탯)로 쪼개 비교한다:
-// 원본 %는 단조증가라 raw 비교로도 안전(더 높은 raw는 항상 같거나 더 나은 실효값)하면서,
-// 공속/최우선 스탯 초과분이 다른 매칭 스탯을 부당하게 지배해버리는 걸 막는다.
-function paretoPrune(arr, cap) {
-  const rest = e => e.M - e.Masp - e.Mpri;
-  arr.sort((a, b) => b.A - a.A || b.C - a.C || rest(b) - rest(a) || b.Masp - a.Masp || b.Mpri - a.Mpri);
+// (A, D 5축) 지배당하는 항목 제거 — DPS는 D의 각 축에 단조증가라 지배 항목은 최적이 될 수 없음.
+// M은 표시 전용이라 지배 판정에서 제외. 정렬은 부분합 DPS 내림차순(컷 잘림 시 유망한 항목 우선 보존).
+function paretoPrune(arr, cap, wu) {
+  arr.sort((a, b) => dpsIndexOf(b.D, wu) - dpsIndexOf(a.D, wu));
   const kept = [];
   for (const e of arr) {
     let dom = false;
     for (const k of kept) {
-      if (k.A >= e.A - 1e-9 && k.C >= e.C - 1e-9 && rest(k) >= rest(e) - 1e-9 && k.Masp >= e.Masp - 1e-9 && k.Mpri >= e.Mpri - 1e-9) { dom = true; break; }
+      if (k.A >= e.A - 1e-9
+        && k.D.crit >= e.D.crit - 1e-9 && k.D.chipi >= e.D.chipi - 1e-9 && k.D.dbl >= e.D.dbl - 1e-9
+        && k.D.asp >= e.D.asp - 1e-9 && k.D.dmg >= e.D.dmg - 1e-9) { dom = true; break; }
     }
-    if (!dom) { kept.push(e); if (kept.length >= (cap || 60)) break; }
+    if (!dom) { kept.push(e); if (kept.length >= (cap || 80)) break; }
   }
   return kept;
 }
 
-// 슬롯 후보 압축: 고정1 대상 스탯별 줄 수(Lc) 조합별로 (A, C, M-Masp-Mpri, Masp, Mpri) 파레토 최적만 유지
+// 슬롯 후보 압축: 고정1 대상 스탯별 줄 수(Lc) 조합별로 (A, D 5축) 파레토 최적만 유지
 function compressCandidates(cands) {
   const lKeyOf = f => Object.keys(f.Lc).sort().map(k => `${k}:${f.Lc[k]}`).join('|');
-  const rest = f => f.M - f.Masp - f.Mpri;
   const byL = new Map();
   for (const c of cands) {
     const key = lKeyOf(c.f);
@@ -18537,14 +18633,17 @@ function compressCandidates(cands) {
   }
   const out = [];
   for (const [, list] of byL) {
-    list.sort((a, b) => b.f.A - a.f.A || b.f.C - a.f.C || rest(b.f) - rest(a.f) || b.f.Masp - a.f.Masp || b.f.Mpri - a.f.Mpri || a.r.index - b.r.index);
+    const val = f => f.A + f.D.crit + f.D.chipi + f.D.dbl + f.D.asp + f.D.dmg;
+    list.sort((a, b) => val(b.f) - val(a.f) || a.r.index - b.r.index);
     const kept = [];
     for (const c of list) {
       let dom = false;
       for (const k of kept) {
-        if (k.f.A >= c.f.A - 1e-9 && k.f.C >= c.f.C - 1e-9 && rest(k.f) >= rest(c.f) - 1e-9 && k.f.Masp >= c.f.Masp - 1e-9 && k.f.Mpri >= c.f.Mpri - 1e-9) { dom = true; break; }
+        if (k.f.A >= c.f.A - 1e-9
+          && k.f.D.crit >= c.f.D.crit - 1e-9 && k.f.D.chipi >= c.f.D.chipi - 1e-9 && k.f.D.dbl >= c.f.D.dbl - 1e-9
+          && k.f.D.asp >= c.f.D.asp - 1e-9 && k.f.D.dmg >= c.f.D.dmg - 1e-9) { dom = true; break; }
       }
-      if (!dom) { kept.push(c); if (kept.length >= 20) break; }
+      if (!dom) { kept.push(c); if (kept.length >= 24) break; }
     }
     out.push(...kept);
   }
@@ -18582,8 +18681,8 @@ function initOptimalStatsUI() {
       </label>`).join('');
     consHost.innerHTML = `
       <div style="${rowStyle}">📌 고정 조건 1: 옵션별 최소/최대 줄 수 <span style="font-size:11px;">(세트 전체, 펫/탈것 포함 · 0 = 제한 없음)</span><div style="width:100%; display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">${lineMinsHtml}</div></div>
-      <div style="${rowStyle}">📌 고정 조건 2: ${statSelectHtml('cons-sum-stat', cons.sumStat)} 합 ≥ <input type="number" id="cons-sum-min" min="0" step="1" value="${cons.sumMin}" style="width:60px; font-size:11px; padding:3px 6px; height:auto;"> %</div>
-      <div style="${rowStyle}">⭐ 최우선 스탯: ${statSelectHtml('cons-priority-stat', cons.priorityStat)} 최대 <input type="number" id="cons-priority-cap" min="0" step="1" value="${cons.priorityCap || 0}" style="width:55px; font-size:11px; padding:3px 6px; height:auto;"> % <span style="font-size:11px;">(0=제한 없음 · 상한 도달 후 남는 교체는 다른 매칭 스탯으로) — 조건 충족 후 이 스탯 합 최대화 → 이후 매칭 합 최대화</span></div>`;
+      <div style="${rowStyle}">📌 고정 조건 2: ${statSelectHtml('cons-sum-stat', cons.sumStat)} 합 ≥ <input type="number" id="cons-sum-min" min="0" step="1" value="${cons.sumMin}" style="width:60px; font-size:11px; padding:3px 6px; height:auto;"> % <span style="font-size:11px;">(공속 156.7 = 윈드업 0.77 무기 더블 8틱 경계 156.667%)</span></div>
+      <div style="${rowStyle}">⚔️ 무기 윈드업: <input type="number" id="cons-windup" min="0.1" max="1.5" step="0.001" value="${cons.windup || 0.33}" style="width:65px; font-size:11px; padding:3px 6px; height:auto;"> 초 <span style="font-size:11px;">(기본 무기 기준 — 조건 충족 후 전투시뮬 DPS 지수 최대화에 사용: 더블 딜레이·공속 틱 양자화 반영)</span></div>`;
     const saveCons = () => {
       const lineMins = {};
       consHost.querySelectorAll('.cons-line-min-input').forEach(inp => {
@@ -18599,13 +18698,12 @@ function initOptimalStatsUI() {
         lineMins, lineMaxs,
         sumStat: $('#cons-sum-stat').value,
         sumMin: Math.max(0, parseFloat($('#cons-sum-min').value) || 0),
-        priorityStat: $('#cons-priority-stat').value,
-        priorityCap: Math.max(0, parseFloat($('#cons-priority-cap').value) || 0)
+        windup: Math.max(0.1, parseFloat($('#cons-windup').value) || 0.33)
       };
       persist();
     };
     consHost.querySelectorAll('.cons-line-min-input, .cons-line-max-input').forEach(el => el.addEventListener('change', saveCons));
-    ['cons-sum-stat', 'cons-sum-min', 'cons-priority-stat', 'cons-priority-cap'].forEach(id => {
+    ['cons-sum-stat', 'cons-sum-min', 'cons-windup'].forEach(id => {
       const el = $('#' + id);
       if (el) el.addEventListener('change', saveCons);
     });
@@ -18686,10 +18784,12 @@ function renderSwapRecommend() {
     slotOptions.push({ t, cur, opts });
   }
 
-  // 파레토 DP — 상태: (교체 사용 수, 고정1 대상 스탯별 줄 수 capped), 항목: (A, C, M, Lc, picks)
-  // 목적: ① 고정1 줄 부족 최소 ② 고정2 합 부족 최소 ③ 최우선 스탯 합 최대 ④ 매칭 합 최대 ⑤ 교체 수 최소
+  // 파레토 DP — 상태: (교체 사용 수, 고정1 대상 스탯별 줄 수), 항목: (A, M, D, Lc, picks)
+  // 목적: ① 고정1 줄 부족/초과 최소 ② 고정2 합 부족 최소 ③ 전투시뮬 DPS 지수 최대 ④ 교체 수 최소
   let states = new Map();
-  states.set(`0|${lKey(pmF.Lc)}`, [{ A: pmF.A, C: pmF.C, M: pmF.M, Masp: pmF.Masp, Mpri: pmF.Mpri, Lc: pmF.Lc, picks: [] }]);
+  states.set(`0|${lKey(pmF.Lc)}`, [{ A: pmF.A, M: pmF.M, D: Object.assign({}, pmF.D), Lc: pmF.Lc, picks: [] }]);
+
+  const wu = cons.windup || 0.33;
 
   for (const so of slotOptions) {
     const next = new Map();
@@ -18705,24 +18805,22 @@ function renderSwapRecommend() {
           const k2 = `${u2}|${lKey(Lc2)}`;
           let arr = next.get(k2);
           if (!arr) { arr = []; next.set(k2, arr); }
-          arr.push({ A: e.A + opt.f.A, C: e.C + opt.f.C, M: e.M + opt.f.M, Masp: e.Masp + opt.f.Masp, Mpri: e.Mpri + opt.f.Mpri, Lc: Lc2, picks: e.picks.concat([opt.r]) });
+          arr.push({
+            A: e.A + opt.f.A, M: e.M + opt.f.M,
+            D: { crit: e.D.crit + opt.f.D.crit, chipi: e.D.chipi + opt.f.D.chipi, dbl: e.D.dbl + opt.f.D.dbl, asp: e.D.asp + opt.f.D.asp, dmg: e.D.dmg + opt.f.D.dmg },
+            Lc: Lc2, picks: e.picks.concat([opt.r])
+          });
         }
       }
     }
-    for (const [k, arr] of next) next.set(k, paretoPrune(arr, 60));
+    for (const [k, arr] of next) next.set(k, paretoPrune(arr, 80, wu));
     states = next;
   }
 
-  // 최우선 스탯(C)·매칭 합(M) 랭킹: 공속은 원본 %가 아니라 구간 스냅값으로, 최우선 스탯은
-  // priorityCap이 설정돼 있으면 그 값으로 클램프해서 랭킹 — 150%/190% 공속이 같은 실효 구간이면 동률로,
-  // 치확처럼 상한(예: 80%) 이상 쌓아봐야 실제 이득이 없는 스탯은 그 이상을 "개선"으로 치지 않아
-  // 무의미한 교체(예: 생명흡수·치피 줄을 깎아 공속·치확만 더 쌓기)를 막고 남는 교체를 다른 스탯으로 유도한다.
-  const priCap = cons.priorityCap > 0 ? cons.priorityCap : Infinity;
-  const cRank = cons.priorityStat === 'Attack Speed'
-    ? (p) => aspFloorPct(p.C)
-    : (p) => Math.min(p.C, priCap);
-  const mRank = p => (p.M - p.Masp - p.Mpri) + aspFloorPct(p.Masp) + Math.min(p.Mpri, priCap);
-  const planRank = p => [p.lineShort, p.lineOver, p.sumShort, -cRank(p), -mRank(p), p.used];
+  // 랭킹: 조건 부족/초과 최소 → DPS 지수 최대 → 교체 수 최소.
+  // DPS 지수가 치확×치피 곱연산, 더블 딜레이, 공속 브레이크포인트를 전부 내장하므로
+  // 별도의 최우선 스탯/상한/구간 스냅 보정이 필요 없다.
+  const planRank = p => [p.lineShort, p.lineOver, p.sumShort, -p.dps, p.used];
   const planBetter = (a, b) => {
     const ra = planRank(a), rb = planRank(b);
     for (let i = 0; i < ra.length; i++) {
@@ -18746,7 +18844,8 @@ function renderSwapRecommend() {
       const cand = {
         lineShort, lineOver,
         sumShort: Math.max(0, cons.sumMin - e.A),
-        C: e.C, M: e.M, Masp: e.Masp, Mpri: e.Mpri, Lc: e.Lc, used, picks: e.picks
+        dps: dpsIndexOf(e.D, wu),
+        M: e.M, D: e.D, Lc: e.Lc, used, picks: e.picks
       };
       if (!bestPlan || planBetter(cand, bestPlan)) bestPlan = cand;
     }
@@ -18754,6 +18853,84 @@ function renderSwapRecommend() {
   if (!bestPlan) {
     out.innerHTML = `<div style="color:#e74c3c; font-weight:bold; margin:10px 0;">플랜 계산 실패 — 후보/장착 데이터를 확인해주세요.</div>`;
     return;
+  }
+
+  // 국소 탐색 정제: DP 파레토 컷(cap)이 놓친 단일 슬롯 개선을 수렴할 때까지 반복 적용.
+  // (파레토 컷은 부분합 기준 휴리스틱이라 전역 최적을 놓칠 수 있음 — 단일 교체 이웃 탐색으로 보정)
+  {
+    const optsBySlot = slotOptions.map(so => so.opts);
+    const sel = bestPlan.picks.map((r, t) => {
+      if (r === null) return 0; // opts[0] = 장착 유지
+      const idx = optsBySlot[t].findIndex(o => o.r === r);
+      return idx >= 0 ? idx : 0;
+    });
+    const evalSel = () => {
+      const D = { crit: pmF.D.crit, chipi: pmF.D.chipi, dbl: pmF.D.dbl, asp: pmF.D.asp, dmg: pmF.D.dmg };
+      let A = pmF.A, M = pmF.M, used = 0;
+      const Lc = {};
+      for (const s of lineStats) Lc[s] = pmF.Lc[s] || 0;
+      for (let t = 0; t < 8; t++) {
+        const o = optsBySlot[t][sel[t]];
+        A += o.f.A; M += o.f.M; used += o.cost;
+        D.crit += o.f.D.crit; D.chipi += o.f.D.chipi; D.dbl += o.f.D.dbl; D.asp += o.f.D.asp; D.dmg += o.f.D.dmg;
+        for (const s of lineStats) Lc[s] += o.f.Lc[s] || 0;
+      }
+      if (used > nLimit) return null;
+      let lineShort = 0, lineOver = 0;
+      for (let i = 0; i < lineStats.length; i++) {
+        const cnt = Lc[lineStats[i]] || 0;
+        lineShort += Math.max(0, lineMinCaps[i] - cnt);
+        if (lineMaxCaps[i] !== Infinity) lineOver += Math.max(0, cnt - lineMaxCaps[i]);
+      }
+      return {
+        lineShort, lineOver, sumShort: Math.max(0, cons.sumMin - A),
+        dps: dpsIndexOf(D, wu), M, D, Lc, used,
+        picks: sel.map((j, t) => optsBySlot[t][j].r)
+      };
+    };
+    const climb = (startSel) => {
+      for (let t = 0; t < 8; t++) sel[t] = startSel[t];
+      let cur = evalSel();
+      if (!cur) { sel.fill(0); cur = evalSel(); }
+      let improved = true, guard = 0;
+      while (improved && guard++ < 50) {
+        improved = false;
+        for (let t = 0; t < 8; t++) {
+          for (let j = 0; j < optsBySlot[t].length; j++) {
+            if (j === sel[t]) continue;
+            const old = sel[t]; sel[t] = j;
+            const cand = evalSel();
+            if (cand && planBetter(cand, cur)) { cur = cand; improved = true; }
+            else sel[t] = old;
+          }
+        }
+      }
+      return cur;
+    };
+
+    // ① DP 결과에서 시작하는 정제 + ② 랜덤 재시작 다중 힐클라이밍
+    // (단일 이웃 탐색은 2~3슬롯 동시 이동이 필요한 최적을 못 넘음 — 재시작으로 커버)
+    let curBest = climb([...sel]);
+    let rngState = 0x9E3779B9; // 결정적 시드 (재현성)
+    const rnd = () => {
+      rngState |= 0; rngState = (rngState + 0x6D2B79F5) | 0;
+      let z = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+      z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
+      return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+    };
+    const RESTARTS = 150;
+    for (let r = 0; r < RESTARTS; r++) {
+      const startSel = new Array(8).fill(0);
+      // 무작위로 nLimit 이하 슬롯만 교체 상태에서 시작
+      const k = 1 + Math.floor(rnd() * Math.min(8, nLimit));
+      for (let i = 0; i < k; i++) {
+        const t = Math.floor(rnd() * 8);
+        startSel[t] = Math.floor(rnd() * optsBySlot[t].length);
+      }
+      const res = climb(startSel);
+      if (res && planBetter(res, curBest)) curBest = res;
+    }
+    if (curBest && planBetter(curBest, bestPlan)) bestPlan = curBest;
   }
 
   // 선택된 플랜에서 표시용 수치 재집계
@@ -18790,8 +18967,16 @@ function renderSwapRecommend() {
     rows += `<tr style="${pick ? '' : 'opacity:0.65;'}"><td style="${td}"><b>${EQUIP_TYPE_KOR[t]}</b></td><td style="${td}">${curHtml}</td><td style="${td}">${planHtml}</td></tr>`;
   }
 
-  // 조건 달성 현황 (플랜 장비 + 장착 펫/탈것)
+  // 조건 달성 현황 (플랜 장비 + 장착 펫/탈것) + 현 장착 세트와 DPS 비교
+  const curSetStats = [...petMountStats];
+  for (let t = 0; t < 8; t++) {
+    const cur = equippedByType[t];
+    if (cur) curSetStats.push(...(cur.stats || []));
+  }
+  const curF = statFeatures(curSetStats, cons, optSet, lineStats);
+  const curDps = dpsIndexOf(curF.D, wu);
   const finalF = statFeatures(planStats, cons, optSet, lineStats);
+  const planDps = dpsIndexOf(finalF.D, wu);
   const lineOks = lineStats.map((s, i) => {
     const cnt = finalF.Lc[s] || 0;
     return cnt >= lineMinCaps[i] && cnt <= lineMaxCaps[i];
@@ -18812,7 +18997,7 @@ function renderSwapRecommend() {
     <div style="margin-bottom:8px; padding:8px 10px; background:${lineOk && sumOk ? 'rgba(46,204,113,0.12)' : 'rgba(243,156,18,0.12)'}; border:1px solid ${lineOk && sumOk ? '#2ecc71' : '#f39c12'}; border-radius:4px; font-size:13px;">
       <b>📌 ${lineStatusHtml}
       · ${SUBSTATS_KOR[cons.sumStat] || cons.sumStat} ${finalF.A.toFixed(2)}/${cons.sumMin}% ${sumOk ? '✅' : `⚠️ ${(cons.sumMin - finalF.A).toFixed(2)}%p 부족`}
-      · ⭐ ${SUBSTATS_KOR[cons.priorityStat] || cons.priorityStat} 합 ${finalF.C.toFixed(2)}%</b>
+      · ⚔️ DPS 지수 ${planDps.toFixed(3)} <span style="color:${planDps >= curDps ? '#2ecc71' : '#e74c3c'};">(현 장착 ${curDps.toFixed(3)} 대비 ${((planDps / curDps - 1) * 100).toFixed(1)}%)</span></b>
       ${lineOk && sumOk ? '' : '<br><span style="color:#f39c12; font-size:12px;">조건 완전 충족이 불가능해 부족량이 최소인 근사 플랜입니다. 미래시 범위를 늘리거나 필터를 완화해보세요.</span>'}
       <br><span style="color:#8b96a8; font-size:12px;">장비 매칭: ${curCount}개 · ${curSum.toFixed(2)}% → ${newCount}개 · ${newSum.toFixed(2)}% (+${(newSum - curSum).toFixed(2)}%p) · 교체 ${swapCount}/${nLimit}개 · 펫/탈것 기여 포함 최종 매칭 합 ${finalF.M.toFixed(2)}%</span>
     </div>`;
@@ -18830,8 +19015,8 @@ function renderSwapRecommend() {
 
   out.innerHTML = `
     <div class="card" style="margin:12px 0; padding:12px;">
-      <div style="font-weight:bold; color:#e67e22; margin-bottom:4px;">🔁 교체 플랜 — 고정 조건 + 최우선 스탯 최적화 (근거리 무기 제외, 최대 ${nLimit}개 교체)</div>
-      <div style="color:#8b96a8; font-size:12px; margin-bottom:8px;">검색 범위: 필터 통과 ${pool.length}개 / 전체 히스토리 ${history.length}개 · 판정: ① 고정 조건 충족(부족 시 최소화) ② 최우선 스탯 합 ③ 매칭 합 (✓ = 최적 구성 포함 옵션)</div>
+      <div style="font-weight:bold; color:#e67e22; margin-bottom:4px;">🔁 교체 플랜 — 고정 조건 + 전투시뮬 DPS 최적화 (근거리 무기 제외, 최대 ${nLimit}개 교체)</div>
+      <div style="color:#8b96a8; font-size:12px; margin-bottom:8px;">검색 범위: 필터 통과 ${pool.length}개 / 전체 히스토리 ${history.length}개 · 판정: ① 고정 조건 충족(부족 시 최소화) ② DPS 지수 최대 — 치확×치피 곱연산·더블 딜레이·공속 틱 양자화(윈드업 ${wu}s) 반영 (✓ = 최적 구성 포함 옵션)</div>
       ${consHtml}
       <div style="margin-bottom:8px;"><span style="font-size:12px; color:#7f8c8d; font-weight:bold;">구성 커버리지 (플랜 장비 + 장착 펫/탈것):</span><br>${coverageHtml}</div>
       <table style="width:100%; border-collapse:collapse;">
