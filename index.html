@@ -759,6 +759,10 @@ table td.center { text-align: center; }
                 <input type="number" id="forge-times" value="1" style="width:60px;">
                 <label>현재 망치:</label>
                 <input type="number" id="forge-current-hammers" min="0" placeholder="망치 수" style="width:80px;" title="현재 보유한 망치 수를 입력하면 각 결과가 '남은 망치 몇 개일 때' 나오는지 표시합니다.">
+                <label>아이템 만렙:</label>
+                <input type="number" id="forge-max-level" min="1" max="148" value="98" style="width:60px;" title="게임 프로필의 장비 최대 레벨 (테크트리·승천 보정 포함 실제 값). 미래시 아이템 레벨 예측과 판매가 계산에 사용됩니다. 전개 전에 정확히 입력하세요.">
+                <label>판매증가%:</label>
+                <input type="number" id="forge-sell-bonus" min="0" step="1" value="0" style="width:60px;" title="판매가 증가 스탯 합(%) — 테크트리·스킨 등. 판매가 = round(20 × 1.01^레벨) × (1 + 이 값/100). 표시·합계에 즉시 반영되므로 전개 후 바꿔도 됩니다.">
                 <button id="forge-go" style="background:#3498db; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">미래시 전개</button>
                 <button id="forge-reset-run" style="background:#95a5a6; color:white; border:none; border-radius:4px; cursor:pointer;">히스토리 리셋</button>
                 <button id="forge-clear" style="background:#7f8c8d; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:bold; padding:4px 8px; margin-left:5px;">결과 비우기</button>
@@ -15544,7 +15548,25 @@ function decodeRoundRobin(hexText) {
   return rr;
 }
 
-function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, itemsByAgeAndType, statUnlocks, isAscended, weaponRR = null) {
+// ItemLevelBracketsLibrary.json: k=0..28, Lower=5k, Upper=9+5k (단, 28은 140~148)
+function itemBracket(k) {
+  k = Math.max(0, Math.min(28, k | 0));
+  return { lower: 5 * k, upper: k === 28 ? 148 : 9 + 5 * k };
+}
+// SellValueHelper.GetSellValue: round(SellBasePrice(20) × LevelScalingBase(1.01)^level) — 판매가 증가 스탯 제외 기본가
+const SELL_BASE = 20.0, LEVEL_SCALING = 1.0100000000093132;
+function itemSellValue(level) {
+  return Math.round(SELL_BASE * Math.pow(LEVEL_SCALING, level));
+}
+function formatGold(v) {
+  if (v >= 1e12) return (v / 1e12).toFixed(2) + 'T';
+  if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+  if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+  if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+  return String(v);
+}
+
+function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, itemsByAgeAndType, statUnlocks, isAscended, weaponRR = null, hiddenState = null, maxItemLevel = 98) {
   const pcg = new MetaplayPCG(currentSeed);
   const ageRoll = pcg.nextF64();
   let acc = 0, rolledAge = 0;
@@ -15585,7 +15607,27 @@ function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, it
     chosenItem = specificItems[pcg.nextInt(specificItems.length)];
     chosenIdx = chosenItem.ItemId.Idx ?? 0;
   }
-  pcg.nextInt(100); // 아이템 레벨 롤 (fm_mrs _roll_item_level, 값 미사용 — draw 1개 소비)
+  // 아이템 레벨 롤 (fm_mrs _roll_item_level) — 히든 레벨 브래킷 기반, draw 1개 소비 (정렬 불변)
+  // level = lower + nextInt(min(bracket.Upper, 아이템만렙)+1 - lower)
+  const typeIdx = TYPE_JSON_ORDER.indexOf(chosenType);
+  let itemLevel = 0;
+  {
+    const hb = (hiddenState && hiddenState[typeIdx] && hiddenState[typeIdx][rolledAge]) | 0;
+    const br = itemBracket(hb);
+    const maxL = Math.min(br.upper, Math.floor(maxItemLevel));
+    const range = Math.max(1, maxL + 1 - br.lower); // range<=0이어도 draw 1개는 소비해야 시드 정렬 유지
+    itemLevel = br.lower + pcg.nextInt(range);
+    if (hiddenState) {
+      // increment_hidden_item_level: 아이템만렙을 커버하는 첫 브래킷(capBracket)까지 (타입,시대)별 +1
+      let capBracket = 0;
+      for (let k = 0; k <= 28; k++) {
+        if (itemBracket(k).upper >= maxItemLevel) { capBracket = k; break; }
+      }
+      const byType = hiddenState[typeIdx] = hiddenState[typeIdx] || {};
+      const cur = byType[rolledAge] | 0;
+      if (cur < capBracket) byType[rolledAge] = cur + 1;
+    }
+  }
 
   let numSubs = statUnlocks[String(rolledAge)]?.NumberOfSecondStats || 0;
   if (isAscended) {
@@ -15628,6 +15670,8 @@ function simulateSingleForge(currentSeed, forgeLevel, freeChancePct, ageDrop, it
     IsRanged: isRanged,
     Windup: windup,
     Idx: chosenIdx,
+    Level: itemLevel,
+    Sell: itemSellValue(itemLevel),
     DetailedStats: detailedStats,
     Perf: numSubs > 0 ? (f64Sum / numSubs) * 100 : 0,
     IsFree: pcg.nextF64() < (freeChancePct / 100),
@@ -15645,11 +15689,16 @@ function doForge(state, { amount, times }, forgeData) {
   const isAscended = !!(f.is_ascended || f.isAscended);
 
   const rrState = f.roundRobin = f.roundRobin || {};
+  // 히든 레벨 상태: 덤프 [HIDDEN_LEVELS]에서 시작, 포지마다 상승 (증가분은 히스토리와 함께 누적)
+  const hiddenState = f.hiddenLevels = f.hiddenLevels
+    || JSON.parse(JSON.stringify((state.dumpCollections && state.dumpCollections.hiddenLevels) || {}));
+  const maxLvEl = document.getElementById('forge-max-level');
+  const maxItemLevel = maxLvEl ? (parseFloat(maxLvEl.value) || 98) : 98;
   const results = [];
   const ageCounts = {}; for (let i = 0; i < 10; i++) ageCounts[i] = 0;
   let freeCount = 0;
   for (let i = 0; i < batch; i++) {
-    const res = simulateSingleForge(curSeed, curLevel, extraChance, ageDrop, itemsByAgeAndType, statUnlocks, isAscended, rrState);
+    const res = simulateSingleForge(curSeed, curLevel, extraChance, ageDrop, itemsByAgeAndType, statUnlocks, isAscended, rrState, hiddenState, maxItemLevel);
     if (res) {
       ageCounts[res.Age]++;
       if (res.IsFree) freeCount++;
@@ -17210,6 +17259,7 @@ function renderForgeResults(target, title, results, meta = '') {
   const curHammerEl = document.getElementById('forge-current-hammers');
   const curHammers = curHammerEl ? parseInt(curHammerEl.value, 10) : NaN;
   const hasCur = Number.isFinite(curHammers);
+  const sellMult = sellMultiplier();
 
   const rows = results.map(r => {
     const strikeCell = r.IsFree
@@ -17229,6 +17279,8 @@ function renderForgeResults(target, title, results, meta = '') {
       ${remainCell}
       <td>${ageChip(r.Age)}</td>
       <td>${TYPE_KOR[r.Type] || r.Type}</td>
+      <td class="num">${r.Level !== undefined ? r.Level : '-'}</td>
+      <td class="num">${r.Sell !== undefined ? formatGold(Math.round(r.Sell * sellMult)) : '-'}</td>
       <td class="num">${r.Type.includes('Weapon') ? r.Windup.toFixed(3) : '-'}</td>
       ${statCell(r.DetailedStats[0])}
       ${statCell(r.DetailedStats[1])}
@@ -17238,8 +17290,8 @@ function renderForgeResults(target, title, results, meta = '') {
   `;
   }).join('');
 
-  // 복사용 텍스트 (필터된 결과: 등급 / 부위 / 옵션 / 남은망치)
-  const copyText = ['등급\t부위\t옵션\t남은망치'].concat(results.map(r => {
+  // 복사용 텍스트 (필터된 결과: 등급 / 부위 / 레벨 / 판매가 / 옵션 / 남은망치)
+  const copyText = ['등급\t부위\t레벨\t판매가\t옵션\t남은망치'].concat(results.map(r => {
     const tier = AGE_KOR[r.Age] || r.Age;
     const part = TYPE_KOR[r.Type] || r.Type;
     const opt = [r.DetailedStats[0], r.DetailedStats[1]]
@@ -17247,7 +17299,7 @@ function renderForgeResults(target, title, results, meta = '') {
       .map(ds => `+${ds.value.toFixed(2)}% ${SUBSTATS_KOR[ds.name] || ds.name}`)
       .join(' / ');
     const remain = hasCur ? (curHammers - (r._priorConsumed || 0)) : '-';
-    return `${tier}\t${part}\t${opt}\t${remain}`;
+    return `${tier}\t${part}\t${r.Level ?? '-'}\t${r.Sell !== undefined ? Math.round(r.Sell * sellMult) : '-'}\t${opt}\t${remain}`;
   })).join('\n');
 
   target.innerHTML = `
@@ -17259,7 +17311,7 @@ function renderForgeResults(target, title, results, meta = '') {
       <div class="miraesee-subtable-wrap">
         <table>
           <thead><tr>
-            <th>#</th><th>망치#</th><th>남은망치</th><th>티어</th><th>타입</th><th>윈드업</th>
+            <th>#</th><th>망치#</th><th>남은망치</th><th>티어</th><th>타입</th><th>Lv</th><th>판매가</th><th>윈드업</th>
             <th>스탯1</th><th>스탯2</th><th>완성도</th><th>무료</th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -17763,6 +17815,19 @@ function parseGameDump(rawText) {
   ];
 
   // --- 컬렉션 ---
+  // [HIDDEN_LEVELS]: 4글자 청크 = 타입(1) + 시대(1) + 브래킷키(2) — 레벨 예측의 시작 브래킷
+  const hiddenLevels = {};
+  for (const line of blocks.HIDDEN_LEVELS || []) {
+    for (let i = 0; i + 4 <= line.length; i += 4) {
+      const chunk = line.slice(i, i + 4);
+      if (chunk[0] === 'F' || chunk[0] === 'f') continue;
+      const t = parseInt(chunk[0], 16), age = parseInt(chunk[1], 16), lv = parseInt(chunk.slice(2), 16);
+      if (isNaN(t) || isNaN(age) || isNaN(lv) || t > 7 || age > 9 || lv > 99) continue;
+      const byT = hiddenLevels[t] = hiddenLevels[t] || {};
+      if (!(age in byT) || lv > byT[age]) byT[age] = lv;
+    }
+  }
+
   const equipment = [];
   for (const line of blocks.EQUIPMENT || []) {
     if (line.length < 12 || line.startsWith('00000000')) continue;
@@ -17840,7 +17905,7 @@ function parseGameDump(rawText) {
   return {
     metaLines12,
     rrText: (blocks.ITEM_ROUND_ROBIN || []).join(' '),
-    collections: { equipment, skills, pets, eggs, mounts }
+    collections: { equipment, skills, pets, eggs, mounts, hiddenLevels }
   };
 }
 
@@ -18072,6 +18137,9 @@ $('#btn-apply').addEventListener('click', async () => {
       state[mode].initChance = state[mode].chance || 0;
       state[mode].initRoundRobin = JSON.parse(JSON.stringify(state[mode].roundRobin || {}));
     }
+    // 히든 레벨(아이템 레벨 브래킷) 초기화 — 덤프 [HIDDEN_LEVELS] 기준
+    state.Forge.hiddenLevels = JSON.parse(JSON.stringify((state.dumpCollections && state.dumpCollections.hiddenLevels) || {}));
+    state.Forge.initHiddenLevels = JSON.parse(JSON.stringify(state.Forge.hiddenLevels));
 
     // 일괄 적용 시 승천 탭의 승천 레벨 초기값도 등급에 맞춰 친절하게 설정
     if (state.ascend) {
@@ -18256,7 +18324,16 @@ function applyFilterAndRender(mode) {
   const filtered = history.filter(item => filterItem(item, config, mode));
 
   const next_seed = state[mode].seed.toString(16).toUpperCase();
-  const title = `✓ 연산 결과 출력 완료 (Next Seed: 0x${next_seed}) - 매칭: ${filtered.length} / 전체: ${history.length}`;
+  let title = `✓ 연산 결과 출력 완료 (Next Seed: 0x${next_seed}) - 매칭: ${filtered.length} / 전체: ${history.length}`;
+  if (mode === 'Forge') {
+    // 예상 판매금: round(20 × 1.01^레벨) 합 (판매가 증가 스탯 제외 기본가 기준)
+    const sm = sellMultiplier();
+    const totalSell = history.reduce((a, r) => a + Math.round((r.Sell || 0) * sm), 0);
+    if (totalSell > 0) {
+      const filteredSell = filtered.reduce((a, r) => a + Math.round((r.Sell || 0) * sm), 0);
+      title += ` · 💰 전체 판매 시 ${formatGold(totalSell)} (매칭분 ${formatGold(filteredSell)})`;
+    }
+  }
   
   let command = '';
   if (mode === 'Forge') command = `doForge(state)`;
@@ -18447,6 +18524,54 @@ function initFilters() {
   });
 }
 
+// 아이템 만렙·판매가 증가 입력 영속화 (레벨 예측·판매가 계산 기준)
+{
+  const maxLvEl = $('#forge-max-level');
+  if (maxLvEl) {
+    if (state.forgeMaxLevel) maxLvEl.value = state.forgeMaxLevel;
+    maxLvEl.addEventListener('change', () => {
+      state.forgeMaxLevel = Math.max(1, Math.min(148, parseFloat(maxLvEl.value) || 98));
+      maxLvEl.value = state.forgeMaxLevel;
+      persist();
+    });
+  }
+  const sellEl = $('#forge-sell-bonus');
+  if (sellEl) {
+    if (state.forgeSellBonus) sellEl.value = state.forgeSellBonus;
+    sellEl.addEventListener('change', () => {
+      state.forgeSellBonus = Math.max(0, parseFloat(sellEl.value) || 0);
+      sellEl.value = state.forgeSellBonus;
+      persist();
+      applyFilterAndRender('Forge'); // 판매가는 표시 시점 반영이라 즉시 갱신
+    });
+  }
+}
+
+// 판매가 증가 배율 (표시·합계 시점에 적용 — 전개 후 변경해도 반영됨)
+function sellMultiplier() {
+  const el = document.getElementById('forge-sell-bonus');
+  const b = el ? (parseFloat(el.value) || 0) : 0;
+  return 1 + b / 100;
+}
+
+// === 📁 접이식 섹션(details) 열림 상태 localStorage 유지 ===
+// 기술연구 등 <details> 섹션을 접거나 펼친 상태 그대로 다음 방문에도 복원
+(function persistDetailsToggle() {
+  const KEY = 'sectionOpenState';
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+  const keyOf = d => d.id || ('sum:' + ((d.querySelector('summary') || {}).textContent || '').trim().slice(0, 40));
+  document.querySelectorAll('details').forEach(d => {
+    const k = keyOf(d);
+    if (!k) return;
+    if (k in saved) d.open = !!saved[k];
+    d.addEventListener('toggle', () => {
+      saved[k] = d.open;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+    });
+  });
+})();
+
 // === ⚒️ 로컬 고정밀 대장간 미래시 (서버리스) ===
 $('#forge-go').addEventListener('click', async () => {
   try {
@@ -18621,7 +18746,9 @@ function paretoPrune(arr, cap, wu) {
   return kept;
 }
 
-// 슬롯 후보 압축: 고정1 대상 스탯별 줄 수(Lc) 조합별로 (A, D 5축) 파레토 최적만 유지
+// 슬롯 후보 압축: 고정1 대상 스탯별 줄 수(Lc) 조합별로 (A, D 5축) 파레토 최적만 유지.
+// 캡으로 잘리더라도 '스탯 쌍별 최고 합' 아이템은 무조건 보존 — 파레토 프런티어가 캡보다 클 때
+// 특정 쌍(예: 치피+더블)의 최적 롤이 통째로 사라져 플랜이 미세 열화되는 것을 방지.
 function compressCandidates(cands) {
   const lKeyOf = f => Object.keys(f.Lc).sort().map(k => `${k}:${f.Lc[k]}`).join('|');
   const byL = new Map();
@@ -18634,6 +18761,14 @@ function compressCandidates(cands) {
   const out = [];
   for (const [, list] of byL) {
     const val = f => f.A + f.D.crit + f.D.chipi + f.D.dbl + f.D.asp + f.D.dmg;
+    // 스탯 쌍별 최고 합 아이템 (항상 유지)
+    const pairBest = new Map();
+    for (const c of list) {
+      const pk = (c.r.DetailedStats || []).map(s => s && s.name).sort().join('+');
+      const prev = pairBest.get(pk);
+      if (!prev || val(c.f) > val(prev.f)) pairBest.set(pk, c);
+    }
+    const mustKeep = new Set([...pairBest.values()]);
     list.sort((a, b) => val(b.f) - val(a.f) || a.r.index - b.r.index);
     const kept = [];
     for (const c of list) {
@@ -18643,7 +18778,7 @@ function compressCandidates(cands) {
           && k.f.D.crit >= c.f.D.crit - 1e-9 && k.f.D.chipi >= c.f.D.chipi - 1e-9 && k.f.D.dbl >= c.f.D.dbl - 1e-9
           && k.f.D.asp >= c.f.D.asp - 1e-9 && k.f.D.dmg >= c.f.D.dmg - 1e-9) { dom = true; break; }
       }
-      if (!dom) { kept.push(c); if (kept.length >= 24) break; }
+      if (!dom && (kept.length < 40 || mustKeep.has(c))) kept.push(c);
     }
     out.push(...kept);
   }
@@ -18930,6 +19065,36 @@ function renderSwapRecommend() {
       const res = climb(startSel);
       if (res && planBetter(res, curBest)) curBest = res;
     }
+
+    // 2-opt 정제: 두 슬롯 동시 교환까지 탐색 (반지↔신발처럼 짝으로 움직여야 넘어가는 로컬 최적 탈출)
+    if (curBest) {
+      const toSel = plan => plan.picks.map((r, t) => {
+        if (r === null) return 0;
+        const idx = optsBySlot[t].findIndex(o => o.r === r);
+        return idx >= 0 ? idx : 0;
+      });
+      let improved2 = true, guard2 = 0;
+      while (improved2 && guard2++ < 10) {
+        improved2 = false;
+        const base = toSel(curBest);
+        for (let t1 = 0; t1 < 8 && !improved2; t1++) {
+          for (let t2 = t1 + 1; t2 < 8 && !improved2; t2++) {
+            for (let j1 = 0; j1 < optsBySlot[t1].length && !improved2; j1++) {
+              for (let j2 = 0; j2 < optsBySlot[t2].length; j2++) {
+                for (let t = 0; t < 8; t++) sel[t] = base[t];
+                sel[t1] = j1; sel[t2] = j2;
+                const cand = evalSel();
+                if (cand && planBetter(cand, curBest)) {
+                  curBest = climb([...sel]) || cand; // 개선점에서 다시 수렴까지
+                  improved2 = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
     if (curBest && planBetter(curBest, bestPlan)) bestPlan = curBest;
   }
 
@@ -18959,7 +19124,7 @@ function renderSwapRecommend() {
     let planHtml;
     if (pick) {
       const weaponKind = pick.Type === 'Ranged Weapon' ? ` <span style="color:#8b96a8; font-size:11px;">(원거리)</span>` : '';
-      planHtml = `<div style="font-weight:bold;">🔼 <span style="color:#e67e22;">${pick.index}번째</span> ${ageChip(pick.Age)}${weaponKind} 매칭 ${chosenScore.count}개 · ${chosenScore.sum.toFixed(2)}% <span style="color:#2ecc71;">(+${(chosenScore.sum - curScore.sum).toFixed(2)}%p)</span><br><span style="font-size:12px; font-weight:normal;">${swapStatDetailHtml(pick.DetailedStats, optSet)}</span></div>`;
+      planHtml = `<div style="font-weight:bold;">🔼 <span style="color:#e67e22;">${pick.index}번째</span> ${ageChip(pick.Age)}${pick.Level !== undefined ? ` Lv.${pick.Level}` : ''}${weaponKind} 매칭 ${chosenScore.count}개 · ${chosenScore.sum.toFixed(2)}% <span style="color:#2ecc71;">(+${(chosenScore.sum - curScore.sum).toFixed(2)}%p)</span><br><span style="font-size:12px; font-weight:normal;">${swapStatDetailHtml(pick.DetailedStats, optSet)}</span></div>`;
     } else {
       planHtml = '<span style="color:#8b96a8;">유지 — 조건·우선순위 기준으로 교체 없이 두는 게 최적</span>';
     }
@@ -19111,6 +19276,7 @@ if ($('#forge-reset-run')) {
     state.Forge.level = state.Forge.initLevel ?? state.Forge.level;
     state.Forge.chance = state.Forge.initChance ?? state.Forge.chance;
     state.Forge.roundRobin = JSON.parse(JSON.stringify(state.Forge.initRoundRobin || {}));
+    state.Forge.hiddenLevels = JSON.parse(JSON.stringify(state.Forge.initHiddenLevels || {}));
     state.Forge.history = [];
     lastResponse.Forge = null;
     persist();
