@@ -759,6 +759,13 @@ table td.center { text-align: center; }
                 <input type="number" id="forge-times" value="1" style="width:60px;">
                 <label>현재 망치:</label>
                 <input type="number" id="forge-current-hammers" min="0" placeholder="망치 수" style="width:80px;" title="현재 보유한 망치 수를 입력하면 각 결과가 '남은 망치 몇 개일 때' 나오는지 표시합니다.">
+                <label>대장간 레벨:</label>
+                <select id="forge-level-offset" title="다음 대장간 레벨 기준으로 미래시를 보고 싶을 때 +1/+2 선택. 변경 시 히스토리가 리셋되고 같은 시드로 해당 레벨의 드랍 테이블을 적용해 다시 전개합니다.">
+                    <option value="0" selected>현재</option>
+                    <option value="1">+1</option>
+                    <option value="2">+2</option>
+                    <option value="3">+3</option>
+                </select>
                 <label>아이템 만렙:</label>
                 <input type="number" id="forge-max-level" min="1" max="148" value="98" style="width:60px;" title="게임 프로필의 장비 최대 레벨 (테크트리·승천 보정 포함 실제 값). 미래시 아이템 레벨 예측과 판매가 계산에 사용됩니다. 전개 전에 정확히 입력하세요.">
                 <label>판매증가%:</label>
@@ -795,7 +802,10 @@ table td.center { text-align: center; }
                         </select>
                         <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">최소 총옵션(%):</span>
                         <input type="number" id="forge-min-total" min="0" step="0.1" placeholder="0" style="width: 70px; font-size: 11px; padding: 3px 6px; height: auto;" title="서브스탯 값(%) 합계가 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
+                        <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">평균 완성도(%):</span>
+                        <input type="number" id="forge-min-perf" min="0" max="100" step="1" placeholder="0" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;" title="옵션 완성도 평균이 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
+                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="확정 표준 설정 일괄 적용: 포함 7종(치확·치피·더블·생흡·공속·공격력·원피)+AND, 최소값(10/70/15/15/35/13/13), 평균 완성도 85, 공속 조건 152.5, 윈드업 0.32">🎯 표준 설정</button>
                     <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
@@ -15555,8 +15565,37 @@ function itemBracket(k) {
 }
 // SellValueHelper.GetSellValue: round(SellBasePrice(20) × LevelScalingBase(1.01)^level) — 판매가 증가 스탯 제외 기본가
 const SELL_BASE = 20.0, LEVEL_SCALING = 1.0100000000093132;
+const MELEE_DMG_MULT = 1.6000000000931323; // ItemBalancingConfig.PlayerMeleeDamageMultiplier
 function itemSellValue(level) {
   return Math.round(SELL_BASE * Math.pow(LEVEL_SCALING, level));
+}
+
+// 아이템 메인스탯 (GetResolvedItemStats 기본형): 기본값 × 1.01^레벨, 근접 무기 Damage만 ×1.6
+// 테크트리 등 플레이어 보정은 제외한 아이템 자체 수치
+function itemMainStats(age, typeStr, idx, level, isRanged) {
+  const baseType = (typeStr === 'Melee Weapon' || typeStr === 'Ranged Weapon') ? 'Weapon' : typeStr;
+  const row = _INLINE_CONFIG_ItemBalancingLibrary[`{'Age': ${age}, 'Type': '${baseType}', 'Idx': ${idx}}`];
+  if (!row || !row.EquipmentStats) return null;
+  const scale = Math.pow(LEVEL_SCALING, level);
+  const out = { dmg: 0, hp: 0 };
+  for (const r of row.EquipmentStats) {
+    const st = r.StatNode && r.StatNode.UniqueStat && r.StatNode.UniqueStat.StatType;
+    let v = (r.Value || 0) * scale;
+    if (st === 'Damage') {
+      if (baseType === 'Weapon' && isRanged === false) v *= MELEE_DMG_MULT;
+      out.dmg += v;
+    } else if (st === 'Health') {
+      out.hp += v;
+    }
+  }
+  return out;
+}
+function mainStatHtml(ms) {
+  if (!ms) return '-';
+  const parts = [];
+  if (ms.dmg > 0) parts.push(`⚔️${formatGold(Math.round(ms.dmg))}`);
+  if (ms.hp > 0) parts.push(`❤️${formatGold(Math.round(ms.hp))}`);
+  return parts.join(' ') || '-';
 }
 function formatGold(v) {
   if (v >= 1e12) return (v / 1e12).toFixed(2) + 'T';
@@ -15684,7 +15723,11 @@ function doForge(state, { amount, times }, forgeData) {
   const f = state.Forge;
   const batch = amount * times;
   let curSeed = f.seed;
-  const curLevel = f.level - 1;
+  // 대장간 레벨 보정: 다음 레벨 기준 미래시 (드랍 테이블만 바뀜 — 시드 순서는 동일)
+  const lvlOffEl = document.getElementById('forge-level-offset');
+  const lvlOffset = lvlOffEl ? (parseInt(lvlOffEl.value, 10) || 0) : 0;
+  const maxDropLevel = Math.max(...Object.keys(ageDrop).map(Number).filter(v => !isNaN(v)));
+  const curLevel = Math.min(f.level - 1 + lvlOffset, maxDropLevel);
   const extraChance = f.chance;
   const isAscended = !!(f.is_ascended || f.isAscended);
 
@@ -17281,6 +17324,7 @@ function renderForgeResults(target, title, results, meta = '') {
       <td>${TYPE_KOR[r.Type] || r.Type}</td>
       <td class="num">${r.Level !== undefined ? r.Level : '-'}</td>
       <td class="num">${r.Sell !== undefined ? formatGold(Math.round(r.Sell * sellMult)) : '-'}</td>
+      <td class="num" style="font-size:11px;">${r.Level !== undefined ? mainStatHtml(itemMainStats(r.Age, r.Type, r.Idx, r.Level, r.IsRanged)) : '-'}</td>
       <td class="num">${r.Type.includes('Weapon') ? r.Windup.toFixed(3) : '-'}</td>
       ${statCell(r.DetailedStats[0])}
       ${statCell(r.DetailedStats[1])}
@@ -17311,7 +17355,7 @@ function renderForgeResults(target, title, results, meta = '') {
       <div class="miraesee-subtable-wrap">
         <table>
           <thead><tr>
-            <th>#</th><th>망치#</th><th>남은망치</th><th>티어</th><th>타입</th><th>Lv</th><th>판매가</th><th>윈드업</th>
+            <th>#</th><th>망치#</th><th>남은망치</th><th>티어</th><th>타입</th><th>Lv</th><th>판매가</th><th>메인스탯</th><th>윈드업</th>
             <th>스탯1</th><th>스탯2</th><th>완성도</th><th>무료</th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -18182,11 +18226,17 @@ function getStatsOfItem(item, mode) {
 }
 
 function filterItem(item, config, mode) {
-  const { includeSet, excludeSet, minPerfs, matchMode, minTier, excludeTypes, minTotal } = config;
+  const { includeSet, excludeSet, minPerfs, matchMode, minTier, excludeTypes, minTotal, minPerf } = config;
 
   // 최소 총옵션(서브스탯 값 합계 %) 필터링
   if (minTotal != null && totalOption(getStatsOfItem(item, mode)) < minTotal) {
     return false;
+  }
+
+  // 평균 완성도(%) 필터링
+  if (minPerf != null) {
+    const avgPerf = mode === 'Forge' ? item.Perf : item.perfection;
+    if (!(avgPerf >= minPerf)) return false;
   }
 
   // 장비/펫 유형 제외 필터링
@@ -18307,7 +18357,14 @@ function readFilters(mode) {
     if (!isNaN(v) && v > 0) minTotal = v;
   }
 
-  return { includeSet, excludeSet, minPerfs, matchMode, minTier, excludeTypes, minTotal };
+  let minPerf = null;
+  const minPerfEl = $(`#${mode.toLowerCase()}-min-perf`);
+  if (minPerfEl) {
+    const v = parseFloat(minPerfEl.value);
+    if (!isNaN(v) && v > 0) minPerf = v;
+  }
+
+  return { includeSet, excludeSet, minPerfs, matchMode, minTier, excludeTypes, minTotal, minPerf };
 }
 
 function applyFilterAndRender(mode) {
@@ -18325,6 +18382,11 @@ function applyFilterAndRender(mode) {
 
   const next_seed = state[mode].seed.toString(16).toUpperCase();
   let title = `✓ 연산 결과 출력 완료 (Next Seed: 0x${next_seed}) - 매칭: ${filtered.length} / 전체: ${history.length}`;
+  if (mode === 'Forge') {
+    const lvlOffEl2 = document.getElementById('forge-level-offset');
+    const off = lvlOffEl2 ? (parseInt(lvlOffEl2.value, 10) || 0) : 0;
+    if (off > 0) title += ` · ⬆️ 대장간 +${off}레벨 기준`;
+  }
   if (mode === 'Forge') {
     // 예상 판매금: round(20 × 1.01^레벨) 합 (판매가 증가 스탯 제외 기본가 기준)
     const sm = sellMultiplier();
@@ -18376,6 +18438,9 @@ function clearFilters(mode) {
 
   const minTotalEl = $(`#${mode.toLowerCase()}-min-total`);
   if (minTotalEl) minTotalEl.value = '';
+
+  const minPerfEl = $(`#${mode.toLowerCase()}-min-perf`);
+  if (minPerfEl) minPerfEl.value = '';
 
   saveFilterSettings();
   applyFilterAndRender(mode);
@@ -18455,6 +18520,8 @@ function saveFilterSettings() {
     if (tierEl) s.minTier = tierEl.value;
     const totalEl = $(`#${lower}-min-total`);
     if (totalEl) s.minTotal = totalEl.value;
+    const perfEl = $(`#${lower}-min-perf`);
+    if (perfEl) s.minPerf = perfEl.value;
     settings[mode] = s;
   });
   state.filterSettings = settings;
@@ -18486,6 +18553,8 @@ function restoreFilterSettings() {
     if (tierEl && s.minTier !== undefined) tierEl.value = s.minTier;
     const totalEl = $(`#${lower}-min-total`);
     if (totalEl && s.minTotal !== undefined) totalEl.value = s.minTotal;
+    const perfEl = $(`#${lower}-min-perf`);
+    if (perfEl && s.minPerf !== undefined) perfEl.value = s.minPerf;
   });
 }
 
@@ -18522,6 +18591,37 @@ function initFilters() {
     const card = cardFilterRoot(mode);
     if (card) card.addEventListener('change', () => saveFilterSettings());
   });
+
+  // 🎯 표준 설정: 확정 필터+조건 일괄 적용 (교체 플랜 표준 워크플로)
+  const stdBtn = $('#forge-filter-standard');
+  if (stdBtn) {
+    stdBtn.addEventListener('click', () => {
+      const MINS = {
+        'Critical Chance': 10, 'Critical Damage': 70, 'Double Chance': 15,
+        'Life Steal': 15, 'Attack Speed': 35, 'Damage': 13, 'Ranged Damage': 13
+      };
+      const grid = $('#forge-filter-grid');
+      if (grid) {
+        grid.querySelectorAll('.filter-inc').forEach(cb => { cb.checked = cb.dataset.stat in MINS; });
+        grid.querySelectorAll('.filter-exc').forEach(cb => { cb.checked = false; });
+        grid.querySelectorAll('.filter-min').forEach(inp => {
+          inp.value = MINS[inp.dataset.stat] !== undefined ? MINS[inp.dataset.stat] : '';
+        });
+      }
+      const andRadio = $('#forge-match-and');
+      if (andRadio) andRadio.checked = true;
+      const tierEl = $('#forge-min-tier'); if (tierEl) tierEl.value = '0';
+      const totalEl = $('#forge-min-total'); if (totalEl) totalEl.value = '';
+      const perfEl = $('#forge-min-perf'); if (perfEl) perfEl.value = '85';
+      $$('.forge-exc-type').forEach(cb => { cb.checked = false; });
+      const sumMinEl = $('#cons-sum-min'); if (sumMinEl) { sumMinEl.value = '152.5'; sumMinEl.dispatchEvent(new Event('change')); }
+      const wuEl = $('#cons-windup'); if (wuEl) { wuEl.value = '0.32'; wuEl.dispatchEvent(new Event('change')); }
+      saveFilterSettings();
+      applyFilterAndRender('Forge');
+      stdBtn.textContent = '✅ 적용됨';
+      setTimeout(() => { stdBtn.textContent = '🎯 표준 설정'; }, 1500);
+    });
+  }
 }
 
 // 아이템 만렙·판매가 증가 입력 영속화 (레벨 예측·판매가 계산 기준)
@@ -18533,6 +18633,20 @@ function initFilters() {
       state.forgeMaxLevel = Math.max(1, Math.min(148, parseFloat(maxLvEl.value) || 98));
       maxLvEl.value = state.forgeMaxLevel;
       persist();
+    });
+  }
+  const lvlOffEl = $('#forge-level-offset');
+  if (lvlOffEl) {
+    if (state.forgeLevelOffset) lvlOffEl.value = String(state.forgeLevelOffset);
+    lvlOffEl.addEventListener('change', () => {
+      state.forgeLevelOffset = parseInt(lvlOffEl.value, 10) || 0;
+      // 레벨이 바뀌면 기존 히스토리는 다른 드랍 테이블 기준이라 혼합 방지를 위해 리셋
+      state.Forge.seed = state.Forge.initSeed ?? state.Forge.seed;
+      state.Forge.roundRobin = JSON.parse(JSON.stringify(state.Forge.initRoundRobin || {}));
+      state.Forge.hiddenLevels = JSON.parse(JSON.stringify(state.Forge.initHiddenLevels || {}));
+      state.Forge.history = [];
+      persist();
+      applyFilterAndRender('Forge');
     });
   }
   const sellEl = $('#forge-sell-bonus');
@@ -18672,15 +18786,17 @@ function dpsIndexOf(D, wu) {
   const avg = (1 - c) + c * (D.chipi + 120) / 100;
   const tn = swapCycleTicks(D.asp, wu, false);
   const td = swapCycleTicks(D.asp, wu, true);
-  return (1 + D.dmg / 100) * avg * (1 + p) / (((1 - p) * tn + p * td) * 0.1);
+  // 원거리 피해(rng)는 GeneralCompounding 레이어 — 공격력과 별도 곱연산 풀 (원거리 무기 전제)
+  return (1 + D.dmg / 100) * (1 + (D.rng || 0) / 100) * avg * (1 + p) / (((1 - p) * tn + p * td) * 0.1);
 }
 
 // 고정 조건 + DPS 최적화 (교체 플랜 v4)
 const SWAP_CONSTRAINT_DEFAULTS = {
   lineMins: { 'Life Steal': 2 },             // 고정 1: 옵션별 최소 줄 수 (세트 전체, 펫/탈것 포함) — {스탯명: 최소줄수}
   lineMaxs: {},                              // 고정 1: 옵션별 최대 줄 수 — {스탯명: 최대줄수}. 초과분은 부족량과 동일하게 페널티로 최소화
-  sumStat: 'Attack Speed', sumMin: 156.7,    // 고정 2: 이 스탯 값 합 최소 % — 156.7 = wu 0.77 더블 8틱 경계(정확히 156.667%). 랭킹 비교가 1e-9 허용오차라 부동소수점 합(156.6999…)도 통과
-  windup: 0.33                               // 기본 무기 윈드업(초) — DPS 지수의 더블 딜레이 계산에 사용
+  sumStat: 'Attack Speed', sumMin: 152.5,    // 고정 2: 이 스탯 값 합 최소 % — 152 = wu 0.32(기본무기) 더블 8틱 경계 + 마진 0.5
+  windup: 0.32,                              // 기본 무기 윈드업(초) — DPS 지수의 더블 딜레이 계산에 사용
+  otherDmg: 0                                // 장비 메인스탯 외 기타 피해 — 0이면 총피해 ≈ 장비 ⚔️합 가정(후반 정확)
 };
 
 function swapConstraints() {
@@ -18691,11 +18807,11 @@ function swapConstraints() {
     : (raw.lineStat ? { [raw.lineStat]: raw.lineMin || 0 } : SWAP_CONSTRAINT_DEFAULTS.lineMins);
   const lineMaxs = raw.lineMaxs || SWAP_CONSTRAINT_DEFAULTS.lineMaxs;
   const merged = Object.assign({}, SWAP_CONSTRAINT_DEFAULTS, raw, { lineMins, lineMaxs });
-  // 구버전 저장값(windup 도입 전) 마이그레이션: 당시 기본이던 공속 150은 더블 사이클 경계(156.667%) 미달 → 157로 승급
-  if (raw.windup === undefined && (raw.sumMin === undefined || raw.sumMin === 150)) {
+  // 구버전 저장값 마이그레이션: 예전 기본이던 공속 150/156.7/157, 윈드업 0.33은 확정값(152.5/0.32)으로 승급
+  if (raw.sumMin === undefined || raw.sumMin === 150 || raw.sumMin === 156.7 || raw.sumMin === 157) {
     merged.sumMin = SWAP_CONSTRAINT_DEFAULTS.sumMin;
   }
-  if (!merged.windup) merged.windup = SWAP_CONSTRAINT_DEFAULTS.windup;
+  if (!merged.windup || merged.windup === 0.33) merged.windup = SWAP_CONSTRAINT_DEFAULTS.windup;
   return merged;
 }
 
@@ -18714,7 +18830,7 @@ function statFeatures(stats, cons, optSet, lineStats) {
   const Lc = {};
   if (lineStats) for (const s of lineStats) Lc[s] = 0;
   let A = 0, M = 0;
-  const D = { crit: 0, chipi: 0, dbl: 0, asp: 0, dmg: 0 };
+  const D = { crit: 0, chipi: 0, dbl: 0, asp: 0, dmg: 0, rng: 0 };
   for (const s of stats || []) {
     if (!s) continue;
     if (lineStats && s.name in Lc) Lc[s.name] += 1;
@@ -18725,6 +18841,7 @@ function statFeatures(stats, cons, optSet, lineStats) {
     else if (s.name === 'Double Chance') D.dbl += s.value;
     else if (s.name === 'Attack Speed') D.asp += s.value;
     else if (s.name === 'Damage') D.dmg += s.value;
+    else if (s.name === 'Ranged Damage') D.rng += s.value;
   }
   return { Lc, A, M, D };
 }
@@ -18732,14 +18849,14 @@ function statFeatures(stats, cons, optSet, lineStats) {
 // (A, D 5축) 지배당하는 항목 제거 — DPS는 D의 각 축에 단조증가라 지배 항목은 최적이 될 수 없음.
 // M은 표시 전용이라 지배 판정에서 제외. 정렬은 부분합 DPS 내림차순(컷 잘림 시 유망한 항목 우선 보존).
 function paretoPrune(arr, cap, wu) {
-  arr.sort((a, b) => dpsIndexOf(b.D, wu) - dpsIndexOf(a.D, wu));
+  arr.sort((a, b) => dpsIndexOf(b.D, wu) * (1 + (b.md || 0)) - dpsIndexOf(a.D, wu) * (1 + (a.md || 0)));
   const kept = [];
   for (const e of arr) {
     let dom = false;
     for (const k of kept) {
-      if (k.A >= e.A - 1e-9
+      if (k.A >= e.A - 1e-9 && (k.md || 0) >= (e.md || 0) - 1e-9
         && k.D.crit >= e.D.crit - 1e-9 && k.D.chipi >= e.D.chipi - 1e-9 && k.D.dbl >= e.D.dbl - 1e-9
-        && k.D.asp >= e.D.asp - 1e-9 && k.D.dmg >= e.D.dmg - 1e-9) { dom = true; break; }
+        && k.D.asp >= e.D.asp - 1e-9 && k.D.dmg >= e.D.dmg - 1e-9 && (k.D.rng || 0) >= (e.D.rng || 0) - 1e-9) { dom = true; break; }
     }
     if (!dom) { kept.push(e); if (kept.length >= (cap || 80)) break; }
   }
@@ -18774,9 +18891,9 @@ function compressCandidates(cands) {
     for (const c of list) {
       let dom = false;
       for (const k of kept) {
-        if (k.f.A >= c.f.A - 1e-9
+        if (k.f.A >= c.f.A - 1e-9 && (k.f.md || 0) >= (c.f.md || 0) - 1e-9
           && k.f.D.crit >= c.f.D.crit - 1e-9 && k.f.D.chipi >= c.f.D.chipi - 1e-9 && k.f.D.dbl >= c.f.D.dbl - 1e-9
-          && k.f.D.asp >= c.f.D.asp - 1e-9 && k.f.D.dmg >= c.f.D.dmg - 1e-9) { dom = true; break; }
+          && k.f.D.asp >= c.f.D.asp - 1e-9 && k.f.D.dmg >= c.f.D.dmg - 1e-9 && (k.f.D.rng || 0) >= (c.f.D.rng || 0) - 1e-9) { dom = true; break; }
       }
       if (!dom && (kept.length < 40 || mustKeep.has(c))) kept.push(c);
     }
@@ -18816,8 +18933,8 @@ function initOptimalStatsUI() {
       </label>`).join('');
     consHost.innerHTML = `
       <div style="${rowStyle}">📌 고정 조건 1: 옵션별 최소/최대 줄 수 <span style="font-size:11px;">(세트 전체, 펫/탈것 포함 · 0 = 제한 없음)</span><div style="width:100%; display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">${lineMinsHtml}</div></div>
-      <div style="${rowStyle}">📌 고정 조건 2: ${statSelectHtml('cons-sum-stat', cons.sumStat)} 합 ≥ <input type="number" id="cons-sum-min" min="0" step="1" value="${cons.sumMin}" style="width:60px; font-size:11px; padding:3px 6px; height:auto;"> % <span style="font-size:11px;">(공속 156.7 = 윈드업 0.77 무기 더블 8틱 경계 156.667%)</span></div>
-      <div style="${rowStyle}">⚔️ 무기 윈드업: <input type="number" id="cons-windup" min="0.1" max="1.5" step="0.001" value="${cons.windup || 0.33}" style="width:65px; font-size:11px; padding:3px 6px; height:auto;"> 초 <span style="font-size:11px;">(기본 무기 기준 — 조건 충족 후 전투시뮬 DPS 지수 최대화에 사용: 더블 딜레이·공속 틱 양자화 반영)</span></div>`;
+      <div style="${rowStyle}">📌 고정 조건 2: ${statSelectHtml('cons-sum-stat', cons.sumStat)} 합 ≥ <input type="number" id="cons-sum-min" min="0" step="1" value="${cons.sumMin}" style="width:60px; font-size:11px; padding:3px 6px; height:auto;"> % <span style="font-size:11px;">(공속 152 = 기본무기(0.32) 더블 8틱 경계 · 0.77 무기까지 커버하려면 156.7)</span></div>
+      <div style="${rowStyle}">⚔️ 무기 윈드업: <input type="number" id="cons-windup" min="0.1" max="1.5" step="0.001" value="${cons.windup || 0.32}" style="width:65px; font-size:11px; padding:3px 6px; height:auto;"> 초 · 기타 피해(장비 외): <input type="number" id="cons-other-dmg" min="0" step="1" value="${cons.otherDmg || 0}" style="width:90px; font-size:11px; padding:3px 6px; height:auto;"> <span style="font-size:11px;">(DPS = (기타피해+장비⚔️합)×배율지수 — 0이면 장비 메인스탯이 총피해의 전부라고 가정. 아이템 만렙·HIDDEN_LEVELS가 있어야 ⚔️ 반영)</span></div>`;
     const saveCons = () => {
       const lineMins = {};
       consHost.querySelectorAll('.cons-line-min-input').forEach(inp => {
@@ -18833,12 +18950,13 @@ function initOptimalStatsUI() {
         lineMins, lineMaxs,
         sumStat: $('#cons-sum-stat').value,
         sumMin: Math.max(0, parseFloat($('#cons-sum-min').value) || 0),
-        windup: Math.max(0.1, parseFloat($('#cons-windup').value) || 0.33)
+        windup: Math.max(0.1, parseFloat($('#cons-windup').value) || 0.32),
+        otherDmg: Math.max(0, parseFloat($('#cons-other-dmg').value) || 0)
       };
       persist();
     };
     consHost.querySelectorAll('.cons-line-min-input, .cons-line-max-input').forEach(el => el.addEventListener('change', saveCons));
-    ['cons-sum-stat', 'cons-sum-min', 'cons-windup'].forEach(id => {
+    ['cons-sum-stat', 'cons-sum-min', 'cons-windup', 'cons-other-dmg'].forEach(id => {
       const el = $('#' + id);
       if (el) el.addEventListener('change', saveCons);
     });
@@ -18910,11 +19028,23 @@ function renderSwapRecommend() {
   const pmF = statFeatures(petMountStats, cons, optSet, lineStats);
 
   // 슬롯별 선택지: 장착 유지(비용 0) + 파레토 압축된 교체 후보(비용 1)
+  // md = 아이템 메인 공격력(⚔️, 시대·레벨·근접보정) — DPS = (기타피해+Σmd)×배율지수에 사용
+  const mdOf = (age, typeStr, idx, level, isRanged) => {
+    if (level === undefined || level === null) return 0;
+    const ms = itemMainStats(age, typeStr, idx, level, isRanged);
+    return ms ? ms.dmg : 0;
+  };
   const slotOptions = [];
   for (let t = 0; t < 8; t++) {
     const cur = equippedByType[t];
-    const opts = [{ cost: 0, f: statFeatures(cur ? cur.stats : [], cons, optSet, lineStats), r: null }];
-    const cands = (candidatesByType[t] || []).map(r => ({ r, f: statFeatures(r.DetailedStats, cons, optSet, lineStats) }));
+    const curF = statFeatures(cur ? cur.stats : [], cons, optSet, lineStats);
+    curF.md = cur ? mdOf(cur.age, TYPE_JSON_ORDER[t], cur.idx, cur.level, true) : 0; // 현 무기는 원거리 가정
+    const opts = [{ cost: 0, f: curF, r: null }];
+    const cands = (candidatesByType[t] || []).map(r => {
+      const f = statFeatures(r.DetailedStats, cons, optSet, lineStats);
+      f.md = mdOf(r.Age, r.Type, r.Idx, r.Level, r.IsRanged);
+      return { r, f };
+    });
     for (const c of compressCandidates(cands)) opts.push({ cost: 1, f: c.f, r: c.r });
     slotOptions.push({ t, cur, opts });
   }
@@ -18922,9 +19052,15 @@ function renderSwapRecommend() {
   // 파레토 DP — 상태: (교체 사용 수, 고정1 대상 스탯별 줄 수), 항목: (A, M, D, Lc, picks)
   // 목적: ① 고정1 줄 부족/초과 최소 ② 고정2 합 부족 최소 ③ 전투시뮬 DPS 지수 최대 ④ 교체 수 최소
   let states = new Map();
-  states.set(`0|${lKey(pmF.Lc)}`, [{ A: pmF.A, M: pmF.M, D: Object.assign({}, pmF.D), Lc: pmF.Lc, picks: [] }]);
+  states.set(`0|${lKey(pmF.Lc)}`, [{ A: pmF.A, M: pmF.M, D: Object.assign({}, pmF.D), md: 0, Lc: pmF.Lc, picks: [] }]);
 
-  const wu = cons.windup || 0.33;
+  const wu = cons.windup || 0.32;
+  const baseDmg = Math.max(0, cons.otherDmg || 0);
+  // DPS 총점: 배율지수 × (기타피해 + 장비 메인⚔️합). 메인스탯 정보가 전혀 없으면(합 0) 배율지수만 사용
+  const planDpsOf = e => {
+    const mdT = baseDmg + (e.md || 0);
+    return dpsIndexOf(e.D, wu) * (mdT > 0 ? mdT : 1);
+  };
 
   for (const so of slotOptions) {
     const next = new Map();
@@ -18942,7 +19078,8 @@ function renderSwapRecommend() {
           if (!arr) { arr = []; next.set(k2, arr); }
           arr.push({
             A: e.A + opt.f.A, M: e.M + opt.f.M,
-            D: { crit: e.D.crit + opt.f.D.crit, chipi: e.D.chipi + opt.f.D.chipi, dbl: e.D.dbl + opt.f.D.dbl, asp: e.D.asp + opt.f.D.asp, dmg: e.D.dmg + opt.f.D.dmg },
+            D: { crit: e.D.crit + opt.f.D.crit, chipi: e.D.chipi + opt.f.D.chipi, dbl: e.D.dbl + opt.f.D.dbl, asp: e.D.asp + opt.f.D.asp, dmg: e.D.dmg + opt.f.D.dmg, rng: (e.D.rng || 0) + (opt.f.D.rng || 0) },
+            md: (e.md || 0) + (opt.f.md || 0),
             Lc: Lc2, picks: e.picks.concat([opt.r])
           });
         }
@@ -18979,8 +19116,8 @@ function renderSwapRecommend() {
       const cand = {
         lineShort, lineOver,
         sumShort: Math.max(0, cons.sumMin - e.A),
-        dps: dpsIndexOf(e.D, wu),
-        M: e.M, D: e.D, Lc: e.Lc, used, picks: e.picks
+        dps: planDpsOf(e),
+        M: e.M, D: e.D, md: e.md || 0, Lc: e.Lc, used, picks: e.picks
       };
       if (!bestPlan || planBetter(cand, bestPlan)) bestPlan = cand;
     }
@@ -19000,14 +19137,14 @@ function renderSwapRecommend() {
       return idx >= 0 ? idx : 0;
     });
     const evalSel = () => {
-      const D = { crit: pmF.D.crit, chipi: pmF.D.chipi, dbl: pmF.D.dbl, asp: pmF.D.asp, dmg: pmF.D.dmg };
-      let A = pmF.A, M = pmF.M, used = 0;
+      const D = { crit: pmF.D.crit, chipi: pmF.D.chipi, dbl: pmF.D.dbl, asp: pmF.D.asp, dmg: pmF.D.dmg, rng: pmF.D.rng || 0 };
+      let A = pmF.A, M = pmF.M, used = 0, md = 0;
       const Lc = {};
       for (const s of lineStats) Lc[s] = pmF.Lc[s] || 0;
       for (let t = 0; t < 8; t++) {
         const o = optsBySlot[t][sel[t]];
-        A += o.f.A; M += o.f.M; used += o.cost;
-        D.crit += o.f.D.crit; D.chipi += o.f.D.chipi; D.dbl += o.f.D.dbl; D.asp += o.f.D.asp; D.dmg += o.f.D.dmg;
+        A += o.f.A; M += o.f.M; used += o.cost; md += o.f.md || 0;
+        D.crit += o.f.D.crit; D.chipi += o.f.D.chipi; D.dbl += o.f.D.dbl; D.asp += o.f.D.asp; D.dmg += o.f.D.dmg; D.rng += o.f.D.rng || 0;
         for (const s of lineStats) Lc[s] += o.f.Lc[s] || 0;
       }
       if (used > nLimit) return null;
@@ -19019,7 +19156,7 @@ function renderSwapRecommend() {
       }
       return {
         lineShort, lineOver, sumShort: Math.max(0, cons.sumMin - A),
-        dps: dpsIndexOf(D, wu), M, D, Lc, used,
+        dps: planDpsOf({ D, md }), M, D, md, Lc, used,
         picks: sel.map((j, t) => optsBySlot[t][j].r)
       };
     };
@@ -19117,14 +19254,16 @@ function renderSwapRecommend() {
     newCount += chosenScore.count; newSum += chosenScore.sum;
     if (pick) swapCount++;
 
+    const curMs = cur ? itemMainStats(cur.age, TYPE_JSON_ORDER[t], cur.idx, cur.level, true) : null;
     const curHtml = cur
-      ? `${ageChip(cur.age)} Lv.${cur.level} <b>매칭 ${curScore.count}개 · ${curScore.sum.toFixed(2)}%</b><br><span style="font-size:12px;">${swapStatDetailHtml(cur.stats, optSet)}</span>`
+      ? `${ageChip(cur.age)} Lv.${cur.level} <b>매칭 ${curScore.count}개 · ${curScore.sum.toFixed(2)}%</b> <span style="color:#8b96a8; font-size:11px;">${mainStatHtml(curMs)}</span><br><span style="font-size:12px;">${swapStatDetailHtml(cur.stats, optSet)}</span>`
       : '<span style="color:#8b96a8;">미장착 (매칭 0개)</span>';
 
     let planHtml;
     if (pick) {
       const weaponKind = pick.Type === 'Ranged Weapon' ? ` <span style="color:#8b96a8; font-size:11px;">(원거리)</span>` : '';
-      planHtml = `<div style="font-weight:bold;">🔼 <span style="color:#e67e22;">${pick.index}번째</span> ${ageChip(pick.Age)}${pick.Level !== undefined ? ` Lv.${pick.Level}` : ''}${weaponKind} 매칭 ${chosenScore.count}개 · ${chosenScore.sum.toFixed(2)}% <span style="color:#2ecc71;">(+${(chosenScore.sum - curScore.sum).toFixed(2)}%p)</span><br><span style="font-size:12px; font-weight:normal;">${swapStatDetailHtml(pick.DetailedStats, optSet)}</span></div>`;
+      const pickMs = pick.Level !== undefined ? itemMainStats(pick.Age, pick.Type, pick.Idx, pick.Level, pick.IsRanged) : null;
+      planHtml = `<div style="font-weight:bold;">🔼 <span style="color:#e67e22;">${pick.index}번째</span> ${ageChip(pick.Age)}${pick.Level !== undefined ? ` Lv.${pick.Level}` : ''}${weaponKind} 매칭 ${chosenScore.count}개 · ${chosenScore.sum.toFixed(2)}% <span style="color:#2ecc71;">(+${(chosenScore.sum - curScore.sum).toFixed(2)}%p)</span> <span style="color:#8b96a8; font-size:11px; font-weight:normal;">${mainStatHtml(pickMs)}</span><br><span style="font-size:12px; font-weight:normal;">${swapStatDetailHtml(pick.DetailedStats, optSet)}</span></div>`;
     } else {
       planHtml = '<span style="color:#8b96a8;">유지 — 조건·우선순위 기준으로 교체 없이 두는 게 최적</span>';
     }
@@ -19139,9 +19278,17 @@ function renderSwapRecommend() {
     if (cur) curSetStats.push(...(cur.stats || []));
   }
   const curF = statFeatures(curSetStats, cons, optSet, lineStats);
-  const curDps = dpsIndexOf(curF.D, wu);
+  let curMd = 0, planMd = 0;
+  for (let t = 0; t < 8; t++) {
+    const cur = equippedByType[t];
+    const curItemMd = cur ? mdOf(cur.age, TYPE_JSON_ORDER[t], cur.idx, cur.level, true) : 0;
+    curMd += curItemMd;
+    const pick = bestPlan.picks[t];
+    planMd += pick ? mdOf(pick.Age, pick.Type, pick.Idx, pick.Level, pick.IsRanged) : curItemMd;
+  }
+  const curDps = planDpsOf({ D: curF.D, md: curMd });
   const finalF = statFeatures(planStats, cons, optSet, lineStats);
-  const planDps = dpsIndexOf(finalF.D, wu);
+  const planDps = planDpsOf({ D: finalF.D, md: planMd });
   const lineOks = lineStats.map((s, i) => {
     const cnt = finalF.Lc[s] || 0;
     return cnt >= lineMinCaps[i] && cnt <= lineMaxCaps[i];
@@ -19162,7 +19309,7 @@ function renderSwapRecommend() {
     <div style="margin-bottom:8px; padding:8px 10px; background:${lineOk && sumOk ? 'rgba(46,204,113,0.12)' : 'rgba(243,156,18,0.12)'}; border:1px solid ${lineOk && sumOk ? '#2ecc71' : '#f39c12'}; border-radius:4px; font-size:13px;">
       <b>📌 ${lineStatusHtml}
       · ${SUBSTATS_KOR[cons.sumStat] || cons.sumStat} ${finalF.A.toFixed(2)}/${cons.sumMin}% ${sumOk ? '✅' : `⚠️ ${(cons.sumMin - finalF.A).toFixed(2)}%p 부족`}
-      · ⚔️ DPS 지수 ${planDps.toFixed(3)} <span style="color:${planDps >= curDps ? '#2ecc71' : '#e74c3c'};">(현 장착 ${curDps.toFixed(3)} 대비 ${((planDps / curDps - 1) * 100).toFixed(1)}%)</span></b>
+      · ⚔️ DPS 지수 ${planDps >= 1000 ? formatGold(Math.round(planDps)) : planDps.toFixed(3)} <span style="color:${planDps >= curDps ? '#2ecc71' : '#e74c3c'};">(현 장착 ${curDps >= 1000 ? formatGold(Math.round(curDps)) : curDps.toFixed(3)} 대비 ${((planDps / curDps - 1) * 100).toFixed(1)}%)</span>${planMd > 0 ? ` <span style="color:#8b96a8; font-size:12px;">— 장비 ⚔️합 ${formatGold(Math.round(curMd))}→${formatGold(Math.round(planMd))} 반영</span>` : ''}</b>
       ${lineOk && sumOk ? '' : '<br><span style="color:#f39c12; font-size:12px;">조건 완전 충족이 불가능해 부족량이 최소인 근사 플랜입니다. 미래시 범위를 늘리거나 필터를 완화해보세요.</span>'}
       <br><span style="color:#8b96a8; font-size:12px;">장비 매칭: ${curCount}개 · ${curSum.toFixed(2)}% → ${newCount}개 · ${newSum.toFixed(2)}% (+${(newSum - curSum).toFixed(2)}%p) · 교체 ${swapCount}/${nLimit}개 · 펫/탈것 기여 포함 최종 매칭 합 ${finalF.M.toFixed(2)}%</span>
     </div>`;
