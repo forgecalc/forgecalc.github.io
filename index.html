@@ -656,6 +656,7 @@ table td.center { text-align: center; }
     <div class="tab" data-tab="ascend">🌟 승천</div>
     <div class="tab active" data-tab="miraesee">🔮 미래시</div>
     <div class="tab" data-tab="combatsim">⚔️ 전투 시뮬</div>
+    <div class="tab" data-tab="techtree">🔬 기술트리</div>
   </div>
 
   <div class="tab-panel" id="panel-combatsim">
@@ -698,7 +699,42 @@ table td.center { text-align: center; }
     <details id="sec-ascend-table"><summary>④ 레벨별 누적 테이블</summary><div class="body" id="ascend-table-body"></div></details>
   </div>
 
-  
+  <div class="tab-panel" id="panel-techtree">
+    <div style="max-width:920px;margin:0 auto;padding:12px;">
+      <h2 style="text-align:center;color:var(--accent);">🔬 기술트리 연구 소요시간</h2>
+      <p class="muted" style="text-align:center;font-size:12px;">config 실측값 · 실제시간 = 기본시간 ÷ (1 + 0.04×메모리레벨) · 게임 단계 = 내부 Tier+1</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:flex-end;margin:14px 0;">
+        <div>
+          <label style="display:block;font-size:12px;color:var(--muted);font-weight:bold;margin-bottom:4px;">단계</label>
+          <select id="tt-tier" style="padding:6px 10px;">
+            <option value="0">1단계</option>
+            <option value="1">2단계</option>
+            <option value="2">3단계</option>
+            <option value="3" selected>4단계</option>
+            <option value="4">5단계</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--muted);font-weight:bold;margin-bottom:4px;">레벨</label>
+          <select id="tt-level" style="padding:6px 10px;">
+            <option value="all" selected>전체 (Lv1~5)</option>
+            <option value="0">Lv1</option>
+            <option value="1">Lv2</option>
+            <option value="2">Lv3</option>
+            <option value="3">Lv4</option>
+            <option value="4">Lv5</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--muted);font-weight:bold;margin-bottom:4px;">메모리(기술연구타이머) 레벨</label>
+          <select id="tt-memory" style="padding:6px 10px;"></select>
+        </div>
+      </div>
+      <div id="tt-result"></div>
+    </div>
+  </div>
+
+
   <!-- MIRAESEE_PANEL_START -->
   <div class="tab-panel active" id="panel-miraesee">
     <div style="max-width: 1000px; margin: 0 auto; padding: 12px 10px 100px;">
@@ -800,8 +836,6 @@ table td.center { text-align: center; }
                             <option value="8">지하세계 이상</option>
                             <option value="9">신성 이상</option>
                         </select>
-                        <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">최소 총옵션(%):</span>
-                        <input type="number" id="forge-min-total" min="0" step="0.1" placeholder="0" style="width: 70px; font-size: 11px; padding: 3px 6px; height: auto;" title="서브스탯 값(%) 합계가 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                         <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">평균 완성도(%):</span>
                         <input type="number" id="forge-min-perf" min="0" max="100" step="1" placeholder="0" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;" title="옵션 완성도 평균이 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
@@ -1475,6 +1509,7 @@ function defaultState(){
     fixedSkills: JSON.parse(JSON.stringify(FIXED_SKILLS_DEFAULT)),
     skins: [{ dmg:0, hp:0 }, { dmg:0, hp:0 }, { dmg:0, hp:0 }],
     _activeTab: "miraesee",
+    _tech: { tier: 3, level: "all", memory: 20 },
   };
 }
 
@@ -2298,7 +2333,78 @@ function setActiveTab(name){
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab===name));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id==="panel-"+name));
   state._activeTab = name; saveState();
+  if (name === "techtree") { ttRestore(); renderTechTree(); }
 }
+
+// ── 기술트리 소요시간 (config TechTreeUpgradeLibrary 실측값) ──
+const TT_DUR = [[300,600,1200,2400,4800],[9600,19200,38400,76800,84480],[92928,102221,112443,123687,136056],[149661,164628,181090,199199,219119],[241031,265134,291648,320813,352894]];
+const TT_COST = [[30,42,59,82,115],[161,226,316,443,620],[868,1007,1168,1354,1571],[1823,2114,2452,2845,3300],[3828,4441,5151,5975,6931]];
+function ttFmt(sec){
+  sec = Math.round(sec);
+  const d = Math.floor(sec/86400), h = Math.floor(sec%86400/3600), m = Math.floor(sec%3600/60), s = sec%60;
+  const parts = [];
+  if (d) parts.push(d+"일");
+  if (h) parts.push(h+"시간");
+  if (m) parts.push(m+"분");
+  if (s && !d && !h) parts.push(s+"초");
+  return parts.join(" ") || "0초";
+}
+function ttRestore(){
+  if (!state._tech) state._tech = { tier: 3, level: "all", memory: 20 };
+  const memSel = $("#tt-memory");
+  if (memSel && !memSel.options.length){
+    for (let i=0;i<=20;i++) memSel.add(new Option("Lv "+i+(i?` (-${(i*4)}%속도)`:""), i));
+  }
+  $("#tt-tier").value = state._tech.tier;
+  $("#tt-level").value = state._tech.level;
+  memSel.value = state._tech.memory;
+}
+function renderTechTree(){
+  if (!state._tech) state._tech = { tier: 3, level: "all", memory: 20 };
+  const memSel = $("#tt-memory");
+  if (memSel && !memSel.options.length){
+    for (let i=0;i<=20;i++) memSel.add(new Option("Lv "+i+(i?` (-${(i*4)}%속도)`:""), i));
+  }
+  const tier = parseInt($("#tt-tier").value, 10);
+  const levelSel = $("#tt-level").value;
+  const mem = parseInt(memSel.value, 10) || 0;
+  state._tech = { tier, level: levelSel, memory: mem };
+  saveState();
+  const div = 1 + 0.04*mem;
+  const levels = levelSel === "all" ? [0,1,2,3,4] : [parseInt(levelSel,10)];
+  const th = "padding:6px 8px;border:1px solid var(--border);background:var(--panel-2);font-size:12px;";
+  const td = "padding:6px 8px;border:1px solid var(--border);text-align:center;";
+  let sumBase=0, sumReal=0, sumCost=0, cum=0;
+  const rows = levels.map(lv=>{
+    const base = TT_DUR[tier][lv], real = base/div, cost = TT_COST[tier][lv];
+    sumBase+=base; sumReal+=real; sumCost+=cost; cum+=real;
+    return `<tr>
+      <td style="${td}"><b>Lv${lv+1}</b></td>
+      <td style="${td};color:#8b96a8;">${ttFmt(base)}</td>
+      <td style="${td};color:var(--accent);font-weight:bold;">${ttFmt(real)}</td>
+      <td style="${td}">${cum!==real?ttFmt(cum):"-"}</td>
+      <td style="${td}">${cost.toLocaleString()}</td>
+    </tr>`;
+  }).join("");
+  const showTotal = levels.length > 1;
+  const totalRow = showTotal ? `<tr style="font-weight:bold;">
+      <td style="${td}">합계</td>
+      <td style="${td};color:#8b96a8;">${ttFmt(sumBase)}</td>
+      <td style="${td};color:var(--accent);">${ttFmt(sumReal)}</td>
+      <td style="${td}">-</td>
+      <td style="${td}">${sumCost.toLocaleString()}</td>
+    </tr>` : "";
+  $("#tt-result").innerHTML = `
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${tier+1}단계 · 메모리 ${mem}레벨 → 시간 ÷${div.toFixed(2)} (기본 대비 ${((1-1/div)*100).toFixed(1)}% 단축)</div>
+    <table style="width:100%;border-collapse:collapse;max-width:640px;margin:0 auto;">
+      <tr><th style="${th}">레벨</th><th style="${th}">기본 시간</th><th style="${th}">적용 시간</th><th style="${th}">누적(적용)</th><th style="${th}">비용</th></tr>
+      ${rows}
+      ${totalRow}
+    </table>`;
+}
+["#tt-tier","#tt-level","#tt-memory"].forEach(sel=>{
+  document.addEventListener("change", e=>{ if (e.target && e.target.matches(sel)) renderTechTree(); });
+});
 document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", ()=> setActiveTab(t.dataset.tab)));
 
 document.addEventListener("focusin", (e)=>{
@@ -19003,6 +19109,12 @@ function renderSwapRecommend() {
   const filterConfig = readFilters('Forge');
   const pool = history.filter(item => item.Type !== 'Melee Weapon' && filterItem(item, filterConfig, 'Forge'));
 
+  // 플랜 표기용 남은망치 (현재 망치 수 입력 시 n번째 대신 표기)
+  annotateForgeHammers(history);
+  const curHEl = $('#forge-current-hammers');
+  const curH = curHEl ? parseInt(curHEl.value, 10) : NaN;
+  const hasCurH = Number.isFinite(curH);
+
   const equippedByType = {};
   for (const e of col.equipment) equippedByType[e.type] = e;
 
@@ -19265,7 +19377,10 @@ function renderSwapRecommend() {
     if (pick) {
       const weaponKind = pick.Type === 'Ranged Weapon' ? ` <span style="color:#8b96a8; font-size:11px;">(원거리)</span>` : '';
       const pickMs = pick.Level !== undefined ? itemMainStats(pick.Age, pick.Type, pick.Idx, pick.Level, pick.IsRanged) : null;
-      planHtml = `<div style="font-weight:bold;">🔼 <span style="color:#e67e22;">${pick.index}번째</span> ${ageChip(pick.Age)}${pick.Level !== undefined ? ` Lv.${pick.Level}` : ''}${weaponKind} 매칭 ${chosenScore.count}개 · ${chosenScore.sum.toFixed(2)}% <span style="color:#2ecc71;">(+${(chosenScore.sum - curScore.sum).toFixed(2)}%p)</span> <span style="color:#8b96a8; font-size:11px; font-weight:normal;">${mainStatHtml(pickMs)}</span><br><span style="font-size:12px; font-weight:normal;">${swapStatDetailHtml(pick.DetailedStats, optSet)}</span></div>`;
+      const whenTxt = hasCurH && pick._priorConsumed !== undefined
+        ? `남은망치 ${(curH - pick._priorConsumed).toLocaleString()}`
+        : `<span style="color:#8b96a8;">현재 망치 입력 필요</span>`;
+      planHtml = `<div style="font-weight:bold;">🔼 <span style="color:#e67e22;">${whenTxt}</span> ${ageChip(pick.Age)}${pick.Level !== undefined ? ` Lv.${pick.Level}` : ''}${weaponKind} 매칭 ${chosenScore.count}개 · ${chosenScore.sum.toFixed(2)}% <span style="color:#2ecc71;">(+${(chosenScore.sum - curScore.sum).toFixed(2)}%p)</span> <span style="color:#8b96a8; font-size:11px; font-weight:normal;">${mainStatHtml(pickMs)}</span><br><span style="font-size:12px; font-weight:normal;">${swapStatDetailHtml(pick.DetailedStats, optSet)}</span></div>`;
     } else {
       planHtml = '<span style="color:#8b96a8;">유지 — 조건·우선순위 기준으로 교체 없이 두는 게 최적</span>';
     }
@@ -19334,7 +19449,7 @@ function renderSwapRecommend() {
       ${consHtml}
       <div style="margin-bottom:8px;"><span style="font-size:12px; color:#7f8c8d; font-weight:bold;">구성 커버리지 (플랜 장비 + 장착 펫/탈것):</span><br>${coverageHtml}</div>
       <table style="width:100%; border-collapse:collapse;">
-        <tr><th style="${th}">타입</th><th style="${th}">현재 장착</th><th style="${th}">교체 플랜 (n번째 두들김)</th></tr>
+        <tr><th style="${th}">타입</th><th style="${th}">현재 장착</th><th style="${th}">교체 플랜 (남은 망치)</th></tr>
         ${rows}
       </table>
     </div>`;
