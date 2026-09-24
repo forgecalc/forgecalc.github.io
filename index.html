@@ -839,7 +839,7 @@ table td.center { text-align: center; }
                         <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">평균 완성도(%):</span>
                         <input type="number" id="forge-min-perf" min="0" max="100" step="1" placeholder="0" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;" title="옵션 완성도 평균이 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
-                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="확정 표준 설정 일괄 적용: 포함 7종(치확·치피·더블·생흡·공속·공격력·원피)+AND, 최소값(10/70/15/15/35/13/13), 평균 완성도 85, 공속 조건 152.5, 윈드업 0.32">🎯 표준 설정</button>
+                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="확정 표준 설정 일괄 적용: 포함 7종(치피·더블·생흡·공속·공격력·원피·스킬피해)+AND, 최소값(70/15/15/35/13/13/20), 평균 완성도 85, 공속 조건 152.5, 윈드업 0.32 · 치확은 스킬피해 변환(15%당 +20%)으로 상한 80%에 도달하므로 조건에서 제외">🎯 표준 설정</button>
                     <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
@@ -18760,9 +18760,12 @@ function initFilters() {
   const stdBtn = $('#forge-filter-standard');
   if (stdBtn) {
     stdBtn.addEventListener('click', () => {
+      // 치확 상한 80% 체제: 스킬피해(15%당 치확 +20%)만으로 상한에 닿아서 치확 줄은 조건에서 제외 —
+      // 치확 최소를 걸면 스킬피해+치피 같은 상위 조합이 AND에서 통째로 잘려나간다.
       const MINS = {
-        'Critical Chance': 10, 'Critical Damage': 70, 'Double Chance': 15,
-        'Life Steal': 15, 'Attack Speed': 35, 'Damage': 13, 'Ranged Damage': 13
+        'Critical Damage': 70, 'Double Chance': 15,
+        'Life Steal': 15, 'Attack Speed': 35, 'Damage': 13, 'Ranged Damage': 13,
+        'Skill Damage': 20  // 15%당 치확 +20% 변환 — 한 줄로 1단계를 넘기고 남는 값이 다음 단계에 보태지는 선
       };
       const grid = $('#forge-filter-grid');
       if (grid) {
@@ -18942,10 +18945,26 @@ function swapCycleTicks(aspPct, wu, isDouble) {
   return ticks;
 }
 
-// D = {crit, chipi, dbl, asp, dmg} (% 합) → 스케일 무관 DPS 지수.
+// === 🎯 스킬 피해 → 치명타 확률 변환 ===
+// 세트 전체(장비 + 장착 펫/탈것) 스킬 피해 '합' 15%마다 치확 +20% (계단식 — 15%를 못 채운 나머지는 버려짐).
+// 예) 스킬피해 합 44% → floor(44/15)=2단계 → 치확 +40%.
+// 합 기준이라 한 줄로는 값이 안 되는 저롤 스킬피해도 여러 줄이 모이면 단계를 넘길 수 있다.
+const SKILL_TO_CRIT_STEP = 15;   // 몇 %마다
+const SKILL_TO_CRIT_BONUS = 20;  // 치확 몇 %
+const CRIT_CAP = 80;             // 치명타 확률 상한(%) — 초과분은 전부 낭비
+function skillCritBonus(sklPct) {
+  return Math.floor(Math.max(0, sklPct || 0) / SKILL_TO_CRIT_STEP) * SKILL_TO_CRIT_BONUS;
+}
+// 장비 치확 합 + 스킬피해 변환분 → 실효 치확(%). CRIT_CAP에서 잘린다.
+function effCritPct(D) {
+  return Math.min(D.crit + skillCritBonus(D.skl), CRIT_CAP);
+}
+
+// D = {crit, chipi, dbl, asp, dmg, rng, skl} (% 합) → 스케일 무관 DPS 지수.
 // 베이스 치확 0 / 치피 기본 120(공식 내장) 가정 — 전투 시뮬 unit()과 동일.
+// 치확은 (장비 치확 합 + 스킬피해 변환분)으로 계산하고 CRIT_CAP(80%)에서 잘린다 — 오버캡은 가치 0.
 function dpsIndexOf(D, wu) {
-  const c = Math.min(D.crit / 100, 1);
+  const c = effCritPct(D) / 100;
   const p = Math.min(D.dbl / 100, 1);
   const avg = (1 - c) + c * (D.chipi + 120) / 100;
   const tn = swapCycleTicks(D.asp, wu, false);
@@ -19112,12 +19131,13 @@ function activeLineStats(cons) {
 }
 
 // 아이템/스탯 목록의 지표: Lc=고정1 대상 스탯별 줄 수, A=고정2 값 합, M=최적구성 매칭 값 합(표시용),
-// D=DPS 관여 스탯 합(치확/치피/더블/공속/공격력) — 목적함수(dpsIndexOf)의 입력.
+// D=DPS 관여 스탯 합(치확/치피/더블/공속/공격력/원피/스킬피해) — 목적함수(dpsIndexOf)의 입력.
+// 스킬피해(skl)는 그 자체로 평타 DPS를 올리진 않지만 15%당 치확 +20%로 환산되어 들어간다.
 function statFeatures(stats, cons, optSet, lineStats) {
   const Lc = {};
   if (lineStats) for (const s of lineStats) Lc[s] = 0;
   let A = 0, M = 0;
-  const D = { crit: 0, chipi: 0, dbl: 0, asp: 0, dmg: 0, rng: 0 };
+  const D = { crit: 0, chipi: 0, dbl: 0, asp: 0, dmg: 0, rng: 0, skl: 0 };
   for (const s of stats || []) {
     if (!s) continue;
     if (lineStats && s.name in Lc) Lc[s.name] += 1;
@@ -19129,11 +19149,13 @@ function statFeatures(stats, cons, optSet, lineStats) {
     else if (s.name === 'Attack Speed') D.asp += s.value;
     else if (s.name === 'Damage') D.dmg += s.value;
     else if (s.name === 'Ranged Damage') D.rng += s.value;
+    else if (s.name === 'Skill Damage') D.skl += s.value;
   }
   return { Lc, A, M, D };
 }
 
-// (A, D 5축) 지배당하는 항목 제거 — DPS는 D의 각 축에 단조증가라 지배 항목은 최적이 될 수 없음.
+// (A, D 7축) 지배당하는 항목 제거 — DPS는 D의 각 축에 단조증가라 지배 항목은 최적이 될 수 없음.
+// 스킬피해(skl)도 치확 변환이 계단식(단조 비감소)이라 같은 논리로 안전하게 축에 넣을 수 있다.
 // M은 표시 전용이라 지배 판정에서 제외. 정렬은 부분합 DPS 내림차순(컷 잘림 시 유망한 항목 우선 보존).
 function paretoPrune(arr, cap, wu) {
   arr.sort((a, b) => dpsIndexOf(b.D, wu) * (1 + (b.md || 0)) - dpsIndexOf(a.D, wu) * (1 + (a.md || 0)));
@@ -19143,7 +19165,8 @@ function paretoPrune(arr, cap, wu) {
     for (const k of kept) {
       if (k.A >= e.A - 1e-9 && (k.md || 0) >= (e.md || 0) - 1e-9
         && k.D.crit >= e.D.crit - 1e-9 && k.D.chipi >= e.D.chipi - 1e-9 && k.D.dbl >= e.D.dbl - 1e-9
-        && k.D.asp >= e.D.asp - 1e-9 && k.D.dmg >= e.D.dmg - 1e-9 && (k.D.rng || 0) >= (e.D.rng || 0) - 1e-9) { dom = true; break; }
+        && k.D.asp >= e.D.asp - 1e-9 && k.D.dmg >= e.D.dmg - 1e-9 && (k.D.rng || 0) >= (e.D.rng || 0) - 1e-9
+        && (k.D.skl || 0) >= (e.D.skl || 0) - 1e-9) { dom = true; break; }
     }
     if (!dom) { kept.push(e); if (kept.length >= (cap || 80)) break; }
   }
@@ -19164,7 +19187,7 @@ function compressCandidates(cands) {
   }
   const out = [];
   for (const [, list] of byL) {
-    const val = f => f.A + f.D.crit + f.D.chipi + f.D.dbl + f.D.asp + f.D.dmg;
+    const val = f => f.A + f.D.crit + f.D.chipi + f.D.dbl + f.D.asp + f.D.dmg + (f.D.skl || 0);
     // 스탯 쌍별 최고 합 아이템 (항상 유지)
     const pairBest = new Map();
     for (const c of list) {
@@ -19180,7 +19203,8 @@ function compressCandidates(cands) {
       for (const k of kept) {
         if (k.f.A >= c.f.A - 1e-9 && (k.f.md || 0) >= (c.f.md || 0) - 1e-9
           && k.f.D.crit >= c.f.D.crit - 1e-9 && k.f.D.chipi >= c.f.D.chipi - 1e-9 && k.f.D.dbl >= c.f.D.dbl - 1e-9
-          && k.f.D.asp >= c.f.D.asp - 1e-9 && k.f.D.dmg >= c.f.D.dmg - 1e-9 && (k.f.D.rng || 0) >= (c.f.D.rng || 0) - 1e-9) { dom = true; break; }
+          && k.f.D.asp >= c.f.D.asp - 1e-9 && k.f.D.dmg >= c.f.D.dmg - 1e-9 && (k.f.D.rng || 0) >= (c.f.D.rng || 0) - 1e-9
+          && (k.f.D.skl || 0) >= (c.f.D.skl || 0) - 1e-9) { dom = true; break; }
       }
       if (!dom && (kept.length < 40 || mustKeep.has(c))) kept.push(c);
     }
@@ -19380,7 +19404,7 @@ function renderSwapRecommend() {
           if (!arr) { arr = []; next.set(k2, arr); }
           arr.push({
             A: e.A + opt.f.A, M: e.M + opt.f.M,
-            D: { crit: e.D.crit + opt.f.D.crit, chipi: e.D.chipi + opt.f.D.chipi, dbl: e.D.dbl + opt.f.D.dbl, asp: e.D.asp + opt.f.D.asp, dmg: e.D.dmg + opt.f.D.dmg, rng: (e.D.rng || 0) + (opt.f.D.rng || 0) },
+            D: { crit: e.D.crit + opt.f.D.crit, chipi: e.D.chipi + opt.f.D.chipi, dbl: e.D.dbl + opt.f.D.dbl, asp: e.D.asp + opt.f.D.asp, dmg: e.D.dmg + opt.f.D.dmg, rng: (e.D.rng || 0) + (opt.f.D.rng || 0), skl: (e.D.skl || 0) + (opt.f.D.skl || 0) },
             md: (e.md || 0) + (opt.f.md || 0),
             Lc: Lc2, picks: e.picks.concat([opt.r])
           });
@@ -19439,14 +19463,14 @@ function renderSwapRecommend() {
       return idx >= 0 ? idx : 0;
     });
     const evalSel = () => {
-      const D = { crit: pmF.D.crit, chipi: pmF.D.chipi, dbl: pmF.D.dbl, asp: pmF.D.asp, dmg: pmF.D.dmg, rng: pmF.D.rng || 0 };
+      const D = { crit: pmF.D.crit, chipi: pmF.D.chipi, dbl: pmF.D.dbl, asp: pmF.D.asp, dmg: pmF.D.dmg, rng: pmF.D.rng || 0, skl: pmF.D.skl || 0 };
       let A = pmF.A, M = pmF.M, used = 0, md = 0;
       const Lc = {};
       for (const s of lineStats) Lc[s] = pmF.Lc[s] || 0;
       for (let t = 0; t < 8; t++) {
         const o = optsBySlot[t][sel[t]];
         A += o.f.A; M += o.f.M; used += o.cost; md += o.f.md || 0;
-        D.crit += o.f.D.crit; D.chipi += o.f.D.chipi; D.dbl += o.f.D.dbl; D.asp += o.f.D.asp; D.dmg += o.f.D.dmg; D.rng += o.f.D.rng || 0;
+        D.crit += o.f.D.crit; D.chipi += o.f.D.chipi; D.dbl += o.f.D.dbl; D.asp += o.f.D.asp; D.dmg += o.f.D.dmg; D.rng += o.f.D.rng || 0; D.skl += o.f.D.skl || 0;
         for (const s of lineStats) Lc[s] += o.f.Lc[s] || 0;
       }
       if (used > nLimit) return null;
@@ -19614,6 +19638,7 @@ function renderSwapRecommend() {
     <div style="margin-bottom:8px; padding:8px 10px; background:${lineOk && sumOk ? 'rgba(46,204,113,0.12)' : 'rgba(243,156,18,0.12)'}; border:1px solid ${lineOk && sumOk ? '#2ecc71' : '#f39c12'}; border-radius:4px; font-size:13px;">
       <b>📌 ${lineStatusHtml}
       · ${SUBSTATS_KOR[cons.sumStat] || cons.sumStat} ${finalF.A.toFixed(2)}/${cons.sumMin}% ${sumOk ? '✅' : `⚠️ ${(cons.sumMin - finalF.A).toFixed(2)}%p 부족`}
+      · 🎯 스킬피해 ${(finalF.D.skl || 0).toFixed(2)}% → 치확 +${skillCritBonus(finalF.D.skl)}%p (총 치확 ${(finalF.D.crit + skillCritBonus(finalF.D.skl)).toFixed(2)}% ${finalF.D.crit + skillCritBonus(finalF.D.skl) > CRIT_CAP ? `⚠️ 상한 ${CRIT_CAP}% 초과분 ${(finalF.D.crit + skillCritBonus(finalF.D.skl) - CRIT_CAP).toFixed(2)}%p 낭비` : `/ 상한 ${CRIT_CAP}%`})
       · ⚔️ DPS 지수 ${planDps >= 1000 ? formatGold(Math.round(planDps)) : planDps.toFixed(3)} <span style="color:${planDps >= curDps ? '#2ecc71' : '#e74c3c'};">(현 장착 ${curDps >= 1000 ? formatGold(Math.round(curDps)) : curDps.toFixed(3)} 대비 ${((planDps / curDps - 1) * 100).toFixed(1)}%)</span>${planMd > 0 ? ` <span style="color:#8b96a8; font-size:12px;">— 장비 ⚔️합 ${formatGold(Math.round(curMd))}→${formatGold(Math.round(planMd))} 반영</span>` : ''}</b>
       ${lineOk && sumOk ? '' : '<br><span style="color:#f39c12; font-size:12px;">조건 완전 충족이 불가능해 부족량이 최소인 근사 플랜입니다. 미래시 범위를 늘리거나 필터를 완화해보세요.</span>'}
       <br><span style="color:#8b96a8; font-size:12px;">장비 매칭: ${curCount}개 · ${curSum.toFixed(2)}% → ${newCount}개 · ${newSum.toFixed(2)}% (+${(newSum - curSum).toFixed(2)}%p) · 교체 ${swapCount}/${nLimit}개 · 펫/탈것 기여 포함 최종 매칭 합 ${finalF.M.toFixed(2)}%</span>
@@ -19633,7 +19658,7 @@ function renderSwapRecommend() {
   out.innerHTML = `
     <div class="card" style="margin:12px 0; padding:12px;">
       <div style="font-weight:bold; color:#e67e22; margin-bottom:4px;">🔁 교체 플랜 — 고정 조건 + 전투시뮬 DPS 최적화 (근거리 무기 제외, 최대 ${nLimit}개 교체)</div>
-      <div style="color:#8b96a8; font-size:12px; margin-bottom:8px;">검색 범위: 필터 통과 ${pool.length}개 / 전체 히스토리 ${history.length}개 · 판정: ① 고정 조건 충족(부족 시 최소화) ② DPS 지수 최대 — 치확×치피 곱연산·더블 딜레이·공속 틱 양자화(윈드업 ${wu}s) 반영 (✓ = 최적 구성 포함 옵션)${odInfo ? ` · 기타피해 ${formatGold(Math.round(baseDmg))}${odInfo.skinN ? ` · 🎽 스킨 +${(odInfo.skinMult * 100).toFixed(1)}%(표시 전용)` : ''}` : ''}</div>
+      <div style="color:#8b96a8; font-size:12px; margin-bottom:8px;">검색 범위: 필터 통과 ${pool.length}개 / 전체 히스토리 ${history.length}개 · 판정: ① 고정 조건 충족(부족 시 최소화) ② DPS 지수 최대 — 치확×치피 곱연산·더블 딜레이·공속 틱 양자화(윈드업 ${wu}s)·스킬피해 합 ${SKILL_TO_CRIT_STEP}%당 치확 +${SKILL_TO_CRIT_BONUS}% 변환 반영 (✓ = 최적 구성 포함 옵션)${odInfo ? ` · 기타피해 ${formatGold(Math.round(baseDmg))}${odInfo.skinN ? ` · 🎽 스킨 +${(odInfo.skinMult * 100).toFixed(1)}%(표시 전용)` : ''}` : ''}</div>
       ${consHtml}
       <div style="margin-bottom:8px;"><span style="font-size:12px; color:#7f8c8d; font-weight:bold;">구성 커버리지 (플랜 장비 + 장착 펫/탈것):</span><br>${coverageHtml}</div>
       <table style="width:100%; border-collapse:collapse;">
