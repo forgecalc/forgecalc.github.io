@@ -644,6 +644,39 @@ table td.center { text-align: center; }
 }
 
 /* === MIRAESEE INJECTED CSS END === */
+
+/* === 결투 시뮬 (탭 스코프) === */
+  #panel-combatsim{--bg:#0f1218;--panel:#161b24;--border:#2a3140;--text:#e6ebf2;--muted:#8b96a8;--me:#4aa3ff;--foe:#ff6b6b;--ok:#4aff9d;--warn:#f5b942}
+  #panel-combatsim h1{font-size:18px;margin:0 0 10px}
+  #panel-combatsim h2{font-size:14px;margin:0 0 8px;color:var(--muted);font-weight:600}
+  #panel-combatsim .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:900px){#panel-combatsim .row{grid-template-columns:1fr}}
+  #panel-combatsim .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px}
+  #panel-combatsim .panel.me{border-top:3px solid var(--me)}#panel-combatsim .panel.foe{border-top:3px solid var(--foe)}
+  #panel-combatsim .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 10px}
+  @media(max-width:520px){#panel-combatsim .grid{grid-template-columns:1fr}}
+  #panel-combatsim label{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:12px;color:var(--muted)}
+  #panel-combatsim label span.k{flex:1}
+  #panel-combatsim input[type=number],#panel-combatsim select,#panel-combatsim textarea,#panel-combatsim input[type=text]{background:#0b0f16;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 7px;font-size:13px;width:110px}
+  #panel-combatsim select.unit{width:58px}
+  #panel-combatsim input[type=checkbox],#panel-combatsim input[type=file]{width:auto;min-height:auto}
+  #panel-combatsim .num2{display:flex;gap:4px}
+  #panel-combatsim .num2 input{width:88px}
+  #panel-combatsim textarea{width:100%;height:46px;font:11px monospace}
+  #panel-combatsim button{background:#263247;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:7px 12px;cursor:pointer;font-size:13px}
+  #panel-combatsim button.primary{background:#2f6fd6;border-color:#2f6fd6}
+  #panel-combatsim button:disabled{opacity:.5;cursor:default}
+  #panel-combatsim .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+  #panel-combatsim canvas{width:100%;background:#0b0f16;border:1px solid var(--border);border-radius:10px;display:block}
+  #panel-combatsim .hint{font-size:11px;color:var(--muted)}
+  #panel-combatsim .stat{display:flex;gap:16px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+  #panel-combatsim .stat b{font-size:20px}
+  #panel-combatsim .me-c{color:var(--me)}#panel-combatsim .foe-c{color:var(--foe)}
+  #panel-combatsim details{margin-top:10px}#panel-combatsim summary{cursor:pointer;color:var(--muted)}
+  #panel-combatsim .ocr{border:1px dashed var(--border);border-radius:8px;padding:8px;margin-bottom:8px}
+  #panel-combatsim .ocr .st{font-size:11px;color:var(--warn);min-height:14px}
+  #panel-combatsim code{background:#0b0f16;padding:1px 5px;border-radius:4px;font-size:12px}
+  #panel-combatsim table{border-collapse:collapse;font-size:12px}#panel-combatsim td,#panel-combatsim th{padding:2px 8px;border-bottom:1px solid var(--border);text-align:right}#panel-combatsim th{color:var(--muted)}
 </style>
 </head>
 <body>
@@ -660,27 +693,60 @@ table td.center { text-align: center; }
   </div>
 
   <div class="tab-panel" id="panel-combatsim">
-    <div style="max-width:920px;margin:0 auto;padding:12px;">
-      <h2 style="text-align:center;color:var(--accent);">⚔️ 1v1 전투 시뮬</h2>
-      <p class="muted" style="text-align:center;font-size:12px;">디컴파일 검증 공식: 공속 주기(0.1초 양자화) · 크리 평타=일반×((치피+120)/100) · 더블 가속 · 흡혈 · 블록. 회피는 장비로 못 얻어 0.</p>
-      <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;">
-        <div style="flex:1;min-width:280px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--panel);">
-          <h3 style="margin:0 0 8px;color:#4aa3ff;">🟦 내 스탯</h3>
-          <div style="margin-bottom:8px;font-size:12px;">📷 OCR 캡쳐: <input type="file" id="cs-ocr-file-me" accept="image/*" style="font-size:11px;"> <span id="cs-ocr-status-me" class="muted"></span></div>
-          <div id="cs-me-fields"></div>
-          <textarea id="cs-ocr-raw-me" placeholder="OCR 원본(수정하면 다시 파싱)" style="width:100%;height:48px;margin-top:6px;font-size:11px;font-family:monospace;box-sizing:border-box;"></textarea>
-        </div>
-        <div style="flex:1;min-width:280px;border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--panel);">
-          <h3 style="margin:0 0 8px;color:#ff6b6b;">🟥 상대 스탯</h3>
-          <div style="margin-bottom:8px;font-size:12px;">📷 OCR 캡쳐: <input type="file" id="cs-ocr-file" accept="image/*" style="font-size:11px;"> <span id="cs-ocr-status" class="muted"></span></div>
-          <div id="cs-foe-fields"></div>
-          <textarea id="cs-ocr-raw" placeholder="OCR 원본(수정하면 다시 파싱)" style="width:100%;height:48px;margin-top:6px;font-size:11px;font-family:monospace;box-sizing:border-box;"></textarea>
-        </div>
+    <div style="max-width:1000px;margin:0 auto;padding:12px;">
+    <h2 style="text-align:center;color:var(--accent);font-size:20px;font-weight:700;">⚔️ 결투 시뮬 (거리·이동·사거리·투사체 포함)</h2>
+    <div class="hint">양쪽 프로필 스크린샷을 드롭/붙여넣기(Ctrl+V)하면 총피해·총체력·옵션%가 자동 입력됩니다. 값은 반드시 확인 후 수정하세요. 사거리·이동속도 보너스는 클랜기술 수치를 직접 넣으세요.</div>
+    
+    <div class="row" id="panels"></div>
+    
+    <div class="panel" style="margin-top:12px">
+      <h2>공통 설정</h2>
+      <div class="grid" style="grid-template-columns:repeat(4,1fr)">
+        <label><span class="k">시작 거리</span><input type="number" id="g-spawn" value="18" step="0.5"></label>
+        <label><span class="k">제한 시간(초)</span><input type="number" id="g-timer" value="60"></label>
+        <label><span class="k">유닛 반지름</span><input type="number" id="g-radius" value="0.35" step="0.05"></label>
+        <label><span class="k">기본 이동속도</span><input type="number" id="g-ms" value="2.0" step="0.1"></label>
+        <label><span class="k">페어리 체력→피해(10%당 15%)</span><input type="checkbox" id="g-fairy-hp" checked></label>
+        <label><span class="k">스쿨→받는 치피 감소(4%당 14%, 최대70)</span><input type="checkbox" id="g-fairy-cd" checked></label>
+        <label><span class="k">5타마다 +220%</span><input type="checkbox" id="g-fairy-5" checked></label>
+        <label><span class="k">사거리 밖 윈드업 정지</span><input type="checkbox" id="g-gate" checked></label>
       </div>
-      <div style="text-align:center;margin:14px 0;">
-        <button id="cs-run" style="background:var(--accent);color:#00233a;border:none;border-radius:6px;padding:10px 30px;font-weight:bold;font-size:15px;cursor:pointer;">⚔️ 시뮬 돌리기</button>
+    </div>
+    
+    <div class="bar">
+      <button class="primary" id="b-play">▶ 재생</button>
+      <button id="b-step">⏭ 1틱</button>
+      <button id="b-reset">↺ 리셋</button>
+      <label style="width:auto">속도 <select id="speed" style="width:70px"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select></label>
+      <label style="width:auto">시드 <input type="number" id="seed" value="1" style="width:80px"></label>
+      <span id="clock" class="hint">t = 0.0s</span>
+    </div>
+    <canvas id="arena" height="260"></canvas>
+    <div id="live" class="stat" style="margin-top:8px"></div>
+    
+    <div class="panel" style="margin-top:12px">
+      <h2>승률 (몬테카를로)</h2>
+      <div class="bar">
+        <label style="width:auto">판수 <input type="number" id="n-trials" value="1000" style="width:90px"></label>
+        <button class="primary" id="b-batch">승률 계산</button>
+        <button id="b-sweep">체력 배율 스윕 (×0.25 ~ ×8)</button>
+        <span id="batch-st" class="hint"></span>
       </div>
-      <div id="cs-result"></div>
+      <div id="batch-out" class="stat"></div>
+      <canvas id="sweep" height="200" style="margin-top:8px;display:none"></canvas>
+    </div>
+    
+    <details>
+      <summary>엔진 규칙 (디컴파일 확정값)</summary>
+      <div class="hint" style="line-height:1.8">
+        틱 0.1초 · 공격 사이클 1.5초 · 더블 = 윈드업 재진입(타이머 = 윈드업×0.75, 2타는 윈드업/4 뒤) · 스폰 (0,0) vs (18,0) · 유닛 반지름 0.35 · 기본 이동속도 2.0<br>
+        사거리 판정: <code>거리 &lt; 내사거리 + 내반지름 + 상대반지름</code> · 무기 사거리: 근접 0.3 / 원거리 7.0 · 사거리·이동속도 보너스는 가산<br>
+        평타: 크리롤 &lt; 치확 → 피해×(치피+120)/100 · 흡혈 = 실제피해×생흡 · 근접 메인피해 ×1.6 · 원피/근피는 별도 곱연산 풀<br>
+        페어리: 전체 체력배율 10%마다 피해 +15%p(공격력 풀 가산, 계단식) · 스쿨 4%p마다 받는 치명타 보너스 −14%(상한 70%) · 5타마다 ×3.2<br>
+        결투장 HP = 총체력 × (1 + 0.5×펫수 + 0.5×스킬수 + 2×탈것) — 양쪽 중 큰 배수 공통 적용
+      </div>
+    </details>
+    
     </div>
   </div>
 
@@ -2334,6 +2400,7 @@ function setActiveTab(name){
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id==="panel-"+name));
   state._activeTab = name; saveState();
   if (name === "techtree") { ttRestore(); renderTechTree(); }
+  if (name === "combatsim" && window.__combatsimRefit) requestAnimationFrame(window.__combatsimRefit);
 }
 
 // ── 기술트리 소요시간 (config TechTreeUpgradeLibrary 실측값) ──
@@ -20817,186 +20884,253 @@ showInitOrTabs();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
-/* ===== 전투 시뮬 (디컴파일 검증 공식) ===== */
+/* ===== 결투 시뮬 (거리·이동·사거리·투사체 포함) ===== */
 (function(){
-  const TICK=0.1, AD=1.5, DBL_SPEEDUP=4;  // DBL_SPEEDUP=UnitConstants.DoubleAttackSpeedUp(디컴파일 확정): 더블 2타는 윈드업 1/4로 단축 재발사
-  // 결투장(PvP) 보정 — SharedGameConfig.mpa 디코딩 + 실측. PvpMatchTimerSeconds=60.
-  // 결투장 HP = 총체력 × HP배수. ★정확식(PvpCombatScene.GetMultiplier 디컴파일): 배수 = 1 + 0.5×펫수 + 0.5×스킬수 + 2×(탈것?1:0). count=장착(IsEquipped) 펫/스킬 수. 게임은 두 플레이어 배수 중 max를 양쪽에 적용. 풀장착(펫3·스킬3·탈것)≈6.0 → 기본값 6.
-  const MATCH_TIMER=60;  // 매치 제한시간 60초 — 초과 시 잔여 HP% 높은 쪽 승
-  const periodTicks=a=>Math.ceil(AD/(TICK*(1+a/100)))+1, periodSec=a=>periodTicks(a)*TICK;
-  function mul32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
-  const FIELDS=[['dmg','총 피해'],['hp','총 체력'],['hpmult','결투장 HP배수'],['asp','공속 %'],['chipi','치피 %(게임 표시값)'],['crit','치확 %'],['dbl','더블 %'],['ls','생흡 %'],['block','블록 %']];
-  const ME_DEF ={hpmult:'6',asp:'154',chipi:'364',crit:'70',dbl:'47',ls:'40',block:'0'};
-  const FOE_DEF={hpmult:'6',asp:'150',chipi:'280',crit:'60',dbl:'40',ls:'30',block:'5'};
-  // 무기별 windup(초) — 디컴파일/1.html에서 추출. [이름, windup, 근접M/원거리R, 아이콘파일]. windup은 공격주기엔 무관, 더블어택 가속 타이밍에만 영향.
-  const WEAPONS={
-    'Primitive':[['Axe',0.767,'M','IconPrimitiveWeaponAxe.png'],['Blowgun',0.467,'R','IconPrimitiveWeaponBlowgun.png'],['Branch',0.783,'M','IconPrimitiveWeaponBranch.png'],['Club',0.933,'M','IconPrimitiveWeaponClub.png'],['Rock',0.683,'R','IconPrimitiveWeaponRock.png'],['Slinger',1.083,'R','IconPrimitiveWeaponSlinger.png'],['Bone',0.6,'M','IconPrimitiveWeaponBone.png']],
-    'Medieval':[['Sword&Shield',0.567,'M','IconMedievalWeaponSwordandshield.png'],['Spear&Shield',0.65,'M','IconMedievalWeaponSpearandshield.png'],['Scythe',0.567,'M','IconMedievalWeaponScythe.png'],['WarHammer',0.783,'M','IconMedievalWeaponWarhammer.png'],['Bow',1.083,'R','IconMedievalWeaponBow.png'],['Katana',0.9,'M','IconMedievalWeaponKatana.png'],['Tomahawk',0.683,'R','IconMedievalWeaponTomahawk.png']],
-    'Earlymodern':[['Crossbow',0.567,'R','IconEarlymodernWeaponCrossbow.png'],['Musket',0.667,'R','IconEarlymodernWeaponMusket.png'],['Executioner',0.667,'M','IconEarlymodernWeaponExecutioner.png'],['DualPistols',0.833,'R','IconEarlymodernWeaponDualpistols.png'],['PirateSword',0.767,'M','IconEarlymodernWeaponPiratessword.png'],['Rapier',0.667,'M','IconEarlymodernWeaponRapier.png']],
-    'Modern':[['AK',0.5,'R','IconModernWeaponAk.png'],['Baton',0.583,'M','IconModernWeaponBaton.png'],['KnuckleDusters',0.667,'M','IconModernWeaponKnuckledusters.png'],['M4',0.5,'R','IconModernWeaponM4.png'],['RiotShield',0.733,'M','IconModernWeaponRiotshield.png'],['Sniper',0.833,'R','IconModernWeaponSniper.png'],['Uzi',0.333,'R','IconModernWeaponUzi.png'],['Wrench',0.783,'M','IconModernWeaponWrench.png']],
-    'Space':[['Blaster',0.667,'R','IconSpaceWeaponBlaster.png'],['RobotSword',0.767,'M','IconSpaceWeaponRobotsword.png'],['Saber',0.783,'M','IconSpaceWeaponSaber.png'],['SpaceGun',0.717,'R','IconSpaceWeaponSpacegun.png'],['SpacePistol',0.917,'R','IconSpaceWeaponSpacepistol.png']],
-    'Interstellar':[['DoubleSaber',0.75,'M','IconInterstellarWeaponDualwieldmelee.png'],['IonicBlaster',0.667,'R','IconInterstellarWeaponIonicblaster.png'],['IsobaricCutter',0.717,'M','IconInterstellarWeaponIsobariccutter.png'],['Light&Shield',0.75,'M','IconInterstellarWeaponLightswordandshield.png'],['PlasmaRifle',0.833,'R','IconInterstellarWeaponPlasmarifle.png'],['RayGun',0.967,'R','IconInterstellarWeaponRaygun.png']],
-    'Multiverse':[['ProjectedCutlass',0.7,'M','IconMultiverseWeaponProjectedcutlass.png'],['MentalSpear',0.7,'M','IconMultiverseWeaponMentalspear.png'],['Trident',0.7,'M','IconMultiverseWeaponHolographictrident.png'],['VirtualBow',1.083,'R','IconMultiverseWeaponSimulatedbow.png'],['VirtualGun',0.833,'R','IconMultiverseWeaponVirtualgun.png'],['VirtualSword',0.883,'M','IconMultiverseWeaponVirtualsword.png']],
-    'Quantum':[['BlackBow',0.833,'R','IconQuantumWeaponBlackbow.png'],['BlackGun',1.0,'R','IconQuantumWeaponBlackgun.png'],['BlackHammer',1.1,'M','IconQuantumWeaponBlackhammer.png'],['BlackSpear',0.9,'M','IconQuantumWeaponBlackspear.png'],['QuantumStaff',0.95,'R','IconQuantumWeaponQuantumstaff.png'],['BlackSword&Shield',0.567,'M','IconQuantumWeaponBlackswordandshield.png']],
-    'Underworld':[['InfernalTrident',1.0,'R','IconUnderworldWeaponInfernalTrident.png'],['AbyssalFork',0.817,'R','IconUnderworldWeaponAbyssalFork.png'],['Soulpiercer',0.817,'M','IconUnderworldWeaponSoulpiercer.png'],['DoomMace',0.9,'M','IconUnderworldWeaponDoomMace.png'],['ShadowScimitar',0.383,'M','IconUnderworldWeaponShadowScimitar.png']],
-    'Divine':[['AngelicPitchfork',0.667,'M','IconDivineWeaponAngelicpitchfork.png'],['DragonDagger',0.733,'M','IconDivineWeaponDragondagger.png'],['SerpentSword',0.733,'M','IconDivineWeaponSerpentsword.png'],['SirenSong',0.317,'M','IconDivineWeaponSirenssong.png'],['Staff',0.833,'R','IconDivineWeaponStaff.png'],['StaffOfWisdom',0.717,'R','IconDivineWeaponStaffofwisdom.png']],
-    // 스킨 (SkinsLibrary.json, Age=-1000) — 별도 아이콘·windup, 전부 원거리. 시뮬엔 windup만 반영.
-    'Skins (스킨)':[['Leprechaun',0.3167,'R','skin3.png'],['Flower',0.7833,'R','skin4.png'],['Druid',0.6667,'R','skin5.png'],['Bunny',0.9333,'R','skin6.png'],['Clown',0.7667,'R','skin7.png'],['Millionaire',0.6667,'R','skin8.png'],['Fishbowl',0.9333,'R','skin9.png'],['Eagle',0.9,'R','skin10.png'],['Skater',0.7333,'R','skin11.png'],['Cat',0.2,'R','skin12.png'],['Shark',0.9,'R','skin13.png'],['Mushroom',0.7333,'R','skin14.png']]
+'use strict';
+// ---------- 유닛 패널 ----------
+const FIELDS=[
+  ['dmg','총 피해(공격력)','num2'],['hp','총 체력','num2'],
+  ['pets','펫 수(HP배수)','n',3],['skills','스킬 수(HP배수)','n',3],['mount','탈것(1/0)','n',1],
+  ['crit','치명타 확률 %','n',0],['chipi','치명타 피해 %','n',0],['dbl','더블 찬스 %','n',0],['asp','공격 속도 %','n',0],
+  ['ls','생명력 흡수 %','n',0],['hpm','체력 % (전체 배율)','n',0],['dmgm','피해 %','n',0],['sep','원피/근피 %','n',0],
+  ['cd','스킬 쿨감 %','n',0],['block','블록 %','n',0],
+  ['range','사거리 보너스(+)','n',0],['msb','이동속도 보너스','n',0],
+];
+const UNITS=[['1','1'],['k','k'],['m','m'],['b','b'],['t','t']];
+const MULT={'1':1,k:1e3,m:1e6,b:1e9,t:1e12};
+function panelHtml(p,title,cls,def){
+  let h=`<div class="panel ${cls}"><h2>${title}</h2>
+  <div class="ocr"><div class="bar" style="margin:0 0 4px"><input type="file" id="${p}file" accept="image/*" style="font-size:11px"><button id="${p}paste" style="padding:3px 8px;font-size:11px">클립보드 붙여넣기</button></div>
+  <div class="st" id="${p}st"></div><textarea id="${p}raw" placeholder="OCR 원본 — 수정하면 다시 파싱"></textarea></div>
+  <div class="grid">
+  <label><span class="k">무기</span><select id="${p}weapon"><option value="R">원거리 (사거리 7)</option><option value="M">근접 (사거리 0.3, 피해×1.6)</option></select></label>
+  <label><span class="k">윈드업(초)</span><input type="number" id="${p}wu" step="0.001" value="${def.wu}"></label>
+  <label><span class="k">투사체 속도(u/s, 0=즉시)</span><input type="number" id="${p}proj" value="${def.proj||0}"></label>
+  <label><span class="k">이속 보너스 단위</span><select id="${p}msu" style="width:110px"><option value="abs">+값</option><option value="pct">+%</option></select></label>`;
+  for(const f of FIELDS){
+    if(f[2]==='num2'){
+      h+=`<label><span class="k">${f[1]}</span><span class="num2"><input type="number" id="${p}${f[0]}" step="any" value="${def[f[0]]||''}"><select class="unit" id="${p}${f[0]}u">${UNITS.map(u=>`<option value="${u[0]}" ${(def[f[0]+'u']||'1')===u[0]?'selected':''}>${u[1]}</option>`).join('')}</select></span></label>`;
+    }else{
+      h+=`<label><span class="k">${f[1]}</span><input type="number" id="${p}${f[0]}" step="any" value="${def[f[0]]!==undefined?def[f[0]]:f[3]}"></label>`;
+    }
+  }
+  return h+`</div></div>`;
+}
+document.getElementById('panels').innerHTML=
+  panelHtml('me-','나','me',{wu:0.32,proj:25,dmg:'',hp:''})+
+  panelHtml('foe-','상대','foe',{wu:0.667,proj:0,dmg:'',hp:''});
+document.getElementById('foe-weapon').value='M';
+const $=id=>document.getElementById(id);
+const gv=(id,d=0)=>{const e=$(id);if(!e)return d;const v=parseFloat(e.value);return isFinite(v)?v:d;};
+
+// ---------- 유닛 생성 ----------
+function pvpMult(p){return 1+0.5*gv(p+'pets')+0.5*gv(p+'skills')+2*(gv(p+'mount')>0?1:0);}
+function buildUnit(p,matchMult){
+  const melee=$(p+'weapon').value==='M';
+  const dmgRaw=gv(p+'dmg')*MULT[$(p+'dmgu').value], hpRaw=gv(p+'hp')*MULT[$(p+'hpu').value];
+  const hpm=gv(p+'hpm'), dmgm=gv(p+'dmgm'), cd=gv(p+'cd');
+  const fairyHp=$('g-fairy-hp').checked? 15*Math.floor(Math.max(hpm,0)/10):0;
+  const dmgMult=1+(dmgm+fairyHp)/100;            // 공격력 풀 (피해% + 페어리 변환) — 입력 총피해에 이미 포함돼 있으면 피해%·체력%를 0으로
+  const sep=1+gv(p+'sep')/100;                     // 원피/근피 별도 곱연산
+  const red=$('g-fairy-cd').checked? Math.min(14*Math.floor(Math.max(cd,0)/4),70)/100:0;
+  const msb=gv(p+'msb'); const baseMs=gv('g-ms',2);
+  const ms=$(p+'msu').value==='pct'? baseMs*(1+msb/100): baseMs+msb;
+  return {
+    name:p==='me-'?'나':'상대', melee, wu:gv(p+'wu',0.5),
+    dmg:dmgRaw*(melee?1.6:1)*dmgMult*sep, hp:hpRaw*matchMult,
+    asp:gv(p+'asp'), cm:(gv(p+'chipi')+120)/100, crit:Math.min(gv(p+'crit'),100)/100,
+    dbl:Math.min(gv(p+'dbl'),100)/100, ls:gv(p+'ls')/100, block:gv(p+'block')/100, red,
+    rng:(melee?0.3:7.0)+gv(p+'range'), ms, proj:(!melee&&gv(p+'proj')>0)?gv(p+'proj'):0,
   };
-  const wIcon=w=>(w[3].charAt(0)==='s'?'weapon-skin-icons/':'weapon-icons/')+w[3]; // 스킨(skinN.png)은 별도 폴더
-  const WP_DEF='Modern|3'; // 기본: Modern M4 (windup 0.5)
-  function weaponAt(val){var p=String(val||WP_DEF).split('|'),a=WEAPONS[p[0]];return(a&&a[+p[1]])||WEAPONS.Modern[3];}
-  function weaponWindup(val){return weaponAt(val)[1];}
-  // 아이콘 picker: 선택버튼(현재 무기 아이콘) + 팝오버(연대별 아이콘 그리드)
-  function weaponPicker(prefix){
-    var rows='';for(var age in WEAPONS){
-      rows+=`<div style="display:flex;align-items:center;gap:6px;margin:2px 0;"><span style="width:74px;font-size:10px;color:var(--muted);flex-shrink:0;">${age}</span><div style="display:flex;gap:3px;flex-wrap:wrap;">`+
-        WEAPONS[age].map((w,i)=>`<button type="button" class="cs-wp-pick" data-wp="${age}|${i}" title="${w[0]} · ${w[2]==='R'?'원거리':'근접'} · windup ${w[1].toFixed(3)}s" style="width:30px;height:30px;border:1px solid var(--border);border-radius:5px;background:#0d1b2a center/76% no-repeat url('${wIcon(w)}');cursor:pointer;padding:0;"></button>`).join('')+
-        `</div></div>`;
-    }
-    return `<div style="display:flex;align-items:center;gap:6px;margin:5px 0 2px;position:relative;"><label style="flex:1;font-size:12px;">무기(windup)</label>
-      <input type="hidden" id="${prefix}weapon" value="${WP_DEF}">
-      <button type="button" class="cs-wp-trigger" data-prefix="${prefix}" style="display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:6px;background:var(--panel);padding:3px 8px;cursor:pointer;font-size:12px;color:var(--text,#cfe);">
-        <span class="cs-wp-ico" style="width:26px;height:26px;background:#0d1b2a center/76% no-repeat;border-radius:4px;display:inline-block;"></span>
-        <span class="cs-wp-name">—</span> <span style="opacity:.6;">▾</span>
-      </button>
-      <div class="cs-wp-pop" style="display:none;position:absolute;z-index:50;top:100%;right:0;margin-top:4px;background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:8px;box-shadow:0 8px 24px #000a;width:300px;">${rows}</div>
-    </div>`;
-  }
-  function syncWeaponTrigger(prefix){
-    var w=weaponAt(document.getElementById(prefix+'weapon').value),tr=document.querySelector('.cs-wp-trigger[data-prefix="'+prefix+'"]');if(!tr)return;
-    tr.querySelector('.cs-wp-ico').style.backgroundImage="url('"+wIcon(w)+"')";
-    tr.querySelector('.cs-wp-name').textContent=w[0]+' ('+w[1].toFixed(2)+'s)';
-  }
-  function build(c,prefix,defs){ c.innerHTML=FIELDS.map(([k,lbl])=>`<div style="display:flex;align-items:center;gap:6px;margin:3px 0;"><label style="flex:1;font-size:12px;">${lbl}</label><input id="${prefix}${k}" type="number" step="any" value="${defs[k]||''}" style="width:120px;padding:4px;font-size:12px;"></div>`).join('')+weaponPicker(prefix); }
-  const gv=id=>{const e=document.getElementById(id);return e?parseFloat(e.value)||0:0;};
-  const wsel=id=>{const e=document.getElementById(id);return e?e.value:WP_DEF;};
-  function unit(p){var mult=gv(p+'hpmult')||5;return{dmg:gv(p+'dmg'),asp:gv(p+'asp'),cm:(gv(p+'chipi')+120)/100,crit:gv(p+'crit')/100,dbl:gv(p+'dbl')/100,ls:gv(p+'ls')/100,block:gv(p+'block')/100,dodge:0,hp:(gv(p+'hp')*mult)||1,hpmult:mult,wu:weaponWindup(wsel(p+'weapon'))};}
-  function rollDmg(att,tgt,r){if(r()<=tgt.dodge)return 0;if(r()<=tgt.block)return 0;if(r()<att.crit)return att.dmg*att.cm;return att.dmg;}
-  function duel(a,b,r){var U=[a,b],mh=[a.hp,b.hp],hp=[mh[0],mh[1]],st=[0,0],tm=[0,0],du=[false,false],asm=[1+a.asp/100,1+b.asp/100],N=MATCH_TIMER/TICK;
-    for(var t=0;t<N;t++)for(var i=0;i<2;i++){var j=1-i,u=U[i];
-      if(st[i]===0)st[i]=1;
-      else if(st[i]===1){tm[i]+=TICK*asm[i];if(tm[i]>=u.wu){var d=rollDmg(u,U[j],r);hp[j]-=d;if(d>0)hp[i]=Math.min(hp[i]+d*u.ls,mh[i]);st[i]=2;if(!du[i]&&r()<=u.dbl){du[i]=true;st[i]=1;tm[i]=u.wu*(1-1/DBL_SPEEDUP);}}} /* 더블=윈드업 재진입: 2타는 wu/4(정상윈드업 25%) 뒤 발사, du가 이미true라 2타땐 재롤 없음 */
-      else if(st[i]===2){tm[i]+=TICK*asm[i];if(tm[i]>=AD){st[i]=0;tm[i]=0;du[i]=false;}}
-      if(hp[j]<=0)return{w:i,t:t*TICK,ko:true};}
-    var rA=hp[0]/mh[0],rB=hp[1]/mh[1];return{w:rA>rB?0:(rB>rA?1:-1),t:MATCH_TIMER,ko:false,rA:rA,rB:rB};}
-  const avgHit=(a,t)=>(1-t.block)*a.dmg*((1-a.crit)+a.crit*a.cm);
-  const dps=(a,t)=>avgHit(a,t)*(1+a.dbl)/periodSec(a.asp); /* 더블=추가타라 사이클당 평균 (1+더블)회 타격 */
-  const fmt=n=>n.toLocaleString(undefined,{maximumFractionDigits:0});
-  function run(){
-    const me=unit('cs-me-'),foe=unit('cs-foe-'),R=document.getElementById('cs-result');
-    if(me.dmg<=0||foe.dmg<=0||me.hp<=1||foe.hp<=1){R.innerHTML='<p style="color:#ff6b6b;text-align:center;">양쪽 총피해·총체력을 입력하세요.</p>';return;}
-    const T=3000;var w=0,ts=0,dr=0,ko=0,to=0;
-    for(var s=0;s<T;s++){var r=mul32((s*2654435761)>>>0),res=duel(me,foe,r);if(res.ko)ko++;else to++;if(res.w===0){w++;ts+=res.t;}else if(res.w===1)ts+=res.t;else dr++;}
-    const wr=w/T,myD=dps(me,foe),foeD=dps(foe,me),myH=myD*me.ls,foeH=foeD*foe.ls;
-    R.innerHTML=`<div style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--panel);max-width:520px;margin:0 auto;">
-      <div style="font-size:22px;text-align:center;font-weight:bold;margin-bottom:10px;">승률 <span style="color:${wr>=0.5?'#4aff9d':'#ff6b6b'};">${(wr*100).toFixed(1)}%</span>${dr?` <span class="muted" style="font-size:12px;">(무 ${(dr/T*100).toFixed(0)}%)</span>`:''}</div>
-      <table style="width:100%;font-size:13px;border-collapse:collapse;text-align:center;">
-        <tr style="border-bottom:1px solid var(--border);"><th style="text-align:left;"></th><th style="color:#4aa3ff;">나</th><th style="color:#ff6b6b;">상대</th></tr>
-        <tr><td style="text-align:left;">공격 주기</td><td>${periodSec(me.asp).toFixed(1)}초</td><td>${periodSec(foe.asp).toFixed(1)}초</td></tr>
-        <tr><td style="text-align:left;">평타 DPS</td><td>${fmt(myD)}</td><td>${fmt(foeD)}</td></tr>
-        <tr><td style="text-align:left;">초당 회복(흡혈)</td><td>${fmt(myH)}</td><td>${fmt(foeH)}</td></tr>
-        <tr><td style="text-align:left;">무적(상대딜≤내회복)</td><td>${foeD<=myH?'✅':'❌'}</td><td>${myD<=foeH?'✅':'❌'}</td></tr>
-        <tr><td style="text-align:left;">결투장 유효 체력</td><td>${fmt(me.hp)} <span class="muted">(×${me.hpmult})</span></td><td>${fmt(foe.hp)} <span class="muted">(×${foe.hpmult})</span></td></tr>
-      </table>
-      <p class="muted" style="font-size:11px;margin-top:8px;text-align:center;">결투장HP=총체력×배수(1+0.5×펫+0.5×스킬+2×탈것, 풀장착≈6, 둘 중 max) · 매치 ${MATCH_TIMER}초(초과 시 잔여HP% 판정) · KO결판 ${(ko/T*100).toFixed(0)}% / 시간초과 ${(to/T*100).toFixed(0)}% · 평균 ${(ts/T).toFixed(1)}초 · ${T}판</p></div>`;
-  }
-  function parseK(s,u){var n=parseFloat(String(s).replace(',','.'))||0;u=(u||'').toLowerCase();return n*({b:1e9,m:1e6,k:1e3,'억':1e8,'만':1e4,'천':1e3}[u]||1);}
-  const setVal=(prefix,k,v)=>{var e=document.getElementById(prefix+k);if(e)e.value=v;};
-  /* 줄 단위 파서 (1.html 검증 방식): 키워드 직전 숫자만 anchor-매칭, 스탯은 '+' 분리 후 어말 기준.
-     OCR이 라벨 앞부분을 깨도 어말(확률/피해/흡수/찬스/속도)은 살아남는 경우가 많음.
-     prefix='cs-me-' 또는 'cs-foe-' — 나/상대 둘 다 채울 수 있게 대상 일반화. */
-  function ocrFill(text,prefix){
-    prefix=prefix||'cs-foe-';
-    var norm=String(text).replace(/[ \t]+/g,' '),lines=norm.split(/\r?\n/),got={};
-    // 프로필 화면은 각 스탯이 단일 총합 줄 → 첫 매칭만 채택(합산 X).
-    for(var li=0;li<lines.length;li++){
-      var line=lines[li].trim();if(!line)continue;
-      [['dmg',/총\s*피해/],['hp',/총\s*체력/]].forEach(function(p){
-        if(got[p[0]])return;var kw=line.match(p[1]);if(!kw)return;
-        var before=line.slice(0,kw.index),m=before.match(/(\d+(?:[.,]\d+)?)\s*([kmb억만천])?\s*$/i);
-        if(m){setVal(prefix,p[0],parseK(m[1],m[2]));got[p[0]]=1;}
-      });
-      var segs=line.split('+');
-      for(var i=1;i<segs.length;i++){
-        var seg=segs[i].trim(),m=seg.match(/^(\d+(?:[.,]\d+)?)\s*%?\s*(\S.*?)\s*$/);if(!m)continue;
-        var num=parseFloat(m[1].replace(',','.'));if(!isFinite(num))continue;
-        var tail=m[2].replace(/\s+/g,''),key=null;
-        if(/거리피해$/.test(tail))   continue; // 원거리/근거리 피해 = 안 쓰는 옵션
-        if(/확률$/.test(tail))      key=/블록/.test(tail)?'block':'crit';
-        else if(/흡수$/.test(tail)) key='ls';
-        else if(/찬스$/.test(tail)) key='dbl';
-        else if(/속도$/.test(tail)) key='asp';
-        else if(/피해$/.test(tail)&&tail.length>2) key='chipi'; // '치명타 피해'만 치피
-        if(key&&!got[key]){setVal(prefix,key,num);got[key]=1;}
+}
+function makeUnits(){
+  const mm=Math.max(pvpMult('me-'),pvpMult('foe-'));
+  return [buildUnit('me-',mm),buildUnit('foe-',mm)];
+}
+
+// ---------- 엔진 ----------
+const TICK=0.1, AD=1.5, DBLC=4;
+function rng32(seed){let a=seed|0;return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function newState(U,seed){
+  return {U:U.map(u=>Object.assign({},u)), mh:[U[0].hp,U[1].hp], hp:[U[0].hp,U[1].hp],
+    pos:[0,gv('g-spawn',18)], st:[0,0], tm:[0,0], du:[false,false], hits:[0,0], pending:[], t:0, r:rng32(seed),
+    log:[], over:null, R:gv('g-radius',0.35), N:Math.round(gv('g-timer',60)/TICK), gate:$('g-gate').checked, five:$('g-fairy-5').checked};
+}
+function step(S){
+  if(S.over)return;
+  const {U,hp,mh,pos,st,tm,du,hits,r,R}=S; const now=S.t*TICK;
+  // 투사체 착탄
+  const keep=[];
+  for(const p of S.pending){ if(p.lt<=now){hp[p.tg]-=p.d; if(p.d>0)hp[p.src]=Math.min(hp[p.src]+p.d*U[p.src].ls,mh[p.src]); S.log.push({t:now,i:p.src,d:p.d,kind:p.kind,x:pos[p.tg]});} else keep.push(p);}
+  S.pending=keep;
+  let dist=Math.abs(pos[1]-pos[0]);
+  let inr=[dist<U[0].rng+2*R, dist<U[1].rng+2*R];
+  for(let i=0;i<2;i++){ if(!inr[i]){const d=pos[1-i]>pos[i]?1:-1; pos[i]+=d*Math.min(U[i].ms*TICK,Math.max(dist-2*R,0));} }
+  dist=Math.abs(pos[1]-pos[0]); inr=[dist<U[0].rng+2*R, dist<U[1].rng+2*R];
+  const asm=[1+U[0].asp/100,1+U[1].asp/100];
+  for(let i=0;i<2;i++){
+    const j=1-i,u=U[i];
+    if(S.gate&&!inr[i]&&st[i]!==2){st[i]=0;tm[i]=0;continue;}
+    if(st[i]===0)st[i]=1;
+    else if(st[i]===1){
+      tm[i]+=TICK*asm[i];
+      if(tm[i]>=u.wu){
+        hits[i]++; const five=(S.five&&hits[i]%5===0)?3.2:1;
+        let d,kind='hit';
+        if(r()<=U[j].block){d=0;kind='block';}
+        else if(r()<u.crit){d=u.dmg*(1+(u.cm-1)*(1-U[j].red))*five;kind='crit';}
+        else d=u.dmg*five;
+        if(five>1)kind+='5';
+        if(u.proj>0){S.pending.push({lt:now+dist/u.proj,tg:j,d,src:i,kind,x0:pos[i]});}
+        else{hp[j]-=d; if(d>0)hp[i]=Math.min(hp[i]+d*u.ls,mh[i]); S.log.push({t:now,i,d,kind,x:pos[j]});}
+        st[i]=2;
+        if(!du[i]&&r()<=u.dbl){du[i]=true;st[i]=1;tm[i]=u.wu*(1-1/DBLC);}
       }
+    }else{ tm[i]+=TICK*asm[i]; if(tm[i]>=AD){st[i]=0;tm[i]=0;du[i]=false;} }
+    if(hp[j]<=0){S.over={w:i,ko:true,t:now};return;}
+    if(hp[i]<=0){S.over={w:j,ko:true,t:now};return;}
+  }
+  S.t++;
+  if(S.t>=S.N){const a=hp[0]/mh[0],b=hp[1]/mh[1];S.over={w:a>b?0:(b>a?1:-1),ko:false,t:now};}
+}
+function duel(U,seed){const S=newState(U,seed);while(!S.over)step(S);return S.over;}
+
+// ---------- 애니메이션 ----------
+const cv=$('arena'),ctx=cv.getContext('2d');
+let S=null,playing=false,acc=0,last=0;
+function fit(){const w=cv.clientWidth;if(cv.width!==w*devicePixelRatio){cv.width=w*devicePixelRatio;cv.height=260*devicePixelRatio;}}
+function fmtN(n){const a=Math.abs(n);if(a>=1e12)return (n/1e12).toFixed(2)+'t';if(a>=1e9)return (n/1e9).toFixed(2)+'b';if(a>=1e6)return (n/1e6).toFixed(2)+'m';if(a>=1e3)return (n/1e3).toFixed(1)+'k';return n.toFixed(0);}
+function draw(){
+  fit(); const W=cv.width,H=cv.height,s=devicePixelRatio; ctx.clearRect(0,0,W,H);
+  if(!S)return;
+  const span=Math.max(gv('g-spawn',18),2), pad=40*s, trackY=H*0.62, X=x=>pad+(x/span)*(W-2*pad);
+  ctx.strokeStyle='#2a3140';ctx.lineWidth=2*s;ctx.beginPath();ctx.moveTo(pad,trackY);ctx.lineTo(W-pad,trackY);ctx.stroke();
+  ctx.fillStyle='#8b96a8';ctx.font=`${11*s}px sans-serif`;ctx.textAlign='center';
+  for(let k=0;k<=span;k+=Math.ceil(span/9)){ctx.fillText(k,X(k),trackY+16*s);}
+  const col=['#4aa3ff','#ff6b6b'],R=S.R;
+  for(let i=0;i<2;i++){
+    const u=S.U[i],x=X(S.pos[i]);
+    // 사거리 원
+    ctx.strokeStyle=col[i]+'55';ctx.lineWidth=1*s;ctx.beginPath();ctx.arc(x,trackY,(u.rng+R)/span*(W-2*pad),0,Math.PI*2);ctx.stroke();
+    // 유닛
+    const stc=['#8b96a8','#f5b942','#4aff9d'][S.st[i]];
+    ctx.fillStyle=col[i];ctx.beginPath();ctx.arc(x,trackY,Math.max(R/span*(W-2*pad),7*s),0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=stc;ctx.lineWidth=3*s;ctx.stroke();
+    // HP바
+    const bw=120*s,bh=10*s,bx=i===0?pad:W-pad-bw,by=14*s;
+    ctx.fillStyle='#222a38';ctx.fillRect(bx,by,bw,bh);ctx.fillStyle=col[i];ctx.fillRect(bx,by,bw*Math.max(S.hp[i]/S.mh[i],0),bh);
+    ctx.fillStyle='#e6ebf2';ctx.textAlign=i===0?'left':'right';ctx.fillText(`${u.name} ${fmtN(Math.max(S.hp[i],0))} / ${fmtN(S.mh[i])}  ${['대기','윈드업','쿨다운'][S.st[i]]}${S.du[i]?' 더블':''}`,i===0?bx:bx+bw,by+bh+13*s);
+  }
+  // 투사체
+  for(const p of S.pending){const u=S.U[p.src];const frac=Math.min(1,Math.max(0,1-(p.lt-S.t*TICK)/((Math.abs(S.pos[p.tg]-p.x0))/u.proj||1)));const x=X(p.x0+(S.pos[p.tg]-p.x0)*frac);ctx.fillStyle='#f5b942';ctx.beginPath();ctx.arc(x,trackY-18*s,3*s,0,Math.PI*2);ctx.fill();}
+  // 피해 팝업 (최근 1.2초)
+  const now=S.t*TICK;ctx.textAlign='center';
+  for(const l of S.log.slice(-30)){const age=now-l.t;if(age>1.2)continue;const x=X(l.x),y=trackY-30*s-age*40*s;ctx.globalAlpha=1-age/1.2;ctx.fillStyle=l.kind.startsWith('crit')?'#ffd166':l.kind==='block'?'#8b96a8':col[l.i];ctx.font=`${(l.kind.includes('5')?14:11)*s}px sans-serif`;ctx.fillText((l.kind==='block'?'블록':fmtN(l.d))+(l.kind.startsWith('crit')?' 크리':'')+(l.kind.includes('5')?' ×3.2':''),x,y);ctx.globalAlpha=1;}
+  $('clock').textContent=`t = ${(S.t*TICK).toFixed(1)}s`+(S.over?(S.over.w<0?' · 무승부':` · ${S.U[S.over.w].name} 승 (${S.over.ko?'KO':'시간종료'})`):'');
+  const d=Math.abs(S.pos[1]-S.pos[0]);
+  $('live').innerHTML=`<span>거리 <b>${d.toFixed(2)}</b></span><span class="me-c">나 사거리 ${S.U[0].rng.toFixed(2)} / 이속 ${S.U[0].ms.toFixed(2)} / 평타 ${fmtN(S.U[0].dmg)}</span><span class="foe-c">상대 사거리 ${S.U[1].rng.toFixed(2)} / 이속 ${S.U[1].ms.toFixed(2)} / 평타 ${fmtN(S.U[1].dmg)}</span>`;
+}
+function reset(){S=newState(makeUnits(),gv('seed',1)|0);playing=false;$('b-play').textContent='▶ 재생';draw();}
+function loop(ts){
+  if(playing&&S&&!S.over){const sp=parseFloat($('speed').value);acc+=(ts-last)/1000*sp;while(acc>=TICK&&!S.over){step(S);acc-=TICK;}}
+  if(S&&S.over&&playing){playing=false;$('b-play').textContent='▶ 재생';}
+  last=ts;draw();requestAnimationFrame(loop);
+}
+$('b-play').onclick=()=>{if(!S||S.over)reset();playing=!playing;$('b-play').textContent=playing?'⏸ 일시정지':'▶ 재생';};
+$('b-step').onclick=()=>{if(!S)reset();step(S);draw();};
+$('b-reset').onclick=reset;
+document.addEventListener('change',e=>{if(e.target.closest('.panel'))reset();});
+reset();requestAnimationFrame(ts=>{last=ts;loop(ts);});
+
+// ---------- 승률 ----------
+$('b-batch').onclick=()=>{
+  const U=makeUnits(),n=Math.max(1,gv('n-trials',1000)|0);let w=0,ko=0,ts=0,dr=0;
+  for(let s=0;s<n;s++){const o=duel(U,s);if(o.w===0)w++;else if(o.w<0)dr++;if(o.ko)ko++;ts+=o.t;}
+  $('batch-out').innerHTML=`<span>나 승률 <b class="me-c">${(w/n*100).toFixed(1)}%</b></span><span>상대 <b class="foe-c">${((n-w-dr)/n*100).toFixed(1)}%</b></span><span>무승부 ${(dr/n*100).toFixed(1)}%</span><span>KO ${(ko/n*100).toFixed(0)}%</span><span>평균 ${(ts/n).toFixed(1)}s</span>`;
+  $('batch-st').textContent=`${n}판 완료`;
+};
+$('b-sweep').onclick=()=>{
+  const base=makeUnits(),n=Math.min(400,Math.max(50,(gv('n-trials',1000)|0)/4|0));
+  const ks=[0.25,0.35,0.5,0.7,1,1.4,2,2.8,4,5.6,8],res=[];
+  for(const k of ks){const U=base.map(u=>Object.assign({},u,{hp:u.hp*k}));let w=0;for(let s=0;s<n;s++)if(duel(U,s).w===0)w++;res.push(w/n);}
+  const c=$('sweep');c.style.display='block';const g=c.getContext('2d');fit();c.width=c.clientWidth*devicePixelRatio;c.height=200*devicePixelRatio;const s=devicePixelRatio,W=c.width,H=c.height,p=36*s;
+  g.clearRect(0,0,W,H);g.strokeStyle='#2a3140';g.beginPath();g.moveTo(p,H-p);g.lineTo(W-p,H-p);g.moveTo(p,p/2);g.lineTo(p,H-p);g.stroke();
+  g.fillStyle='#8b96a8';g.font=`${11*s}px sans-serif`;g.textAlign='center';
+  ks.forEach((k,i)=>{const x=p+i/(ks.length-1)*(W-2*p);g.fillText('×'+k,x,H-p+14*s);});
+  g.textAlign='right';[0,50,100].forEach(v=>{g.fillText(v+'%',p-4*s,H-p-(v/100)*(H-1.5*p)+4*s);});
+  g.strokeStyle='#4aa3ff';g.lineWidth=2*s;g.beginPath();res.forEach((v,i)=>{const x=p+i/(ks.length-1)*(W-2*p),y=H-p-v*(H-1.5*p);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+  g.fillStyle='#e6ebf2';g.textAlign='left';g.fillText('양쪽 체력 ×배율에 따른 나의 승률 (장기전일수록 오른쪽)',p+6*s,p/2+4*s);
+  $('batch-st').textContent='스윕 완료 ('+n+'판/점) · '+res.map((v,i)=>'×'+ks[i]+':'+Math.round(v*100)+'%').join(' ');
+};
+
+// ---------- OCR ----------
+function parseK(numStr,unit){
+  const v=parseFloat(String(numStr).replace(',','.'));if(!isFinite(v))return null;
+  const u=(unit||'').toLowerCase();const m={k:1e3,m:1e6,b:1e9,t:1e12,'천':1e3,'만':1e4,'억':1e8}[u]||1;return v*m;
+}
+function setBig(p,key,val){
+  let u='1';if(val>=1e12)u='t';else if(val>=1e9)u='b';else if(val>=1e6)u='m';else if(val>=1e3)u='k';
+  $(p+key).value=+(val/MULT[u]).toFixed(3);$(p+key+'u').value=u;
+}
+function ocrFill(text,p){
+  const lines=String(text).replace(/[ \t]+/g,' ').split(/\r?\n/),got={};
+  for(let line of lines){
+    line=line.trim();if(!line)continue;
+    [['dmg',/총\s*피해|총\s*공격력/],['hp',/총\s*체력/]].forEach(q=>{
+      if(got[q[0]])return;const kw=line.match(q[1]);if(!kw)return;
+      const before=line.slice(0,kw.index),after=line.slice(kw.index+kw[0].length);
+      let m=before.match(/(\d+(?:[.,]\d+)?)\s*([kmbt억만천])?\s*$/i)||after.match(/^\s*[:：]?\s*(\d+(?:[.,]\d+)?)\s*([kmbt억만천])?/i);
+      if(m){const v=parseK(m[1],m[2]);if(v){setBig(p,q[0],v);got[q[0]]=1;}}
+    });
+    const segs=line.split('+');
+    for(let i=1;i<segs.length;i++){
+      const m=segs[i].trim().match(/^(\d+(?:[.,]\d+)?)\s*%?\s*(\S.*?)\s*$/);if(!m)continue;
+      const num=parseFloat(m[1].replace(',','.'));if(!isFinite(num))continue;
+      const tail=m[2].replace(/\s+/g,'');let key=null;
+      if(/(원거리|근접|근거리)피해/.test(tail)) key='sep';
+      else if(/스킬.*(쿨|재사용)/.test(tail)) key='cd';
+      else if(/스킬피해/.test(tail)) key=null;
+      else if(/블록/.test(tail)) key='block';
+      else if(/확률$/.test(tail)) key='crit';
+      else if(/흡수$/.test(tail)) key='ls';
+      else if(/찬스$/.test(tail)||/더블/.test(tail)) key='dbl';
+      else if(/공격속도|속도$/.test(tail)&&!/이동/.test(tail)) key='asp';
+      else if(/이동속도/.test(tail)) key='msb';
+      else if(/사거리|공격범위|범위/.test(tail)) key='range';
+      else if(/^체력/.test(tail)) key='hpm';
+      else if(/치명타피해|치명피해/.test(tail)) key='chipi';
+      else if(/^피해$|^공격력$/.test(tail)) key='dmgm';
+      if(key&&!got[key]){$(p+key).value=num;got[key]=1;}
     }
   }
-  function init(){
-    var mc=document.getElementById('cs-me-fields'),fc=document.getElementById('cs-foe-fields');if(!mc||!fc)return;
-    build(mc,'cs-me-',ME_DEF);build(fc,'cs-foe-',FOE_DEF);
-    syncWeaponTrigger('cs-me-');syncWeaponTrigger('cs-foe-');
-    // 무기 아이콘 picker 상호작용
-    document.addEventListener('click',function(e){
-      var tr=e.target.closest('.cs-wp-trigger');
-      if(tr){var pop=tr.parentNode.querySelector('.cs-wp-pop');var open=pop.style.display!=='none';
-        document.querySelectorAll('.cs-wp-pop').forEach(function(p){p.style.display='none';});
-        pop.style.display=open?'none':'block';e.stopPropagation();return;}
-      var pk=e.target.closest('.cs-wp-pick');
-      if(pk){var pop=pk.closest('.cs-wp-pop'),trg=pop.parentNode.querySelector('.cs-wp-trigger'),prefix=trg.getAttribute('data-prefix');
-        document.getElementById(prefix+'weapon').value=pk.getAttribute('data-wp');syncWeaponTrigger(prefix);pop.style.display='none';e.stopPropagation();return;}
-      document.querySelectorAll('.cs-wp-pop').forEach(function(p){p.style.display='none';}); // 바깥 클릭 닫기
-    });
-    document.getElementById('cs-run').addEventListener('click',run);
-    document.getElementById('cs-ocr-raw').addEventListener('change',e=>ocrFill(e.target.value,'cs-foe-'));
-    var rawMe=document.getElementById('cs-ocr-raw-me');if(rawMe)rawMe.addEventListener('change',e=>ocrFill(e.target.value,'cs-me-'));
-    // 캐시 워커 (1.html 검증 방식): createWorker로 1회 초기화 후 worker.recognize(file).
-    // 일회용 Tesseract.recognize(file)은 CDN 빌드에서 "File could not be read! Code=0" 발생 → 워커 방식이 안정적.
-    var _worker=null,_logger=null;
-    function getWorker(){
-      if(_worker)return _worker;
-      _worker=Tesseract.createWorker('kor+eng',1,{logger:function(m){if(_logger)_logger(m);}}).catch(function(e){_worker=null;throw e;});
-      return _worker;
-    }
-    // File을 워커에 직접 넘기면 "File could not be read! Code=0"(워커가 파일 못 읽는 환경) 발생.
-    // → 메인스레드에서 브라우저 네이티브 디코더(createImageBitmap)로 캔버스에 그린 뒤 캔버스를 인식시켜 파일읽기 경로를 우회.
-    function toCanvas(f){
-      if(typeof createImageBitmap==='function'){
-        return createImageBitmap(f).then(function(bmp){
-          var cv=document.createElement('canvas');cv.width=bmp.width;cv.height=bmp.height;
-          cv.getContext('2d').drawImage(bmp,0,0);bmp.close&&bmp.close();return cv;});
-      }
-      return new Promise(function(res,rej){
-        var u=URL.createObjectURL(f),img=new Image();
-        img.onload=function(){try{var cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;cv.getContext('2d').drawImage(img,0,0);URL.revokeObjectURL(u);res(cv);}catch(e){rej(e);}};
-        img.onerror=function(){URL.revokeObjectURL(u);rej(new Error('이미지 디코드 실패(HEIC?) — PNG/JPG로 캡쳐'));};
-        img.src=u;});
-    }
-    function ocrImage(f,st,prefix,rawId){
-      prefix=prefix||'cs-foe-';rawId=rawId||'cs-ocr-raw';
-      if(typeof Tesseract==='undefined'){st.textContent='Tesseract 로드 실패(인터넷 확인) — 수동 입력';return;}
-      st.textContent='📷 이미지 분석 중… (첫 실행은 언어데이터 다운로드로 수십초)';
-      _logger=function(m){if(m&&m.status==='recognizing text'&&typeof m.progress==='number')st.textContent='📷 인식 중 '+Math.round(m.progress*100)+'%';else if(m&&m.status)st.textContent='📷 '+m.status+'…';};
-      Promise.all([getWorker(),toCanvas(f)]).then(function(a){return a[0].recognize(a[1]);})
-        .then(function(res){var t=(res.data&&res.data.text)||'';var rb=document.getElementById(rawId);if(rb)rb.value=t;ocrFill(t,prefix);st.textContent='완료 ✓ (값 확인·수정)';})
-        .catch(function(err){st.textContent='OCR 실패: '+(err&&err.message||err)+' — raw칸/입력칸에 직접 입력하세요';})
-        .then(function(){_logger=null;},function(){_logger=null;});
-    }
-    var fi=document.getElementById('cs-ocr-file');
-    fi.addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];if(f)ocrImage(f,document.getElementById('cs-ocr-status'),'cs-foe-','cs-ocr-raw');});
-    var fiMe=document.getElementById('cs-ocr-file-me');
-    if(fiMe)fiMe.addEventListener('change',function(e){var f=e.target.files&&e.target.files[0];if(f)ocrImage(f,document.getElementById('cs-ocr-status-me'),'cs-me-','cs-ocr-raw-me');});
-    // 붙여넣기: 마지막으로 포커스/클릭한 OCR 입력 쪽으로. 기본은 상대. me 파일칸을 만진 직후엔 me로.
-    var pasteTarget={st:'cs-ocr-status',pre:'cs-foe-',raw:'cs-ocr-raw'};
-    fi.addEventListener('focus',function(){pasteTarget={st:'cs-ocr-status',pre:'cs-foe-',raw:'cs-ocr-raw'};});
-    if(fiMe)fiMe.addEventListener('focus',function(){pasteTarget={st:'cs-ocr-status-me',pre:'cs-me-',raw:'cs-ocr-raw-me'};});
-    document.addEventListener('paste',function(e){
-      var p=document.getElementById('panel-combatsim');if(!p||p.className.indexOf('active')<0)return;
-      var items=(e.clipboardData||{}).items||[];
-      for(var i=0;i<items.length;i++){if(items[i].type.indexOf('image')===0){var f=items[i].getAsFile();if(f)ocrImage(f,document.getElementById(pasteTarget.st),pasteTarget.pre,pasteTarget.raw);break;}}
-    });
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+  reset();
+}
+let _worker=null,_logger=null;
+function getWorker(){if(_worker)return _worker;_worker=Tesseract.createWorker('kor+eng',1,{logger:m=>{if(_logger)_logger(m);}}).catch(e=>{_worker=null;throw e;});return _worker;}
+function toCanvas(f){
+  if(typeof createImageBitmap==='function')return createImageBitmap(f).then(b=>{const c=document.createElement('canvas');c.width=b.width;c.height=b.height;c.getContext('2d').drawImage(b,0,0);b.close&&b.close();return c;});
+  return new Promise((res,rej)=>{const u=URL.createObjectURL(f),img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;c.getContext('2d').drawImage(img,0,0);URL.revokeObjectURL(u);res(c);};img.onerror=()=>rej(new Error('이미지 디코드 실패 — PNG/JPG로 캡쳐'));img.src=u;});
+}
+function ocrImage(f,p){
+  const st=$(p+'st');
+  if(typeof Tesseract==='undefined'){st.textContent='Tesseract 로드 실패(인터넷 확인) — 수동 입력';return;}
+  st.textContent='📷 이미지 분석 중… (첫 실행은 언어데이터 다운로드로 수십초)';
+  _logger=m=>{if(m&&m.status==='recognizing text'&&typeof m.progress==='number')st.textContent='📷 인식 중 '+Math.round(m.progress*100)+'%';};
+  Promise.all([getWorker(),toCanvas(f)]).then(a=>a[0].recognize(a[1]))
+    .then(res=>{const t=(res.data&&res.data.text)||'';$(p+'raw').value=t;ocrFill(t,p);st.textContent='완료 ✓ (값 확인·수정)';})
+    .catch(err=>{st.textContent='OCR 실패: '+(err&&err.message||err);})
+    .then(()=>{_logger=null;},()=>{_logger=null;});
+}
+let pasteTarget='foe-';
+for(const p of ['me-','foe-']){
+  $(p+'file').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(f){pasteTarget=p;ocrImage(f,p);}});
+  $(p+'raw').addEventListener('change',e=>ocrFill(e.target.value,p));
+  $(p+'paste').addEventListener('click',async()=>{pasteTarget=p;try{const items=await navigator.clipboard.read();for(const it of items){const ty=it.types.find(t=>t.startsWith('image/'));if(ty){ocrImage(await it.getType(ty),p);return;}}$(p+'st').textContent='클립보드에 이미지가 없습니다';}catch(e){$(p+'st').textContent='클립보드 접근 불가 — Ctrl+V로 붙여넣으세요';}});
+  document.querySelector('.panel.'+(p==='me-'?'me':'foe')).addEventListener('click',()=>{pasteTarget=p;});
+}
+document.addEventListener('paste',e=>{const pnl=document.getElementById('panel-combatsim');if(!pnl||!pnl.classList.contains('active'))return;const its=e.clipboardData&&e.clipboardData.items;if(!its)return;for(const it of its){if(it.type.startsWith('image/')){ocrImage(it.getAsFile(),pasteTarget);e.preventDefault();return;}}});
+// 탭이 숨겨진 상태에서는 clientWidth=0이라 활성화 시점에 다시 맞춘다
+window.__combatsimRefit=function(){fit();draw();};
 })();
 </script>
 </body>
