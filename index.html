@@ -1013,7 +1013,7 @@ tbody tr:last-child td{border-bottom:0}
                         <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">평균 완성도(%):</span>
                         <input type="number" id="forge-min-perf" min="0" max="100" step="1" placeholder="0" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;" title="옵션 완성도 평균이 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
-                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="확정 표준 설정 일괄 적용: 포함 7종(치피·더블·생흡·공속·공격력·원피·스킬피해)+AND, 최소값(70/15/15/35/13/13/20), 평균 완성도 85, 공속 조건 152.5, 윈드업 0.32 · 치확은 스킬피해 변환(15%당 +20%)으로 상한 80%에 도달하므로 조건에서 제외">🎯 표준 설정</button>
+                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="5타 빌드 표준 일괄 적용: 고정 조건의 무기 타입(원거리/근접)에 따라 포함 4종(공속·생흡·더블·원피 또는 근피)+AND, 최소값(35/15/15/13), 완성도 85, 줄 수 조건 공속6·생흡4·피해6, 공속 합 조건 해제, 윈드업 0.32(원거리)/0.667(근접), 최적 옵션 구성도 같은 4종으로 맞춤">🎯 표준 설정 (5타 · 무기 타입 따름)</button>
                     <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
@@ -18936,13 +18936,15 @@ function initFilters() {
   const stdBtn = $('#forge-filter-standard');
   if (stdBtn) {
     stdBtn.addEventListener('click', () => {
-      // 치확 상한 80% 체제: 스킬피해(15%당 치확 +20%)만으로 상한에 닿아서 치확 줄은 조건에서 제외 —
-      // 치확 최소를 걸면 스킬피해+치피 같은 상위 조합이 AND에서 통째로 잘려나간다.
-      const MINS = {
-        'Critical Damage': 70, 'Double Chance': 15,
-        'Life Steal': 15, 'Attack Speed': 35, 'Damage': 13, 'Ranged Damage': 13,
-        'Skill Damage': 20  // 15%당 치확 +20% 변환 — 한 줄로 1단계를 넘기고 남는 값이 다음 단계에 보태지는 선
-      };
+      // 표준 = 5타 빌드 (공속 6줄 · 생흡 4줄 · 더블 3줄 · 피해 11줄, 체력 0줄).
+      // 무기 타입(고정 조건의 선택)에 따라 피해 줄이 원피(원거리) 또는 근피(근접)가 된다.
+      // 장비 16줄 코어는 공속 6 · 생흡 4 · 피해 6, 더블 3줄과 나머지 피해는 펫에서 채운다.
+      // 치확·치피·스킬피해·체력은 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
+      const wpEl = $('#cons-weapon');
+      const melee = !!(wpEl && wpEl.value === 'melee');
+      const DMG = melee ? 'Melee Damage' : 'Ranged Damage';
+      const MINS = { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, [DMG]: 13 };
+      const LINE_MINS = { 'Attack Speed': 6, 'Life Steal': 4, [DMG]: 6 };
       const grid = $('#forge-filter-grid');
       if (grid) {
         grid.querySelectorAll('.filter-inc').forEach(cb => { cb.checked = cb.dataset.stat in MINS; });
@@ -18956,14 +18958,23 @@ function initFilters() {
       const tierEl = $('#forge-min-tier'); if (tierEl) tierEl.value = '0';
       const totalEl = $('#forge-min-total'); if (totalEl) totalEl.value = '';
       const perfEl = $('#forge-min-perf'); if (perfEl) perfEl.value = '85';
-      $$('.forge-exc-type').forEach(cb => { cb.checked = false; });
-      const sumMinEl = $('#cons-sum-min'); if (sumMinEl) { sumMinEl.value = '152.5'; sumMinEl.dispatchEvent(new Event('change')); }
-      const wuEl = $('#cons-windup'); if (wuEl) { wuEl.value = '0.32'; wuEl.dispatchEvent(new Event('change')); }
+      $$('.forge-exc-type').forEach(cb => { cb.checked = cb.value === (melee ? 'Ranged Weapon' : 'Melee Weapon'); });
+      // 최적 옵션 구성(DPS 목적함수에 들어가는 스탯)도 같은 네 스탯으로 맞춘다 — 안 맞추면 피해 줄이 DPS 계산에서 빠진다
+      const optHost = $('#optimal-stats-host');
+      if (optHost) {
+        optHost.querySelectorAll('.optimal-stat-cb').forEach(cb => { cb.checked = cb.value in MINS; });
+        state.optimalStats = Object.keys(MINS);
+      }
+      // 고정 조건: 줄 수 조건으로 코어를 강제, 공속 합 조건은 해제, 윈드업은 무기 타입 기본값
+      $$('.cons-line-min-input').forEach(inp => { inp.value = LINE_MINS[inp.dataset.stat] || 0; });
+      $$('.cons-line-max-input').forEach(inp => { inp.value = 0; });
+      const sumMinEl = $('#cons-sum-min'); if (sumMinEl) sumMinEl.value = '0';
+      const wuEl = $('#cons-windup'); if (wuEl) { wuEl.value = melee ? '0.667' : '0.32'; wuEl.dispatchEvent(new Event('change')); }
       saveFilterSettings();
       applyFilterAndRender('Forge');
       refreshSwapPlanIfShown(); // 표준 필터로 좁힌 풀로 교체 플랜도 즉시 재계산
-      stdBtn.textContent = '✅ 적용됨';
-      setTimeout(() => { stdBtn.textContent = '🎯 표준 설정'; }, 1500);
+      stdBtn.textContent = melee ? '✅ 적용됨 (5타 근접)' : '✅ 적용됨 (5타 원거리)';
+      setTimeout(() => { stdBtn.textContent = '🎯 표준 설정 (5타 · 무기 타입 따름)'; }, 2000);
     });
   }
 }
@@ -19146,7 +19157,7 @@ function dpsIndexOf(D, wu) {
   const avg = (1 - c) + c * (D.chipi + 120) / 100;
   const tn = swapCycleTicks(D.asp, wu, false);
   const td = swapCycleTicks(D.asp, wu, true);
-  // 원거리 피해(rng)는 GeneralCompounding 레이어 — 공격력과 별도 곱연산 풀 (원거리 무기 전제)
+  // rng = 무기 타입에 맞는 피해(원거리면 원피, 근접이면 근피) — GeneralCompounding 레이어, 공격력과 별도 곱연산 풀
   return (1 + D.dmg / 100) * (1 + (D.rng || 0) / 100) * avg * (1 + p) / (((1 - p) * tn + p * td) * 0.1);
 }
 
@@ -19279,6 +19290,7 @@ const SWAP_CONSTRAINT_DEFAULTS = {
   lineMaxs: {},                              // 고정 1: 옵션별 최대 줄 수 — {스탯명: 최대줄수}. 초과분은 부족량과 동일하게 페널티로 최소화
   sumStat: 'Attack Speed', sumMin: 152.5,    // 고정 2: 이 스탯 값 합 최소 % — 152 = wu 0.32(기본무기) 더블 8틱 경계 + 마진 0.5
   windup: 0.32,                              // 기본 무기 윈드업(초) — DPS 지수의 더블 딜레이 계산에 사용
+  weapon: 'ranged',                          // 무기 타입: 'ranged'(원거리 — 원피가 곱연산 풀, 근접 무기 후보 제외) / 'melee'(근접 — 근피가 곱연산 풀, 원거리 무기 후보 제외)
   otherDmg: 0                                // 장비 메인스탯 외 기타 피해 — 0이면 총피해 ≈ 장비 ⚔️합 가정(후반 정확)
 };
 
@@ -19327,7 +19339,7 @@ function statFeatures(stats, cons, optSet, lineStats) {
     else if (s.name === 'Double Chance') D.dbl += s.value;
     else if (s.name === 'Attack Speed') D.asp += s.value;
     else if (s.name === 'Damage') D.dmg += s.value;
-    else if (s.name === 'Ranged Damage') D.rng += s.value;
+    else if (s.name === (cons.weapon === 'melee' ? 'Melee Damage' : 'Ranged Damage')) D.rng += s.value; // 무기 타입에 맞는 피해(원피/근피)만 곱연산 풀
     else if (s.name === 'Skill Damage') D.skl += s.value;
   }
   return { Lc, A, M, D };
@@ -19425,7 +19437,7 @@ function initOptimalStatsUI() {
     consHost.innerHTML = `
       <div style="${rowStyle}">📌 고정 조건 1: 옵션별 최소/최대 줄 수 <span style="font-size:11px;">(세트 전체, 펫/탈것 포함 · 0 = 제한 없음)</span><div style="width:100%; display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">${lineMinsHtml}</div></div>
       <div style="${rowStyle}">📌 고정 조건 2: ${statSelectHtml('cons-sum-stat', cons.sumStat)} 합 ≥ <input type="number" id="cons-sum-min" min="0" step="1" value="${cons.sumMin}" style="width:60px; font-size:11px; padding:3px 6px; height:auto;"> % <span style="font-size:11px;">(공속 152 = 기본무기(0.32) 더블 8틱 경계 · 0.77 무기까지 커버하려면 156.7)</span></div>
-      <div style="${rowStyle}">⚔️ 무기 윈드업: <input type="number" id="cons-windup" min="0.1" max="1.5" step="0.001" value="${cons.windup || 0.32}" style="width:65px; font-size:11px; padding:3px 6px; height:auto;"> 초 · 기타 피해(장비 외): <input type="number" id="cons-other-dmg" min="0" step="1" value="${cons.otherDmg || 0}" style="width:90px; font-size:11px; padding:3px 6px; height:auto;"> <button id="cons-other-dmg-auto" style="background:#16a085; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; padding:3px 8px;" title="덤프의 펫·탈것·패시브스킬·승천·기술트리로 장비 외 가산 피해를 자동 계산합니다.">🔄 덤프에서 자동계산</button> <span style="font-size:11px;">(DPS=(기타피해+장비⚔️합)×배율지수로 메인스탯까지 반영. 0이면 서브스탯 배율지수만 사용)</span><div id="other-dmg-detail" style="font-size:11px; margin-top:4px;"></div></div>`;
+      <div style="${rowStyle}">⚔️ 무기 타입: <select id="cons-weapon" style="font-size:11px; padding:3px 6px; height:auto;"><option value="ranged" ${cons.weapon !== 'melee' ? 'selected' : ''}>원거리 (원피 곱연산 · 근접 무기 후보 제외)</option><option value="melee" ${cons.weapon === 'melee' ? 'selected' : ''}>근접 (근피 곱연산 · 원거리 무기 후보 제외)</option></select> · 윈드업: <input type="number" id="cons-windup" min="0.1" max="1.5" step="0.001" value="${cons.windup || 0.32}" style="width:65px; font-size:11px; padding:3px 6px; height:auto;"> 초 · 기타 피해(장비 외): <input type="number" id="cons-other-dmg" min="0" step="1" value="${cons.otherDmg || 0}" style="width:90px; font-size:11px; padding:3px 6px; height:auto;"> <button id="cons-other-dmg-auto" style="background:#16a085; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; padding:3px 8px;" title="덤프의 펫·탈것·패시브스킬·승천·기술트리로 장비 외 가산 피해를 자동 계산합니다.">🔄 덤프에서 자동계산</button> <span style="font-size:11px;">(DPS=(기타피해+장비⚔️합)×배율지수로 메인스탯까지 반영. 0이면 서브스탯 배율지수만 사용)</span><div id="other-dmg-detail" style="font-size:11px; margin-top:4px;"></div></div>`;
     const saveCons = () => {
       const lineMins = {};
       consHost.querySelectorAll('.cons-line-min-input').forEach(inp => {
@@ -19442,13 +19454,14 @@ function initOptimalStatsUI() {
         sumStat: $('#cons-sum-stat').value,
         sumMin: Math.max(0, parseFloat($('#cons-sum-min').value) || 0),
         windup: Math.max(0.1, parseFloat($('#cons-windup').value) || 0.32),
+        weapon: ($('#cons-weapon') && $('#cons-weapon').value === 'melee') ? 'melee' : 'ranged',
         otherDmg: Math.max(0, parseFloat($('#cons-other-dmg').value) || 0)
       };
       persist();
       refreshSwapPlanIfShown();
     };
     consHost.querySelectorAll('.cons-line-min-input, .cons-line-max-input').forEach(el => el.addEventListener('change', saveCons));
-    ['cons-sum-stat', 'cons-sum-min', 'cons-windup', 'cons-other-dmg'].forEach(id => {
+    ['cons-sum-stat', 'cons-sum-min', 'cons-windup', 'cons-other-dmg', 'cons-weapon'].forEach(id => {
       const el = $('#' + id);
       if (el) el.addEventListener('change', saveCons);
     });
@@ -19508,7 +19521,8 @@ function renderSwapRecommend() {
 
   // 대장간 결과 필터 통과분만 후보로 사용, 근거리 무기는 후보에서 제외
   const filterConfig = readFilters('Forge');
-  const pool = history.filter(item => item.Type !== 'Melee Weapon' && filterItem(item, filterConfig, 'Forge'));
+  const excludedWeapon = cons.weapon === 'melee' ? 'Ranged Weapon' : 'Melee Weapon';
+  const pool = history.filter(item => item.Type !== excludedWeapon && filterItem(item, filterConfig, 'Forge'));
 
   // 플랜 표기용 남은망치 (현재 망치 수 입력 시 n번째 대신 표기)
   annotateForgeHammers(history);
@@ -19551,7 +19565,7 @@ function renderSwapRecommend() {
   for (let t = 0; t < 8; t++) {
     const cur = equippedByType[t];
     const curF = statFeatures(cur ? cur.stats : [], cons, optSet, lineStats);
-    curF.md = cur ? mdOf(cur.age, TYPE_JSON_ORDER[t], cur.idx, cur.level, true) : 0; // 현 무기는 원거리 가정
+    curF.md = cur ? mdOf(cur.age, TYPE_JSON_ORDER[t], cur.idx, cur.level, cons.weapon !== 'melee') : 0; // 현 무기는 설정한 무기 타입으로 가정
     const opts = [{ cost: 0, f: curF, r: null }];
     const cands = (candidatesByType[t] || []).map(r => {
       const f = statFeatures(r.DetailedStats, cons, optSet, lineStats);
@@ -19847,7 +19861,7 @@ function renderSwapRecommend() {
 
   out.innerHTML = `
     <div class="card" style="margin:12px 0; padding:12px;">
-      <div style="font-weight:bold; color:#e67e22; margin-bottom:4px;">🔁 교체 플랜 — 고정 조건 + 전투시뮬 DPS 최적화 (근거리 무기 제외, 최대 ${nLimit}개 교체)</div>
+      <div style="font-weight:bold; color:#e67e22; margin-bottom:4px;">🔁 교체 플랜 — 고정 조건 + 전투시뮬 DPS 최적화 (${cons.weapon === 'melee' ? '근접 무기 기준 · 원거리 무기 제외' : '원거리 무기 기준 · 근접 무기 제외'}, 최대 ${nLimit}개 교체)</div>
       <div style="color:#8b96a8; font-size:12px; margin-bottom:8px;">검색 범위: 필터 통과 ${pool.length}개 / 전체 히스토리 ${history.length}개 · 판정: ① 고정 조건 충족(부족 시 최소화) ② DPS 지수 최대 — 치확×치피 곱연산·더블 딜레이·공속 틱 양자화(윈드업 ${wu}s)·스킬피해 합 ${SKILL_TO_CRIT_STEP}%당 치확 +${SKILL_TO_CRIT_BONUS}% 변환 반영 (✓ = 최적 구성 포함 옵션)${odInfo ? ` · 기타피해 ${formatGold(Math.round(baseDmg))}${odInfo.skinN ? ` · 🎽 스킨 +${(odInfo.skinMult * 100).toFixed(1)}%(표시 전용)` : ''}` : ''}</div>
       ${consHtml}
       <div style="margin-bottom:8px;"><span style="font-size:12px; color:var(--muted); font-weight:bold;">구성 커버리지 (플랜 장비 + 장착 펫/탈것):</span><br>${coverageHtml}</div>
