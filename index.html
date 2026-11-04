@@ -952,7 +952,7 @@ table td.center { text-align: center; }
                     <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <span style="font-size: 12px; color: var(--muted);">최대 교체 개수(n):</span>
                         <input type="number" id="swap-limit" min="1" max="8" value="8" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;">
-                        <span style="font-size: 11px; color: var(--muted);">필터 통과 리스트에서 최대 n개 슬롯만 교체해 매칭 옵션 합을 최대화합니다. 체크한 스탯만 점수에 반영됩니다.</span>
+                        <span style="font-size: 11px; color: var(--muted);">필터 통과 리스트에서 최대 n개 슬롯만 교체해 DPS 지수를 최대화합니다. 체크한 스탯만 DPS 계산에 들어가며(체크 해제한 치확·치피·더블·공속·공격력·원피·스킬피해는 0으로 취급), 생흡 등 DPS 외 스탯은 아래 고정 조건으로 줄 수를 지정하세요.</span>
                     </div>
                 </div>
             </details>
@@ -19199,6 +19199,7 @@ function activeLineStats(cons) {
 
 // 아이템/스탯 목록의 지표: Lc=고정1 대상 스탯별 줄 수, A=고정2 값 합, M=최적구성 매칭 값 합(표시용),
 // D=DPS 관여 스탯 합(치확/치피/더블/공속/공격력/원피/스킬피해) — 목적함수(dpsIndexOf)의 입력.
+// Lc/A(고정 조건)는 체크 여부와 무관하게 집계하고, M과 D는 '최적 옵션 구성'에서 체크한 스탯만 집계한다.
 // 스킬피해(skl)는 그 자체로 평타 DPS를 올리진 않지만 15%당 치확 +20%로 환산되어 들어간다.
 function statFeatures(stats, cons, optSet, lineStats) {
   const Lc = {};
@@ -19209,7 +19210,8 @@ function statFeatures(stats, cons, optSet, lineStats) {
     if (!s) continue;
     if (lineStats && s.name in Lc) Lc[s.name] += 1;
     if (s.name === cons.sumStat) A += s.value;
-    if (optSet.has(s.name)) M += s.value;
+    if (!optSet.has(s.name)) continue; // 최적 옵션 구성에서 체크한 스탯만 목적함수(DPS)에 반영
+    M += s.value;
     if (s.name === 'Critical Chance') D.crit += s.value;
     else if (s.name === 'Critical Damage') D.chipi += s.value;
     else if (s.name === 'Double Chance') D.dbl += s.value;
@@ -20998,12 +21000,13 @@ function duel(U,seed){const S=newState(U,seed);while(!S.over)step(S);return S.ov
 // ---------- 애니메이션 ----------
 const cv=$('arena'),ctx=cv.getContext('2d');
 let S=null,playing=false,acc=0,last=0;
-function fit(){const w=cv.clientWidth;if(cv.width!==w*devicePixelRatio){cv.width=w*devicePixelRatio;cv.height=260*devicePixelRatio;}}
+function fit(){const w=cv.clientWidth;if(w<=0)return;if(cv.width!==w*devicePixelRatio){cv.width=w*devicePixelRatio;cv.height=260*devicePixelRatio;}}
 function fmtN(n){const a=Math.abs(n);if(a>=1e12)return (n/1e12).toFixed(2)+'t';if(a>=1e9)return (n/1e9).toFixed(2)+'b';if(a>=1e6)return (n/1e6).toFixed(2)+'m';if(a>=1e3)return (n/1e3).toFixed(1)+'k';return n.toFixed(0);}
 function draw(){
   fit(); const W=cv.width,H=cv.height,s=devicePixelRatio; ctx.clearRect(0,0,W,H);
   if(!S)return;
   const span=Math.max(gv('g-spawn',18),2), pad=40*s, trackY=H*0.62, X=x=>pad+(x/span)*(W-2*pad);
+  if(W-2*pad<=0||H<=0)return; // 탭 숨김 등으로 캔버스 폭이 0이면 그리지 않음 (arc 음수 반지름 방지)
   ctx.strokeStyle='#2a3140';ctx.lineWidth=2*s;ctx.beginPath();ctx.moveTo(pad,trackY);ctx.lineTo(W-pad,trackY);ctx.stroke();
   ctx.fillStyle='#8b96a8';ctx.font=`${11*s}px sans-serif`;ctx.textAlign='center';
   for(let k=0;k<=span;k+=Math.ceil(span/9)){ctx.fillText(k,X(k),trackY+16*s);}
@@ -21011,10 +21014,10 @@ function draw(){
   for(let i=0;i<2;i++){
     const u=S.U[i],x=X(S.pos[i]);
     // 사거리 원
-    ctx.strokeStyle=col[i]+'55';ctx.lineWidth=1*s;ctx.beginPath();ctx.arc(x,trackY,(u.rng+R)/span*(W-2*pad),0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle=col[i]+'55';ctx.lineWidth=1*s;ctx.beginPath();ctx.arc(x,trackY,Math.max(0,(u.rng+R)/span*(W-2*pad)),0,Math.PI*2);ctx.stroke();
     // 유닛
     const stc=['#8b96a8','#f5b942','#4aff9d'][S.st[i]];
-    ctx.fillStyle=col[i];ctx.beginPath();ctx.arc(x,trackY,Math.max(R/span*(W-2*pad),7*s),0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=col[i];ctx.beginPath();ctx.arc(x,trackY,Math.max(R/span*(W-2*pad),7*s,0),0,Math.PI*2);ctx.fill();
     ctx.strokeStyle=stc;ctx.lineWidth=3*s;ctx.stroke();
     // HP바
     const bw=120*s,bh=10*s,bx=i===0?pad:W-pad-bw,by=14*s;
