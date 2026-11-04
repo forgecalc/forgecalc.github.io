@@ -18439,6 +18439,7 @@ $('#btn-apply').addEventListener('click', async () => {
     state.initialized = true;
     persist();
     showInitOrTabs();
+    refreshSwapPlanIfShown();
   } catch (e) {
     const errorMsg = "오류 발생: " + e.message + "\n" + e.stack;
     if (errEl) errEl.textContent = errorMsg;
@@ -18812,7 +18813,7 @@ function initFilters() {
     // 실시간 필터링 제거 → '필터 적용' 버튼 클릭 시에만 반영
     const applyBtn = $(`#${mode.toLowerCase()}-filter-apply`);
     if (applyBtn) {
-      applyBtn.addEventListener('click', () => applyFilterAndRender(mode));
+      applyBtn.addEventListener('click', () => { applyFilterAndRender(mode); if (mode === 'Forge') refreshSwapPlanIfShown(); });
     }
     const clearBtn = $(`#${mode.toLowerCase()}-filter-clear`);
     if (clearBtn) {
@@ -19298,6 +19299,7 @@ function initOptimalStatsUI() {
     cb.addEventListener('change', () => {
       state.optimalStats = [...host.querySelectorAll('.optimal-stat-cb')].filter(c => c.checked).map(c => c.value);
       persist();
+      refreshSwapPlanIfShown();
     });
   });
 
@@ -19334,6 +19336,7 @@ function initOptimalStatsUI() {
         otherDmg: Math.max(0, parseFloat($('#cons-other-dmg').value) || 0)
       };
       persist();
+      refreshSwapPlanIfShown();
     };
     consHost.querySelectorAll('.cons-line-min-input, .cons-line-max-input').forEach(el => el.addEventListener('change', saveCons));
     ['cons-sum-stat', 'cons-sum-min', 'cons-windup', 'cons-other-dmg'].forEach(id => {
@@ -19356,10 +19359,19 @@ function initOptimalStatsUI() {
       state.swapLimit = (!isNaN(v) && v >= 1 && v <= 8) ? v : 8;
       limitEl.value = state.swapLimit;
       persist();
+      refreshSwapPlanIfShown();
     });
   }
 }
 initOptimalStatsUI();
+
+// 플랜이 이미 화면에 있을 때만 다시 계산 — 최적 옵션/고정 조건/필터/일괄 적용이 바뀌면 자동 반영
+function refreshSwapPlanIfShown() {
+  const out = $('#forge-swap-output');
+  if (!out || !out.innerHTML.trim()) return;
+  try { renderSwapRecommend(); }
+  catch (e) { out.innerHTML = `<span style='color:red; font-weight:bold;'>❌ 교체 추천 오류: ${e.message}</span>`; }
+}
 
 function renderSwapRecommend() {
   const out = $('#forge-swap-output');
