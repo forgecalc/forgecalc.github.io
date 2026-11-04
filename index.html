@@ -1013,7 +1013,7 @@ tbody tr:last-child td{border-bottom:0}
                         <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">평균 완성도(%):</span>
                         <input type="number" id="forge-min-perf" min="0" max="100" step="1" placeholder="0" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;" title="옵션 완성도 평균이 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
-                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="5타 빌드 표준 일괄 적용: 고정 조건의 무기 타입(원거리/근접)에 따라 포함 4종(공속·생흡·더블·원피 또는 근피)+AND, 최소값(35/15/15/13), 완성도 85, 줄 수 조건 공속6·생흡4·피해6, 공속 합 조건 해제, 윈드업 0.32(원거리)/0.667(근접), 최적 옵션 구성도 같은 4종으로 맞춤">🎯 표준 설정 (5타 · 무기 타입 따름)</button>
+                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="5타+크리 빌드 표준 일괄 적용: 고정 조건의 무기 타입(원거리/근접)에 따라 포함 6종(공속·생흡·더블·치피·스킬피해·원피 또는 근피)+AND, 최소값(35/15/15/70/20/13 또는 42), 완성도 85, 줄 수 조건 공속6·생흡4·스킬피해2(치확 80% 상한), 공속 합 조건 해제, 윈드업 0.32(원거리)/0.667(근접), 최적 옵션 구성도 같은 6종으로 맞춤 — 치피와 피해 줄의 비율은 교체 플랜의 DPS 지수가 결정">🎯 표준 설정 (5타+크리 · 무기 타입 따름)</button>
                     <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
@@ -18936,15 +18936,20 @@ function initFilters() {
   const stdBtn = $('#forge-filter-standard');
   if (stdBtn) {
     stdBtn.addEventListener('click', () => {
-      // 표준 = 5타 빌드 (공속 6줄 · 생흡 4줄 · 더블 3줄 · 피해 11줄, 체력 0줄).
+      // 표준 = 5타 + 크리 빌드. 5타(5번째 타격 ×3.2)는 크리와 별개로 곱해지므로 크리는 그대로 이득이다.
+      // 코어: 공속 6줄 · 생흡 4줄 · 스킬피해 2줄(15%마다 치확 +20% → 상한 80%) + 더블·치피·피해(원피/근피)로 나머지.
+      // 치피(최대 80%/줄)와 피해 줄의 비율은 교체 플랜의 DPS 지수(치확×치피 곱연산 반영)가 가르게 둔다.
       // 무기 타입(고정 조건의 선택)에 따라 피해 줄이 원피(원거리) 또는 근피(근접)가 된다.
-      // 장비 16줄 코어는 공속 6 · 생흡 4 · 피해 6, 더블 3줄과 나머지 피해는 펫에서 채운다.
-      // 치확·치피·스킬피해·체력은 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
+      // 치확 줄(최대 12%)은 스킬피해 변환보다 약해 뺀다. 체력·블록·체력재생·쿨감은 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
       const wpEl = $('#cons-weapon');
       const melee = !!(wpEl && wpEl.value === 'melee');
       const DMG = melee ? 'Melee Damage' : 'Ranged Damage';
-      const MINS = { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, [DMG]: 13 };
-      const LINE_MINS = { 'Attack Speed': 6, 'Life Steal': 4, [DMG]: 6 };
+      const MINS = {
+        'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15,
+        'Critical Damage': 70, 'Skill Damage': 20,   // 스킬피해 20 = 한 줄로 1단계(15%)를 넘기고 남는 값이 다음 단계에 보태지는 선
+        [DMG]: melee ? 42 : 13
+      };
+      const LINE_MINS = { 'Attack Speed': 6, 'Life Steal': 4, 'Skill Damage': 2 };
       const grid = $('#forge-filter-grid');
       if (grid) {
         grid.querySelectorAll('.filter-inc').forEach(cb => { cb.checked = cb.dataset.stat in MINS; });
@@ -18959,7 +18964,7 @@ function initFilters() {
       const totalEl = $('#forge-min-total'); if (totalEl) totalEl.value = '';
       const perfEl = $('#forge-min-perf'); if (perfEl) perfEl.value = '85';
       $$('.forge-exc-type').forEach(cb => { cb.checked = cb.value === (melee ? 'Ranged Weapon' : 'Melee Weapon'); });
-      // 최적 옵션 구성(DPS 목적함수에 들어가는 스탯)도 같은 네 스탯으로 맞춘다 — 안 맞추면 피해 줄이 DPS 계산에서 빠진다
+      // 최적 옵션 구성(DPS 목적함수에 들어가는 스탯)도 같은 여섯 스탯으로 맞춘다 — 안 맞추면 그 줄이 DPS 계산에서 빠진다
       const optHost = $('#optimal-stats-host');
       if (optHost) {
         optHost.querySelectorAll('.optimal-stat-cb').forEach(cb => { cb.checked = cb.value in MINS; });
@@ -18973,8 +18978,8 @@ function initFilters() {
       saveFilterSettings();
       applyFilterAndRender('Forge');
       refreshSwapPlanIfShown(); // 표준 필터로 좁힌 풀로 교체 플랜도 즉시 재계산
-      stdBtn.textContent = melee ? '✅ 적용됨 (5타 근접)' : '✅ 적용됨 (5타 원거리)';
-      setTimeout(() => { stdBtn.textContent = '🎯 표준 설정 (5타 · 무기 타입 따름)'; }, 2000);
+      stdBtn.textContent = melee ? '✅ 적용됨 (5타+크리 근접)' : '✅ 적용됨 (5타+크리 원거리)';
+      setTimeout(() => { stdBtn.textContent = '🎯 표준 설정 (5타+크리 · 무기 타입 따름)'; }, 2000);
     });
   }
 }
