@@ -1013,7 +1013,7 @@ tbody tr:last-child td{border-bottom:0}
                         <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">평균 완성도(%):</span>
                         <input type="number" id="forge-min-perf" min="0" max="100" step="1" placeholder="0" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;" title="옵션 완성도 평균이 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
-                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="5타+크리 빌드 표준 일괄 적용: 고정 조건의 무기 타입(원거리/근접)에 따라 포함 6종(공속·생흡·더블·치피·스킬피해·원피 또는 근피)+AND, 최소값(35/15/15/70/20/13 또는 42), 완성도 85, 줄 수 조건 공속6·생흡4·스킬피해2(치확 80% 상한), 공속 합 조건 해제, 윈드업 0.32(원거리)/0.667(근접), 최적 옵션 구성도 같은 6종으로 맞춤 — 치피와 피해 줄의 비율은 교체 플랜의 DPS 지수가 결정">🎯 표준 설정 (5타+크리 · 무기 타입 따름)</button>
+                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="5타 빌드 표준 일괄 적용 (무기 타입 따름): 원거리 = 공속·생흡·더블·치확·치피·원피 6종(최소 35/15/15/10/70/13), 근접 = 공속·생흡·더블·근피 4종(최소 35/15/15/42). AND, 완성도 85, 줄 수 조건 공속6·생흡4, 공속 합 조건 해제, 윈드업 0.32(원거리)/0.667(근접), 최적 옵션 구성도 같은 스탯으로 맞춤. 치확·치피·피해 줄 비율은 교체 플랜의 DPS 지수(치확 상한 80%)가 결정">🎯 표준 설정 (5타+크리 · 무기 타입 따름)</button>
                     <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
@@ -18936,20 +18936,19 @@ function initFilters() {
   const stdBtn = $('#forge-filter-standard');
   if (stdBtn) {
     stdBtn.addEventListener('click', () => {
-      // 표준 = 5타 + 크리 빌드. 5타(5번째 타격 ×3.2)는 크리와 별개로 곱해지므로 크리는 그대로 이득이다.
-      // 코어: 공속 6줄 · 생흡 4줄 · 스킬피해 2줄(15%마다 치확 +20% → 상한 80%) + 더블·치피·피해(원피/근피)로 나머지.
-      // 치피(최대 80%/줄)와 피해 줄의 비율은 교체 플랜의 DPS 지수(치확×치피 곱연산 반영)가 가르게 둔다.
-      // 무기 타입(고정 조건의 선택)에 따라 피해 줄이 원피(원거리) 또는 근피(근접)가 된다.
-      // 치확 줄(최대 12%)은 스킬피해 변환보다 약해 뺀다. 체력·블록·체력재생·쿨감은 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
+      // 표준 = 5타 빌드. 5타(5번째 타격 ×3.2)는 크리와 별개로 곱해지므로 크리는 그대로 이득이다.
+      // 스킬피해→치확 변환이 없어져 치확은 치확 줄(최대 12%)로만 채운다.
+      //  - 원거리: 원피가 15%/줄로 약해 치확+치피(80%/줄) 조합이 원피만 쌓는 것보다 약 1.5배. 치확·치피·원피를 모두 허용하고
+      //    비율은 교체 플랜의 DPS 지수(치확×치피 곱연산, 상한 80%)가 가르게 둔다.
+      //  - 근접: 근피가 50%/줄이라 크리를 섞어도 이득이 거의 없고 스쿨(치피 감소) 상대에 손해 → 근피만.
+      // 코어: 공속 6줄 · 생흡 4줄. 스킬피해·체력·블록·체력재생·쿨감은 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
       const wpEl = $('#cons-weapon');
       const melee = !!(wpEl && wpEl.value === 'melee');
       const DMG = melee ? 'Melee Damage' : 'Ranged Damage';
-      const MINS = {
-        'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15,
-        'Critical Damage': 70, 'Skill Damage': 20,   // 스킬피해 20 = 한 줄로 1단계(15%)를 넘기고 남는 값이 다음 단계에 보태지는 선
-        [DMG]: melee ? 42 : 13
-      };
-      const LINE_MINS = { 'Attack Speed': 6, 'Life Steal': 4, 'Skill Damage': 2 };
+      const MINS = melee
+        ? { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, [DMG]: 42 }
+        : { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, 'Critical Chance': 10, 'Critical Damage': 70, [DMG]: 13 };
+      const LINE_MINS = { 'Attack Speed': 6, 'Life Steal': 4 };
       const grid = $('#forge-filter-grid');
       if (grid) {
         grid.querySelectorAll('.filter-inc').forEach(cb => { cb.checked = cb.dataset.stat in MINS; });
@@ -18964,7 +18963,7 @@ function initFilters() {
       const totalEl = $('#forge-min-total'); if (totalEl) totalEl.value = '';
       const perfEl = $('#forge-min-perf'); if (perfEl) perfEl.value = '85';
       $$('.forge-exc-type').forEach(cb => { cb.checked = cb.value === (melee ? 'Ranged Weapon' : 'Melee Weapon'); });
-      // 최적 옵션 구성(DPS 목적함수에 들어가는 스탯)도 같은 여섯 스탯으로 맞춘다 — 안 맞추면 그 줄이 DPS 계산에서 빠진다
+      // 최적 옵션 구성(DPS 목적함수에 들어가는 스탯)도 같은 스탯으로 맞춘다 — 안 맞추면 그 줄이 DPS 계산에서 빠진다
       const optHost = $('#optimal-stats-host');
       if (optHost) {
         optHost.querySelectorAll('.optimal-stat-cb').forEach(cb => { cb.checked = cb.value in MINS; });
@@ -19138,19 +19137,16 @@ function swapCycleTicks(aspPct, wu, isDouble) {
   return ticks;
 }
 
-// === 🎯 스킬 피해 → 치명타 확률 변환 ===
-// 세트 전체(장비 + 장착 펫/탈것) 스킬 피해 '합' 15%마다 치확 +20% (계단식 — 15%를 못 채운 나머지는 버려짐).
-// 예) 스킬피해 합 44% → floor(44/15)=2단계 → 치확 +40%.
-// 합 기준이라 한 줄로는 값이 안 되는 저롤 스킬피해도 여러 줄이 모이면 단계를 넘길 수 있다.
-const SKILL_TO_CRIT_STEP = 15;   // 몇 %마다
-const SKILL_TO_CRIT_BONUS = 20;  // 치확 몇 %
+// === 🎯 치명타 확률 ===
+// 페어리 개편 후 스킬피해→치확 변환은 없어졌다 (페어리: 스쿨=받는 치피 감소 / 체력→피해 변환 / 5타마다 피해 증가).
+// 치확은 치확 줄(최대 12%/줄)과 펫·탈것의 치확으로만 채운다. 스킬피해는 평타 DPS에 기여하지 않는다.
+const SKILL_TO_CRIT_STEP = 15;   // (구버전 호환용 — 변환 없음)
+const SKILL_TO_CRIT_BONUS = 0;   // 변환 없음
 const CRIT_CAP = 80;             // 치명타 확률 상한(%) — 초과분은 전부 낭비
-function skillCritBonus(sklPct) {
-  return Math.floor(Math.max(0, sklPct || 0) / SKILL_TO_CRIT_STEP) * SKILL_TO_CRIT_BONUS;
-}
-// 장비 치확 합 + 스킬피해 변환분 → 실효 치확(%). CRIT_CAP에서 잘린다.
+function skillCritBonus(sklPct) { return 0; }
+// 장비 치확 합 → 실효 치확(%). CRIT_CAP에서 잘린다.
 function effCritPct(D) {
-  return Math.min(D.crit + skillCritBonus(D.skl), CRIT_CAP);
+  return Math.min(D.crit, CRIT_CAP);
 }
 
 // D = {crit, chipi, dbl, asp, dmg, rng, skl} (% 합) → 스케일 무관 DPS 지수.
@@ -19847,7 +19843,7 @@ function renderSwapRecommend() {
     <div style="margin-bottom:8px; padding:8px 10px; background:${lineOk && sumOk ? 'rgba(46,204,113,0.12)' : 'rgba(243,156,18,0.12)'}; border:1px solid ${lineOk && sumOk ? '#2ecc71' : '#f39c12'}; border-radius:4px; font-size:13px;">
       <b>📌 ${lineStatusHtml}
       · ${SUBSTATS_KOR[cons.sumStat] || cons.sumStat} ${finalF.A.toFixed(2)}/${cons.sumMin}% ${sumOk ? '✅' : `⚠️ ${(cons.sumMin - finalF.A).toFixed(2)}%p 부족`}
-      · 🎯 스킬피해 ${(finalF.D.skl || 0).toFixed(2)}% → 치확 +${skillCritBonus(finalF.D.skl)}%p (총 치확 ${(finalF.D.crit + skillCritBonus(finalF.D.skl)).toFixed(2)}% ${finalF.D.crit + skillCritBonus(finalF.D.skl) > CRIT_CAP ? `⚠️ 상한 ${CRIT_CAP}% 초과분 ${(finalF.D.crit + skillCritBonus(finalF.D.skl) - CRIT_CAP).toFixed(2)}%p 낭비` : `/ 상한 ${CRIT_CAP}%`})
+      · 🎯 총 치확 ${finalF.D.crit.toFixed(2)}% ${finalF.D.crit > CRIT_CAP ? `⚠️ 상한 ${CRIT_CAP}% 초과분 ${(finalF.D.crit - CRIT_CAP).toFixed(2)}%p 낭비` : `/ 상한 ${CRIT_CAP}%`} · 치피 ${finalF.D.chipi.toFixed(2)}%
       · ⚔️ DPS 지수 ${planDps >= 1000 ? formatGold(Math.round(planDps)) : planDps.toFixed(3)} <span style="color:${planDps >= curDps ? '#2ecc71' : '#e74c3c'};">(현 장착 ${curDps >= 1000 ? formatGold(Math.round(curDps)) : curDps.toFixed(3)} 대비 ${((planDps / curDps - 1) * 100).toFixed(1)}%)</span>${planMd > 0 ? ` <span style="color:#8b96a8; font-size:12px;">— 장비 ⚔️합 ${formatGold(Math.round(curMd))}→${formatGold(Math.round(planMd))} 반영</span>` : ''}</b>
       ${lineOk && sumOk ? '' : '<br><span style="color:#f39c12; font-size:12px;">조건 완전 충족이 불가능해 부족량이 최소인 근사 플랜입니다. 미래시 범위를 늘리거나 필터를 완화해보세요.</span>'}
       <br><span style="color:#8b96a8; font-size:12px;">장비 매칭: ${curCount}개 · ${curSum.toFixed(2)}% → ${newCount}개 · ${newSum.toFixed(2)}% (+${(newSum - curSum).toFixed(2)}%p) · 교체 ${swapCount}/${nLimit}개 · 펫/탈것 기여 포함 최종 매칭 합 ${finalF.M.toFixed(2)}%</span>
@@ -19867,7 +19863,7 @@ function renderSwapRecommend() {
   out.innerHTML = `
     <div class="card" style="margin:12px 0; padding:12px;">
       <div style="font-weight:bold; color:#e67e22; margin-bottom:4px;">🔁 교체 플랜 — 고정 조건 + 전투시뮬 DPS 최적화 (${cons.weapon === 'melee' ? '근접 무기 기준 · 원거리 무기 제외' : '원거리 무기 기준 · 근접 무기 제외'}, 최대 ${nLimit}개 교체)</div>
-      <div style="color:#8b96a8; font-size:12px; margin-bottom:8px;">검색 범위: 필터 통과 ${pool.length}개 / 전체 히스토리 ${history.length}개 · 판정: ① 고정 조건 충족(부족 시 최소화) ② DPS 지수 최대 — 치확×치피 곱연산·더블 딜레이·공속 틱 양자화(윈드업 ${wu}s)·스킬피해 합 ${SKILL_TO_CRIT_STEP}%당 치확 +${SKILL_TO_CRIT_BONUS}% 변환 반영 (✓ = 최적 구성 포함 옵션)${odInfo ? ` · 기타피해 ${formatGold(Math.round(baseDmg))}${odInfo.skinN ? ` · 🎽 스킨 +${(odInfo.skinMult * 100).toFixed(1)}%(표시 전용)` : ''}` : ''}</div>
+      <div style="color:#8b96a8; font-size:12px; margin-bottom:8px;">검색 범위: 필터 통과 ${pool.length}개 / 전체 히스토리 ${history.length}개 · 판정: ① 고정 조건 충족(부족 시 최소화) ② DPS 지수 최대 — 치확×치피 곱연산·더블 딜레이·공속 틱 양자화(윈드업 ${wu}s) 반영 (치확 상한 ${CRIT_CAP}%) (✓ = 최적 구성 포함 옵션)${odInfo ? ` · 기타피해 ${formatGold(Math.round(baseDmg))}${odInfo.skinN ? ` · 🎽 스킨 +${(odInfo.skinMult * 100).toFixed(1)}%(표시 전용)` : ''}` : ''}</div>
       ${consHtml}
       <div style="margin-bottom:8px;"><span style="font-size:12px; color:var(--muted); font-weight:bold;">구성 커버리지 (플랜 장비 + 장착 펫/탈것):</span><br>${coverageHtml}</div>
       <table style="width:100%; border-collapse:collapse;">
