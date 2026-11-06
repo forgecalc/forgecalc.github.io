@@ -814,9 +814,6 @@ tbody tr:last-child td{border-bottom:0}
         <label><span class="k">제한 시간(초)</span><input type="number" id="g-timer" value="60"></label>
         <label><span class="k">유닛 반지름</span><input type="number" id="g-radius" value="0.35" step="0.05"></label>
         <label><span class="k">기본 이동속도</span><input type="number" id="g-ms" value="2.0" step="0.1"></label>
-        <label><span class="k">페어리 체력→피해(10%당 15%)</span><input type="checkbox" id="g-fairy-hp" checked></label>
-        <label><span class="k">스쿨→받는 치피 감소(4%당 14%, 최대70)</span><input type="checkbox" id="g-fairy-cd" checked></label>
-        <label><span class="k">5타마다 +220%</span><input type="checkbox" id="g-fairy-5" checked></label>
         <label><span class="k">사거리 밖 윈드업 정지</span><input type="checkbox" id="g-gate" checked></label>
       </div>
     </div>
@@ -850,7 +847,7 @@ tbody tr:last-child td{border-bottom:0}
         틱 0.1초 · 공격 사이클 1.5초 · 더블 = 윈드업 재진입(타이머 = 윈드업×0.75, 2타는 윈드업/4 뒤) · 스폰 (0,0) vs (18,0) · 유닛 반지름 0.35 · 기본 이동속도 2.0<br>
         사거리 판정: <code>거리 &lt; 내사거리 + 내반지름 + 상대반지름</code> · 무기 사거리: 근접 0.3 / 원거리 7.0 · 사거리·이동속도 보너스는 가산<br>
         평타: 크리롤 &lt; 치확 → 피해×(치피+120)/100 · 흡혈 = 실제피해×생흡 · 근접 메인피해 ×1.6 · 원피/근피는 별도 곱연산 풀<br>
-        페어리: 전체 체력배율 10%마다 피해 +15%p(공격력 풀 가산, 계단식) · 스쿨 4%p마다 받는 치명타 보너스 −14%(상한 70%) · 5타마다 ×3.2<br>
+        페어리(나/상대 각각 선택): 체력 변환 = 체력% 10%마다 피해 +15%p(공격력 풀 가산, 계단식) · 스쿨 = 쿨감 4%p마다 받는 치명타 보너스 −14%(상한 70%) · 5타 = 5번째 타격마다 ×3.2 (더블 타격도 횟수에 포함)<br>
         결투장 HP = 총체력 × (1 + 0.5×펫수 + 0.5×스킬수 + 2×탈것) — 양쪽 중 큰 배수 공통 적용
       </div>
     </details>
@@ -1013,7 +1010,7 @@ tbody tr:last-child td{border-bottom:0}
                         <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">평균 완성도(%):</span>
                         <input type="number" id="forge-min-perf" min="0" max="100" step="1" placeholder="0" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;" title="옵션 완성도 평균이 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
-                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="5타 빌드 표준 일괄 적용 (무기 타입 따름): 원거리 = 공속·생흡·더블·치확·치피·원피 6종(최소 35/15/15/10/70/13), 근접 = 공속·생흡·더블·근피 4종(최소 35/15/15/42). AND, 완성도 85, 줄 수 조건 공속6·생흡4, 공속 합 조건 해제, 윈드업 0.32(원거리)/0.667(근접), 최적 옵션 구성도 같은 스탯으로 맞춤. 치확·치피·피해 줄 비율은 교체 플랜의 DPS 지수(치확 상한 80%)가 결정">🎯 표준 설정 (5타+크리 · 무기 타입 따름)</button>
+                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="표준 일괄 적용 (무기 타입 따름). 원거리 = 체력 변환 페어리: 공속·생흡·더블·원피·체력 5종(최소 35/15/15/13/13), 줄 수 공속≥7 · 생흡≥4 · 더블 5 · 체력 6. 근접 = 5타 페어리: 공속·생흡·더블·근피 4종(최소 35/15/15/42), 줄 수 공속≥6 · 생흡≥4. 공통: AND, 완성도 85, 공속 합 조건 해제, 윈드업 0.32(원거리)/0.667(근접), 최적 옵션 구성도 같은 스탯으로 맞춤">🎯 표준 설정 (무기 타입 따름)</button>
                     <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
@@ -18936,19 +18933,23 @@ function initFilters() {
   const stdBtn = $('#forge-filter-standard');
   if (stdBtn) {
     stdBtn.addEventListener('click', () => {
-      // 표준 = 5타 빌드. 5타(5번째 타격 ×3.2)는 크리와 별개로 곱해지므로 크리는 그대로 이득이다.
-      // 스킬피해→치확 변환이 없어져 치확은 치확 줄(최대 12%)로만 채운다.
-      //  - 원거리: 원피가 15%/줄로 약해 치확+치피(80%/줄) 조합이 원피만 쌓는 것보다 약 1.5배. 치확·치피·원피를 모두 허용하고
-      //    비율은 교체 플랜의 DPS 지수(치확×치피 곱연산, 상한 80%)가 가르게 둔다.
-      //  - 근접: 근피가 50%/줄이라 크리를 섞어도 이득이 거의 없고 스쿨(치피 감소) 상대에 손해 → 근피만.
-      // 코어: 공속 6줄 · 생흡 4줄. 스킬피해·체력·블록·체력재생·쿨감은 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
+      // 표준 (결투 시뮬 총당전으로 확정, 2026-11)
+      //  - 원거리 = 체력 변환 페어리. 24줄(장비16+펫6+탈것2) 최적: 공속 7 · 생흡 4 · 더블 5 · 원피 2 · 체력 6 (롤 90% 기준).
+      //    규칙: 공속 ≥ 220(윈드업 0.32가 한 틱) → 롤 90%면 7줄(252) 필요 · 더블 100%까지 · 체력은 짝수 줄(15%×2=30%=3계단), 6줄이 효율 최고
+      //    · 생흡 4줄(양쪽 생흡 80% 환경에선 HP보다 DPS·생흡이 승부를 가름) · 원피는 남는 줄에.
+      //  - 근접 = 5타 페어리 + 근피(50%/줄). 크리는 섞어도 이득이 거의 없고 스쿨 상대에 손해 → 근피만. 공속 6 · 생흡 4.
+      // 스킬피해(변환 없어짐)·블록·체력재생·쿨감·치확·치피는 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
       const wpEl = $('#cons-weapon');
       const melee = !!(wpEl && wpEl.value === 'melee');
       const DMG = melee ? 'Melee Damage' : 'Ranged Damage';
       const MINS = melee
         ? { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, [DMG]: 42 }
-        : { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, 'Critical Chance': 10, 'Critical Damage': 70, [DMG]: 13 };
-      const LINE_MINS = { 'Attack Speed': 6, 'Life Steal': 4 };
+        : { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, [DMG]: 13, 'Health': 13 };
+      const LINE_MINS = melee
+        ? { 'Attack Speed': 6, 'Life Steal': 4 }
+        : { 'Attack Speed': 7, 'Life Steal': 4, 'Double Chance': 5, 'Health': 6 };
+      const LINE_MAXS = melee ? {} : { 'Double Chance': 5, 'Health': 6 };
+      const fairyEl = $('#cons-fairy'); if (fairyEl) fairyEl.value = melee ? 'five' : 'hp';
       const grid = $('#forge-filter-grid');
       if (grid) {
         grid.querySelectorAll('.filter-inc').forEach(cb => { cb.checked = cb.dataset.stat in MINS; });
@@ -18971,14 +18972,14 @@ function initFilters() {
       }
       // 고정 조건: 줄 수 조건으로 코어를 강제, 공속 합 조건은 해제, 윈드업은 무기 타입 기본값
       $$('.cons-line-min-input').forEach(inp => { inp.value = LINE_MINS[inp.dataset.stat] || 0; });
-      $$('.cons-line-max-input').forEach(inp => { inp.value = 0; });
+      $$('.cons-line-max-input').forEach(inp => { inp.value = LINE_MAXS[inp.dataset.stat] || 0; });
       const sumMinEl = $('#cons-sum-min'); if (sumMinEl) sumMinEl.value = '0';
       const wuEl = $('#cons-windup'); if (wuEl) { wuEl.value = melee ? '0.667' : '0.32'; wuEl.dispatchEvent(new Event('change')); }
       saveFilterSettings();
       applyFilterAndRender('Forge');
       refreshSwapPlanIfShown(); // 표준 필터로 좁힌 풀로 교체 플랜도 즉시 재계산
-      stdBtn.textContent = melee ? '✅ 적용됨 (5타+크리 근접)' : '✅ 적용됨 (5타+크리 원거리)';
-      setTimeout(() => { stdBtn.textContent = '🎯 표준 설정 (5타+크리 · 무기 타입 따름)'; }, 2000);
+      stdBtn.textContent = melee ? '✅ 적용됨 (5타 근접)' : '✅ 적용됨 (체력 변환 원거리)';
+      setTimeout(() => { stdBtn.textContent = '🎯 표준 설정 (무기 타입 따름)'; }, 2000);
     });
   }
 }
@@ -19149,9 +19150,21 @@ function effCritPct(D) {
   return Math.min(D.crit, CRIT_CAP);
 }
 
-// D = {crit, chipi, dbl, asp, dmg, rng, skl} (% 합) → 스케일 무관 DPS 지수.
+// === 🧚 페어리 (교체 플랜 목적함수용) ===
+// 'hp'    = 체력 변환: 세트 체력% 합 10%마다 피해 +15% (계단식, 공격력 풀 가산) — 결투 시뮬 buildUnit의 fairyHp와 동일
+// 'five'  = 5타마다 ×3.2: 모든 구성에 평균 ×1.44가 똑같이 곱해지므로 순위에 영향 없음 → 지수에 넣지 않음
+// 'school'= 받는 치피 감소: 내 DPS에는 영향 없음 → 지수에 넣지 않음
+// 결투 시뮬 총당전 결과, 양쪽 생흡 80% 환경에서는 HP보다 DPS가 승부를 가르므로 HP 배수는 목적함수에 넣지 않는다.
+// 체력 줄은 오직 변환(피해)으로만 평가한다 (짝수 줄 단위로 효율이 맞는다: 15%×2줄 = 30% = 3계단).
+let PLAN_FAIRY = 'hp';
+const HP_CONV_STEP = 10, HP_CONV_BONUS = 15;
+function hpConvBonus(hpPct) {
+  return PLAN_FAIRY === 'hp' ? HP_CONV_BONUS * Math.floor(Math.max(0, hpPct || 0) / HP_CONV_STEP) : 0;
+}
+
+// D = {crit, chipi, dbl, asp, dmg, rng, hp, skl} (% 합) → 스케일 무관 DPS 지수.
 // 베이스 치확 0 / 치피 기본 120(공식 내장) 가정 — 전투 시뮬 unit()과 동일.
-// 치확은 (장비 치확 합 + 스킬피해 변환분)으로 계산하고 CRIT_CAP(80%)에서 잘린다 — 오버캡은 가치 0.
+// 치확은 장비 치확 합으로 계산하고 CRIT_CAP(80%)에서 잘린다 — 오버캡은 가치 0.
 function dpsIndexOf(D, wu) {
   const c = effCritPct(D) / 100;
   const p = Math.min(D.dbl / 100, 1);
@@ -19159,7 +19172,7 @@ function dpsIndexOf(D, wu) {
   const tn = swapCycleTicks(D.asp, wu, false);
   const td = swapCycleTicks(D.asp, wu, true);
   // rng = 무기 타입에 맞는 피해(원거리면 원피, 근접이면 근피) — GeneralCompounding 레이어, 공격력과 별도 곱연산 풀
-  return (1 + D.dmg / 100) * (1 + (D.rng || 0) / 100) * avg * (1 + p) / (((1 - p) * tn + p * td) * 0.1);
+  return (1 + (D.dmg + hpConvBonus(D.hp)) / 100) * (1 + (D.rng || 0) / 100) * avg * (1 + p) / (((1 - p) * tn + p * td) * 0.1);
 }
 
 // 고정 조건 + DPS 최적화 (교체 플랜 v4)
@@ -19292,6 +19305,7 @@ const SWAP_CONSTRAINT_DEFAULTS = {
   sumStat: 'Attack Speed', sumMin: 152.5,    // 고정 2: 이 스탯 값 합 최소 % — 152 = wu 0.32(기본무기) 더블 8틱 경계 + 마진 0.5
   windup: 0.32,                              // 기본 무기 윈드업(초) — DPS 지수의 더블 딜레이 계산에 사용
   weapon: 'ranged',                          // 무기 타입: 'ranged'(원거리 — 원피가 곱연산 풀, 근접 무기 후보 제외) / 'melee'(근접 — 근피가 곱연산 풀, 원거리 무기 후보 제외)
+  fairy: 'hp',                               // 페어리: 'hp'(체력 변환 — 체력% 10%마다 피해 +15%) / 'five'(5타) / 'school'(치피 감소) — hp만 DPS 지수에 영향
   otherDmg: 0                                // 장비 메인스탯 외 기타 피해 — 0이면 총피해 ≈ 장비 ⚔️합 가정(후반 정확)
 };
 
@@ -19328,7 +19342,7 @@ function statFeatures(stats, cons, optSet, lineStats) {
   const Lc = {};
   if (lineStats) for (const s of lineStats) Lc[s] = 0;
   let A = 0, M = 0;
-  const D = { crit: 0, chipi: 0, dbl: 0, asp: 0, dmg: 0, rng: 0, skl: 0 };
+  const D = { crit: 0, chipi: 0, dbl: 0, asp: 0, dmg: 0, rng: 0, hp: 0, skl: 0 };
   for (const s of stats || []) {
     if (!s) continue;
     if (lineStats && s.name in Lc) Lc[s.name] += 1;
@@ -19341,6 +19355,7 @@ function statFeatures(stats, cons, optSet, lineStats) {
     else if (s.name === 'Attack Speed') D.asp += s.value;
     else if (s.name === 'Damage') D.dmg += s.value;
     else if (s.name === (cons.weapon === 'melee' ? 'Melee Damage' : 'Ranged Damage')) D.rng += s.value; // 무기 타입에 맞는 피해(원피/근피)만 곱연산 풀
+    else if (s.name === 'Health') D.hp += s.value; // 체력 변환 페어리면 10%마다 피해 +15%
     else if (s.name === 'Skill Damage') D.skl += s.value;
   }
   return { Lc, A, M, D };
@@ -19357,7 +19372,7 @@ function paretoPrune(arr, cap, wu) {
     for (const k of kept) {
       if (k.A >= e.A - 1e-9 && (k.md || 0) >= (e.md || 0) - 1e-9
         && k.D.crit >= e.D.crit - 1e-9 && k.D.chipi >= e.D.chipi - 1e-9 && k.D.dbl >= e.D.dbl - 1e-9
-        && k.D.asp >= e.D.asp - 1e-9 && k.D.dmg >= e.D.dmg - 1e-9 && (k.D.rng || 0) >= (e.D.rng || 0) - 1e-9
+        && k.D.asp >= e.D.asp - 1e-9 && k.D.dmg >= e.D.dmg - 1e-9 && (k.D.rng || 0) >= (e.D.rng || 0) - 1e-9 && (k.D.hp || 0) >= (e.D.hp || 0) - 1e-9
         && (k.D.skl || 0) >= (e.D.skl || 0) - 1e-9) { dom = true; break; }
     }
     if (!dom) { kept.push(e); if (kept.length >= (cap || 80)) break; }
@@ -19379,7 +19394,7 @@ function compressCandidates(cands) {
   }
   const out = [];
   for (const [, list] of byL) {
-    const val = f => f.A + f.D.crit + f.D.chipi + f.D.dbl + f.D.asp + f.D.dmg + (f.D.skl || 0);
+    const val = f => f.A + f.D.crit + f.D.chipi + f.D.dbl + f.D.asp + f.D.dmg + (f.D.rng || 0) + (f.D.hp || 0) + (f.D.skl || 0);
     // 스탯 쌍별 최고 합 아이템 (항상 유지)
     const pairBest = new Map();
     for (const c of list) {
@@ -19395,7 +19410,7 @@ function compressCandidates(cands) {
       for (const k of kept) {
         if (k.f.A >= c.f.A - 1e-9 && (k.f.md || 0) >= (c.f.md || 0) - 1e-9
           && k.f.D.crit >= c.f.D.crit - 1e-9 && k.f.D.chipi >= c.f.D.chipi - 1e-9 && k.f.D.dbl >= c.f.D.dbl - 1e-9
-          && k.f.D.asp >= c.f.D.asp - 1e-9 && k.f.D.dmg >= c.f.D.dmg - 1e-9 && (k.f.D.rng || 0) >= (c.f.D.rng || 0) - 1e-9
+          && k.f.D.asp >= c.f.D.asp - 1e-9 && k.f.D.dmg >= c.f.D.dmg - 1e-9 && (k.f.D.rng || 0) >= (c.f.D.rng || 0) - 1e-9 && (k.f.D.hp || 0) >= (c.f.D.hp || 0) - 1e-9
           && (k.f.D.skl || 0) >= (c.f.D.skl || 0) - 1e-9) { dom = true; break; }
       }
       if (!dom && (kept.length < 40 || mustKeep.has(c))) kept.push(c);
@@ -19438,7 +19453,7 @@ function initOptimalStatsUI() {
     consHost.innerHTML = `
       <div style="${rowStyle}">📌 고정 조건 1: 옵션별 최소/최대 줄 수 <span style="font-size:11px;">(세트 전체, 펫/탈것 포함 · 0 = 제한 없음)</span><div style="width:100%; display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">${lineMinsHtml}</div></div>
       <div style="${rowStyle}">📌 고정 조건 2: ${statSelectHtml('cons-sum-stat', cons.sumStat)} 합 ≥ <input type="number" id="cons-sum-min" min="0" step="1" value="${cons.sumMin}" style="width:60px; font-size:11px; padding:3px 6px; height:auto;"> % <span style="font-size:11px;">(공속 152 = 기본무기(0.32) 더블 8틱 경계 · 0.77 무기까지 커버하려면 156.7)</span></div>
-      <div style="${rowStyle}">⚔️ 무기 타입: <select id="cons-weapon" style="font-size:11px; padding:3px 6px; height:auto;"><option value="ranged" ${cons.weapon !== 'melee' ? 'selected' : ''}>원거리 (원피 곱연산 · 근접 무기 후보 제외)</option><option value="melee" ${cons.weapon === 'melee' ? 'selected' : ''}>근접 (근피 곱연산 · 원거리 무기 후보 제외)</option></select> · 윈드업: <input type="number" id="cons-windup" min="0.1" max="1.5" step="0.001" value="${cons.windup || 0.32}" style="width:65px; font-size:11px; padding:3px 6px; height:auto;"> 초 · 기타 피해(장비 외): <input type="number" id="cons-other-dmg" min="0" step="1" value="${cons.otherDmg || 0}" style="width:90px; font-size:11px; padding:3px 6px; height:auto;"> <button id="cons-other-dmg-auto" style="background:#16a085; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; padding:3px 8px;" title="덤프의 펫·탈것·패시브스킬·승천·기술트리로 장비 외 가산 피해를 자동 계산합니다.">🔄 덤프에서 자동계산</button> <span style="font-size:11px;">(DPS=(기타피해+장비⚔️합)×배율지수로 메인스탯까지 반영. 0이면 서브스탯 배율지수만 사용)</span><div id="other-dmg-detail" style="font-size:11px; margin-top:4px;"></div></div>`;
+      <div style="${rowStyle}">🧚 페어리: <select id="cons-fairy" style="font-size:11px; padding:3px 6px; height:auto;"><option value="hp" ${(cons.fairy || 'hp') === 'hp' ? 'selected' : ''}>체력 변환 (체력% 10%마다 피해 +15%)</option><option value="five" ${cons.fairy === 'five' ? 'selected' : ''}>5타마다 ×3.2 (순위 영향 없음)</option><option value="school" ${cons.fairy === 'school' ? 'selected' : ''}>스쿨 — 받는 치피 감소 (순위 영향 없음)</option></select> · ⚔️ 무기 타입: <select id="cons-weapon" style="font-size:11px; padding:3px 6px; height:auto;"><option value="ranged" ${cons.weapon !== 'melee' ? 'selected' : ''}>원거리 (원피 곱연산 · 근접 무기 후보 제외)</option><option value="melee" ${cons.weapon === 'melee' ? 'selected' : ''}>근접 (근피 곱연산 · 원거리 무기 후보 제외)</option></select> · 윈드업: <input type="number" id="cons-windup" min="0.1" max="1.5" step="0.001" value="${cons.windup || 0.32}" style="width:65px; font-size:11px; padding:3px 6px; height:auto;"> 초 · 기타 피해(장비 외): <input type="number" id="cons-other-dmg" min="0" step="1" value="${cons.otherDmg || 0}" style="width:90px; font-size:11px; padding:3px 6px; height:auto;"> <button id="cons-other-dmg-auto" style="background:#16a085; color:white; border:none; border-radius:4px; cursor:pointer; font-size:11px; padding:3px 8px;" title="덤프의 펫·탈것·패시브스킬·승천·기술트리로 장비 외 가산 피해를 자동 계산합니다.">🔄 덤프에서 자동계산</button> <span style="font-size:11px;">(DPS=(기타피해+장비⚔️합)×배율지수로 메인스탯까지 반영. 0이면 서브스탯 배율지수만 사용)</span><div id="other-dmg-detail" style="font-size:11px; margin-top:4px;"></div></div>`;
     const saveCons = () => {
       const lineMins = {};
       consHost.querySelectorAll('.cons-line-min-input').forEach(inp => {
@@ -19456,13 +19471,14 @@ function initOptimalStatsUI() {
         sumMin: Math.max(0, parseFloat($('#cons-sum-min').value) || 0),
         windup: Math.max(0.1, parseFloat($('#cons-windup').value) || 0.32),
         weapon: ($('#cons-weapon') && $('#cons-weapon').value === 'melee') ? 'melee' : 'ranged',
+        fairy: $('#cons-fairy') ? $('#cons-fairy').value : 'hp',
         otherDmg: Math.max(0, parseFloat($('#cons-other-dmg').value) || 0)
       };
       persist();
       refreshSwapPlanIfShown();
     };
     consHost.querySelectorAll('.cons-line-min-input, .cons-line-max-input').forEach(el => el.addEventListener('change', saveCons));
-    ['cons-sum-stat', 'cons-sum-min', 'cons-windup', 'cons-other-dmg', 'cons-weapon'].forEach(id => {
+    ['cons-sum-stat', 'cons-sum-min', 'cons-windup', 'cons-other-dmg', 'cons-weapon', 'cons-fairy'].forEach(id => {
       const el = $('#' + id);
       if (el) el.addEventListener('change', saveCons);
     });
@@ -19523,6 +19539,7 @@ function renderSwapRecommend() {
   // 대장간 결과 필터 통과분만 후보로 사용, 근거리 무기는 후보에서 제외
   const filterConfig = readFilters('Forge');
   const excludedWeapon = cons.weapon === 'melee' ? 'Ranged Weapon' : 'Melee Weapon';
+  PLAN_FAIRY = cons.fairy || 'hp'; // 체력 변환 페어리일 때만 체력 줄이 DPS 지수에 들어간다
   const pool = history.filter(item => item.Type !== excludedWeapon && filterItem(item, filterConfig, 'Forge'));
 
   // 플랜 표기용 남은망치 (현재 망치 수 입력 시 n번째 대신 표기)
@@ -19609,7 +19626,7 @@ function renderSwapRecommend() {
           if (!arr) { arr = []; next.set(k2, arr); }
           arr.push({
             A: e.A + opt.f.A, M: e.M + opt.f.M,
-            D: { crit: e.D.crit + opt.f.D.crit, chipi: e.D.chipi + opt.f.D.chipi, dbl: e.D.dbl + opt.f.D.dbl, asp: e.D.asp + opt.f.D.asp, dmg: e.D.dmg + opt.f.D.dmg, rng: (e.D.rng || 0) + (opt.f.D.rng || 0), skl: (e.D.skl || 0) + (opt.f.D.skl || 0) },
+            D: { crit: e.D.crit + opt.f.D.crit, chipi: e.D.chipi + opt.f.D.chipi, dbl: e.D.dbl + opt.f.D.dbl, asp: e.D.asp + opt.f.D.asp, dmg: e.D.dmg + opt.f.D.dmg, rng: (e.D.rng || 0) + (opt.f.D.rng || 0), hp: (e.D.hp || 0) + (opt.f.D.hp || 0), skl: (e.D.skl || 0) + (opt.f.D.skl || 0) },
             md: (e.md || 0) + (opt.f.md || 0),
             Lc: Lc2, picks: e.picks.concat([opt.r])
           });
@@ -19668,14 +19685,14 @@ function renderSwapRecommend() {
       return idx >= 0 ? idx : 0;
     });
     const evalSel = () => {
-      const D = { crit: pmF.D.crit, chipi: pmF.D.chipi, dbl: pmF.D.dbl, asp: pmF.D.asp, dmg: pmF.D.dmg, rng: pmF.D.rng || 0, skl: pmF.D.skl || 0 };
+      const D = { crit: pmF.D.crit, chipi: pmF.D.chipi, dbl: pmF.D.dbl, asp: pmF.D.asp, dmg: pmF.D.dmg, rng: pmF.D.rng || 0, hp: pmF.D.hp || 0, skl: pmF.D.skl || 0 };
       let A = pmF.A, M = pmF.M, used = 0, md = 0;
       const Lc = {};
       for (const s of lineStats) Lc[s] = pmF.Lc[s] || 0;
       for (let t = 0; t < 8; t++) {
         const o = optsBySlot[t][sel[t]];
         A += o.f.A; M += o.f.M; used += o.cost; md += o.f.md || 0;
-        D.crit += o.f.D.crit; D.chipi += o.f.D.chipi; D.dbl += o.f.D.dbl; D.asp += o.f.D.asp; D.dmg += o.f.D.dmg; D.rng += o.f.D.rng || 0; D.skl += o.f.D.skl || 0;
+        D.crit += o.f.D.crit; D.chipi += o.f.D.chipi; D.dbl += o.f.D.dbl; D.asp += o.f.D.asp; D.dmg += o.f.D.dmg; D.rng += o.f.D.rng || 0; D.hp += o.f.D.hp || 0; D.skl += o.f.D.skl || 0;
         for (const s of lineStats) Lc[s] += o.f.Lc[s] || 0;
       }
       if (used > nLimit) return null;
@@ -19843,7 +19860,7 @@ function renderSwapRecommend() {
     <div style="margin-bottom:8px; padding:8px 10px; background:${lineOk && sumOk ? 'rgba(46,204,113,0.12)' : 'rgba(243,156,18,0.12)'}; border:1px solid ${lineOk && sumOk ? '#2ecc71' : '#f39c12'}; border-radius:4px; font-size:13px;">
       <b>📌 ${lineStatusHtml}
       · ${SUBSTATS_KOR[cons.sumStat] || cons.sumStat} ${finalF.A.toFixed(2)}/${cons.sumMin}% ${sumOk ? '✅' : `⚠️ ${(cons.sumMin - finalF.A).toFixed(2)}%p 부족`}
-      · 🎯 총 치확 ${finalF.D.crit.toFixed(2)}% ${finalF.D.crit > CRIT_CAP ? `⚠️ 상한 ${CRIT_CAP}% 초과분 ${(finalF.D.crit - CRIT_CAP).toFixed(2)}%p 낭비` : `/ 상한 ${CRIT_CAP}%`} · 치피 ${finalF.D.chipi.toFixed(2)}%
+      · 🎯 총 치확 ${finalF.D.crit.toFixed(2)}% ${finalF.D.crit > CRIT_CAP ? `⚠️ 상한 ${CRIT_CAP}% 초과분 ${(finalF.D.crit - CRIT_CAP).toFixed(2)}%p 낭비` : `/ 상한 ${CRIT_CAP}%`} · 치피 ${finalF.D.chipi.toFixed(2)}%${PLAN_FAIRY === 'hp' ? ` · 🧚 체력 ${(finalF.D.hp || 0).toFixed(2)}% → 피해 +${hpConvBonus(finalF.D.hp)}% (${Math.floor((finalF.D.hp || 0) / HP_CONV_STEP)}계단${((finalF.D.hp || 0) % HP_CONV_STEP) > 0 ? `, 나머지 ${((finalF.D.hp || 0) % HP_CONV_STEP).toFixed(2)}%는 다음 계단 대기` : ''})` : ''}
       · ⚔️ DPS 지수 ${planDps >= 1000 ? formatGold(Math.round(planDps)) : planDps.toFixed(3)} <span style="color:${planDps >= curDps ? '#2ecc71' : '#e74c3c'};">(현 장착 ${curDps >= 1000 ? formatGold(Math.round(curDps)) : curDps.toFixed(3)} 대비 ${((planDps / curDps - 1) * 100).toFixed(1)}%)</span>${planMd > 0 ? ` <span style="color:#8b96a8; font-size:12px;">— 장비 ⚔️합 ${formatGold(Math.round(curMd))}→${formatGold(Math.round(planMd))} 반영</span>` : ''}</b>
       ${lineOk && sumOk ? '' : '<br><span style="color:#f39c12; font-size:12px;">조건 완전 충족이 불가능해 부족량이 최소인 근사 플랜입니다. 미래시 범위를 늘리거나 필터를 완화해보세요.</span>'}
       <br><span style="color:#8b96a8; font-size:12px;">장비 매칭: ${curCount}개 · ${curSum.toFixed(2)}% → ${newCount}개 · ${newSum.toFixed(2)}% (+${(newSum - curSum).toFixed(2)}%p) · 교체 ${swapCount}/${nLimit}개 · 펫/탈것 기여 포함 최종 매칭 합 ${finalF.M.toFixed(2)}%</span>
@@ -19862,7 +19879,7 @@ function renderSwapRecommend() {
 
   out.innerHTML = `
     <div class="card" style="margin:12px 0; padding:12px;">
-      <div style="font-weight:bold; color:#e67e22; margin-bottom:4px;">🔁 교체 플랜 — 고정 조건 + 전투시뮬 DPS 최적화 (${cons.weapon === 'melee' ? '근접 무기 기준 · 원거리 무기 제외' : '원거리 무기 기준 · 근접 무기 제외'}, 최대 ${nLimit}개 교체)</div>
+      <div style="font-weight:bold; color:#e67e22; margin-bottom:4px;">🔁 교체 플랜 — 고정 조건 + 전투시뮬 DPS 최적화 (${cons.weapon === 'melee' ? '근접 무기 기준 · 원거리 무기 제외' : '원거리 무기 기준 · 근접 무기 제외'} · 페어리 ${PLAN_FAIRY === 'hp' ? '체력 변환' : PLAN_FAIRY === 'five' ? '5타' : '스쿨'}, 최대 ${nLimit}개 교체)</div>
       <div style="color:#8b96a8; font-size:12px; margin-bottom:8px;">검색 범위: 필터 통과 ${pool.length}개 / 전체 히스토리 ${history.length}개 · 판정: ① 고정 조건 충족(부족 시 최소화) ② DPS 지수 최대 — 치확×치피 곱연산·더블 딜레이·공속 틱 양자화(윈드업 ${wu}s) 반영 (치확 상한 ${CRIT_CAP}%) (✓ = 최적 구성 포함 옵션)${odInfo ? ` · 기타피해 ${formatGold(Math.round(baseDmg))}${odInfo.skinN ? ` · 🎽 스킨 +${(odInfo.skinMult * 100).toFixed(1)}%(표시 전용)` : ''}` : ''}</div>
       ${consHtml}
       <div style="margin-bottom:8px;"><span style="font-size:12px; color:var(--muted); font-weight:bold;">구성 커버리지 (플랜 장비 + 장착 펫/탈것):</span><br>${coverageHtml}</div>
@@ -21042,6 +21059,7 @@ function panelHtml(p,title,cls,def){
   <div class="st" id="${p}st"></div><textarea id="${p}raw" placeholder="OCR 원본 — 수정하면 다시 파싱"></textarea></div>
   <div class="grid">
   <label><span class="k">무기</span><select id="${p}weapon"><option value="R">원거리 (사거리 7)</option><option value="M">근접 (사거리 0.3, 피해×1.6)</option></select></label>
+  <label><span class="k">페어리</span><select id="${p}fairy"><option value="hp">체력 변환 (체력% 10%당 피해 +15%)</option><option value="school">스쿨 (쿨감 4%당 받는 치피 −14%, 최대 70)</option><option value="five">5타마다 ×3.2</option><option value="none">없음</option></select></label>
   <label><span class="k">윈드업(초)</span><input type="number" id="${p}wu" step="0.001" value="${def.wu}"></label>
   <label><span class="k">투사체 속도(u/s, 0=즉시)</span><input type="number" id="${p}proj" value="${def.proj||0}"></label>
   <label><span class="k">이속 보너스 단위</span><select id="${p}msu" style="width:110px"><option value="abs">+값</option><option value="pct">+%</option></select></label>`;
@@ -21067,14 +21085,15 @@ function buildUnit(p,matchMult){
   const melee=$(p+'weapon').value==='M';
   const dmgRaw=gv(p+'dmg')*MULT[$(p+'dmgu').value], hpRaw=gv(p+'hp')*MULT[$(p+'hpu').value];
   const hpm=gv(p+'hpm'), dmgm=gv(p+'dmgm'), cd=gv(p+'cd');
-  const fairyHp=$('g-fairy-hp').checked? 15*Math.floor(Math.max(hpm,0)/10):0;
+  const fairy=$(p+'fairy')? $(p+'fairy').value:'hp';   // 유닛별 페어리: hp / school / five / none
+  const fairyHp=fairy==='hp'? 15*Math.floor(Math.max(hpm,0)/10):0;
   const dmgMult=1+(dmgm+fairyHp)/100;            // 공격력 풀 (피해% + 페어리 변환) — 입력 총피해에 이미 포함돼 있으면 피해%·체력%를 0으로
   const sep=1+gv(p+'sep')/100;                     // 원피/근피 별도 곱연산
-  const red=$('g-fairy-cd').checked? Math.min(14*Math.floor(Math.max(cd,0)/4),70)/100:0;
+  const red=fairy==='school'? Math.min(14*Math.floor(Math.max(cd,0)/4),70)/100:0;
   const msb=gv(p+'msb'); const baseMs=gv('g-ms',2);
   const ms=$(p+'msu').value==='pct'? baseMs*(1+msb/100): baseMs+msb;
   return {
-    name:p==='me-'?'나':'상대', melee, wu:gv(p+'wu',0.5),
+    name:p==='me-'?'나':'상대', melee, wu:gv(p+'wu',0.5), fairy, five:fairy==='five',
     dmg:dmgRaw*(melee?1.6:1)*dmgMult*sep, hp:hpRaw*matchMult,
     asp:gv(p+'asp'), cm:(gv(p+'chipi')+120)/100, crit:Math.min(gv(p+'crit'),100)/100,
     dbl:Math.min(gv(p+'dbl'),100)/100, ls:gv(p+'ls')/100, block:gv(p+'block')/100, red,
@@ -21092,14 +21111,15 @@ function rng32(seed){let a=seed|0;return function(){a|=0;a=a+0x6D2B79F5|0;let t=
 function newState(U,seed){
   return {U:U.map(u=>Object.assign({},u)), mh:[U[0].hp,U[1].hp], hp:[U[0].hp,U[1].hp],
     pos:[0,gv('g-spawn',18)], st:[0,0], tm:[0,0], du:[false,false], hits:[0,0], pending:[], t:0, r:rng32(seed),
-    log:[], over:null, R:gv('g-radius',0.35), N:Math.round(gv('g-timer',60)/TICK), gate:$('g-gate').checked, five:$('g-fairy-5').checked};
+    log:[], over:null, R:gv('g-radius',0.35), N:Math.round(gv('g-timer',60)/TICK), gate:$('g-gate').checked};
 }
 function step(S){
   if(S.over)return;
   const {U,hp,mh,pos,st,tm,du,hits,r,R}=S; const now=S.t*TICK;
+  const heal=[0,0]; // 흡혈은 틱 끝에 합산 적용 — 처리 순서에 따라 한쪽만 상한(만피)에 걸리는 편향 제거
   // 투사체 착탄
   const keep=[];
-  for(const p of S.pending){ if(p.lt<=now){hp[p.tg]-=p.d; if(p.d>0)hp[p.src]=Math.min(hp[p.src]+p.d*U[p.src].ls,mh[p.src]); S.log.push({t:now,i:p.src,d:p.d,kind:p.kind,x:pos[p.tg]});} else keep.push(p);}
+  for(const p of S.pending){ if(p.lt<=now){hp[p.tg]-=p.d; if(p.d>0)heal[p.src]+=p.d*U[p.src].ls; S.log.push({t:now,i:p.src,d:p.d,kind:p.kind,x:pos[p.tg]});} else keep.push(p);}
   S.pending=keep;
   let dist=Math.abs(pos[1]-pos[0]);
   let inr=[dist<U[0].rng+2*R, dist<U[1].rng+2*R];
@@ -21113,21 +21133,24 @@ function step(S){
     else if(st[i]===1){
       tm[i]+=TICK*asm[i];
       if(tm[i]>=u.wu){
-        hits[i]++; const five=(S.five&&hits[i]%5===0)?3.2:1;
+        hits[i]++; const five=(u.five&&hits[i]%5===0)?3.2:1;
         let d,kind='hit';
         if(r()<=U[j].block){d=0;kind='block';}
         else if(r()<u.crit){d=u.dmg*(1+(u.cm-1)*(1-U[j].red))*five;kind='crit';}
         else d=u.dmg*five;
         if(five>1)kind+='5';
         if(u.proj>0){S.pending.push({lt:now+dist/u.proj,tg:j,d,src:i,kind,x0:pos[i]});}
-        else{hp[j]-=d; if(d>0)hp[i]=Math.min(hp[i]+d*u.ls,mh[i]); S.log.push({t:now,i,d,kind,x:pos[j]});}
+        else{hp[j]-=d; if(d>0)heal[i]+=d*u.ls; S.log.push({t:now,i,d,kind,x:pos[j]});}
         st[i]=2;
         if(!du[i]&&r()<=u.dbl){du[i]=true;st[i]=1;tm[i]=u.wu*(1-1/DBLC);}
       }
     }else{ tm[i]+=TICK*asm[i]; if(tm[i]>=AD){st[i]=0;tm[i]=0;du[i]=false;} }
-    if(hp[j]<=0){S.over={w:i,ko:true,t:now};return;}
-    if(hp[i]<=0){S.over={w:j,ko:true,t:now};return;}
   }
+  for(let k=0;k<2;k++) if(heal[k]>0) hp[k]=Math.min(hp[k]+heal[k],mh[k]);
+  // 사망 판정은 양쪽이 이번 틱 행동을 모두 마친 뒤 — 처리 순서(나 먼저)에 따른 편향 제거. 같은 틱에 서로 죽이면 무승부.
+  if(hp[0]<=0&&hp[1]<=0){S.over={w:-1,ko:true,t:now};return;}
+  if(hp[1]<=0){S.over={w:0,ko:true,t:now};return;}
+  if(hp[0]<=0){S.over={w:1,ko:true,t:now};return;}
   S.t++;
   if(S.t>=S.N){const a=hp[0]/mh[0],b=hp[1]/mh[1];S.over={w:a>b?0:(b>a?1:-1),ko:false,t:now};}
 }
@@ -21179,6 +21202,15 @@ $('b-play').onclick=()=>{if(!S||S.over)reset();playing=!playing;$('b-play').text
 $('b-step').onclick=()=>{if(!S)reset();step(S);draw();};
 $('b-reset').onclick=reset;
 document.addEventListener('change',e=>{if(e.target.closest('.panel'))reset();});
+// ---------- 입력값 영속화 (localStorage) ----------
+const CS_KEY='combatsim_inputs_v1';
+function csInputs(){return [...document.querySelectorAll('#panel-combatsim input, #panel-combatsim select')].filter(el=>el.id&&el.type!=='file');}
+function csSave(){try{const o={};for(const el of csInputs()){o[el.id]=el.type==='checkbox'?el.checked:el.value;}localStorage.setItem(CS_KEY,JSON.stringify(o));}catch(e){}}
+function csLoad(){try{const o=JSON.parse(localStorage.getItem(CS_KEY)||'null');if(!o)return;for(const el of csInputs()){if(!(el.id in o))continue;if(el.type==='checkbox')el.checked=!!o[el.id];else el.value=o[el.id];}}catch(e){}}
+let csTimer=null;
+document.getElementById('panel-combatsim').addEventListener('input',()=>{clearTimeout(csTimer);csTimer=setTimeout(csSave,300);});
+document.getElementById('panel-combatsim').addEventListener('change',()=>{clearTimeout(csTimer);csSave();});
+csLoad();
 reset();requestAnimationFrame(ts=>{last=ts;loop(ts);});
 
 // ---------- 승률 ----------
