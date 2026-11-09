@@ -1010,7 +1010,7 @@ tbody tr:last-child td{border-bottom:0}
                         <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">평균 완성도(%):</span>
                         <input type="number" id="forge-min-perf" min="0" max="100" step="1" placeholder="0" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;" title="옵션 완성도 평균이 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
-                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="표준 일괄 적용 (무기 타입 따름). 원거리 = 체력 변환 페어리: 공속·생흡·더블·원피·체력 5종(최소 35/15/15/13/13), 줄 수 공속≥7 · 생흡≥4 · 더블 5 · 체력 6. 근접 = 5타 페어리: 공속·생흡·더블·근피 4종(최소 35/15/15/42), 줄 수 공속≥6 · 생흡≥4. 공통: AND, 완성도 85, 공속 합 조건 해제, 윈드업 0.32(원거리)/0.667(근접), 최적 옵션 구성도 같은 스탯으로 맞춤">🎯 표준 설정 (무기 타입 따름)</button>
+                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="표준 일괄 적용 (무기 타입 따름) — 페어리 5타. 근접 = 공속·생흡·더블·근피 4종(최소 35/15/15/42), 원거리 = 공속·생흡·더블·원피 4종(최소 35/15/15/13). 공통: 줄 수 공속≥7(윈드업 0.32가 한 틱에 끝나는 공속 220을 롤 90%에서도 넘기기 위함) · 생흡≥4 · 더블 5(100%), AND, 완성도 85, 공속 합 조건 해제, 윈드업 0.32(클로버 스킨, 근접·원거리 동일), 최적 옵션 구성도 같은 4종으로 맞춤">🎯 표준 설정 (무기 타입 따름)</button>
                     <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
@@ -18933,23 +18933,20 @@ function initFilters() {
   const stdBtn = $('#forge-filter-standard');
   if (stdBtn) {
     stdBtn.addEventListener('click', () => {
-      // 표준 (결투 시뮬 총당전으로 확정, 2026-11)
-      //  - 원거리 = 체력 변환 페어리. 24줄(장비16+펫6+탈것2) 최적: 공속 7 · 생흡 4 · 더블 5 · 원피 2 · 체력 6 (롤 90% 기준).
-      //    규칙: 공속 ≥ 220(윈드업 0.32가 한 틱) → 롤 90%면 7줄(252) 필요 · 더블 100%까지 · 체력은 짝수 줄(15%×2=30%=3계단), 6줄이 효율 최고
-      //    · 생흡 4줄(양쪽 생흡 80% 환경에선 HP보다 DPS·생흡이 승부를 가름) · 원피는 남는 줄에.
-      //  - 근접 = 5타 페어리 + 근피(50%/줄). 크리는 섞어도 이득이 거의 없고 스쿨 상대에 손해 → 근피만. 공속 6 · 생흡 4.
-      // 스킬피해(변환 없어짐)·블록·체력재생·쿨감·치확·치피는 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
+      // 표준 (결투 시뮬 총당전으로 확정, 2026-11-10) — 페어리 5타 + 피해 줄 몰빵.
+      //  바탕 체력이 피해의 4배를 넘으면(결투장 배수까지 곱하면 수십 배) 전투가 길어져 양쪽 생흡이 HP를 상쇄하고,
+      //  그때는 HP·체력 변환의 가치가 사라져 줄당 피해 효율(근피 50 > 원피 15 > 체력 변환)과 5타(평균 ×1.44)만 남는다.
+      //  - 근접(기본) = 5타 + 근피 / 원거리 = 5타 + 원피. 윈드업은 둘 다 0.32(클로버 스킨 무기).
+      //    윈드업 0.32가 한 틱에 끝나려면 공속 ≥ 220 → 롤 100%면 6줄(240), 롤 90%면 7줄(252). 생흡 4 · 더블 5(100%).
+      //  크리는 치확 줄(12%/줄)로 상한을 못 채워 손해, 체력 변환은 비율이 3 아래인 짧은 전투에서만 유효 → 둘 다 표준에서 제외.
+      //  스킬피해(변환 없어짐)·블록·체력재생·쿨감·치확·치피·체력은 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
       const wpEl = $('#cons-weapon');
       const melee = !!(wpEl && wpEl.value === 'melee');
       const DMG = melee ? 'Melee Damage' : 'Ranged Damage';
-      const MINS = melee
-        ? { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, [DMG]: 42 }
-        : { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, [DMG]: 13, 'Health': 13 };
-      const LINE_MINS = melee
-        ? { 'Attack Speed': 6, 'Life Steal': 4 }
-        : { 'Attack Speed': 7, 'Life Steal': 4, 'Double Chance': 5, 'Health': 6 };
-      const LINE_MAXS = melee ? {} : { 'Double Chance': 5, 'Health': 6 };
-      const fairyEl = $('#cons-fairy'); if (fairyEl) fairyEl.value = melee ? 'five' : 'hp';
+      const MINS = { 'Attack Speed': 35, 'Life Steal': 15, 'Double Chance': 15, [DMG]: melee ? 42 : 13 };
+      const LINE_MINS = { 'Attack Speed': 7, 'Life Steal': 4, 'Double Chance': 5 };
+      const LINE_MAXS = { 'Double Chance': 5 };
+      const fairyEl = $('#cons-fairy'); if (fairyEl) fairyEl.value = 'five';
       const grid = $('#forge-filter-grid');
       if (grid) {
         grid.querySelectorAll('.filter-inc').forEach(cb => { cb.checked = cb.dataset.stat in MINS; });
@@ -18974,11 +18971,11 @@ function initFilters() {
       $$('.cons-line-min-input').forEach(inp => { inp.value = LINE_MINS[inp.dataset.stat] || 0; });
       $$('.cons-line-max-input').forEach(inp => { inp.value = LINE_MAXS[inp.dataset.stat] || 0; });
       const sumMinEl = $('#cons-sum-min'); if (sumMinEl) sumMinEl.value = '0';
-      const wuEl = $('#cons-windup'); if (wuEl) { wuEl.value = melee ? '0.667' : '0.32'; wuEl.dispatchEvent(new Event('change')); }
+      const wuEl = $('#cons-windup'); if (wuEl) { wuEl.value = '0.32'; wuEl.dispatchEvent(new Event('change')); } // 클로버 스킨 무기: 근접·원거리 모두 0.32
       saveFilterSettings();
       applyFilterAndRender('Forge');
       refreshSwapPlanIfShown(); // 표준 필터로 좁힌 풀로 교체 플랜도 즉시 재계산
-      stdBtn.textContent = melee ? '✅ 적용됨 (5타 근접)' : '✅ 적용됨 (체력 변환 원거리)';
+      stdBtn.textContent = melee ? '✅ 적용됨 (5타 근접 · 근피)' : '✅ 적용됨 (5타 원거리 · 원피)';
       setTimeout(() => { stdBtn.textContent = '🎯 표준 설정 (무기 타입 따름)'; }, 2000);
     });
   }
@@ -19304,8 +19301,8 @@ const SWAP_CONSTRAINT_DEFAULTS = {
   lineMaxs: {},                              // 고정 1: 옵션별 최대 줄 수 — {스탯명: 최대줄수}. 초과분은 부족량과 동일하게 페널티로 최소화
   sumStat: 'Attack Speed', sumMin: 152.5,    // 고정 2: 이 스탯 값 합 최소 % — 152 = wu 0.32(기본무기) 더블 8틱 경계 + 마진 0.5
   windup: 0.32,                              // 기본 무기 윈드업(초) — DPS 지수의 더블 딜레이 계산에 사용
-  weapon: 'ranged',                          // 무기 타입: 'ranged'(원거리 — 원피가 곱연산 풀, 근접 무기 후보 제외) / 'melee'(근접 — 근피가 곱연산 풀, 원거리 무기 후보 제외)
-  fairy: 'hp',                               // 페어리: 'hp'(체력 변환 — 체력% 10%마다 피해 +15%) / 'five'(5타) / 'school'(치피 감소) — hp만 DPS 지수에 영향
+  weapon: 'melee',                           // 무기 타입: 'melee'(근접 — 근피가 곱연산 풀, 원거리 무기 후보 제외) / 'ranged'(원거리 — 원피가 곱연산 풀, 근접 무기 후보 제외)
+  fairy: 'five',                             // 페어리: 'five'(5타) / 'hp'(체력 변환 — 체력% 10%마다 피해 +15%) / 'school'(치피 감소) — hp만 DPS 지수에 영향
   otherDmg: 0                                // 장비 메인스탯 외 기타 피해 — 0이면 총피해 ≈ 장비 ⚔️합 가정(후반 정확)
 };
 
@@ -21074,7 +21071,7 @@ function panelHtml(p,title,cls,def){
 }
 document.getElementById('panels').innerHTML=
   panelHtml('me-','나','me',{wu:0.32,proj:25,dmg:'',hp:''})+
-  panelHtml('foe-','상대','foe',{wu:0.667,proj:0,dmg:'',hp:''});
+  panelHtml('foe-','상대','foe',{wu:0.32,proj:0,dmg:'',hp:''});
 document.getElementById('foe-weapon').value='M';
 const $=id=>document.getElementById(id);
 const gv=(id,d=0)=>{const e=$(id);if(!e)return d;const v=parseFloat(e.value);return isFinite(v)?v:d;};
