@@ -1010,7 +1010,7 @@ tbody tr:last-child td{border-bottom:0}
                         <span style="font-size: 12px; color: var(--muted); margin-left: 8px;">평균 완성도(%):</span>
                         <input type="number" id="forge-min-perf" min="0" max="100" step="1" placeholder="0" style="width: 60px; font-size: 11px; padding: 3px 6px; height: auto;" title="옵션 완성도 평균이 이 값 이상인 결과만 표시/추천 대상이 됩니다.">
                     </div>
-                    <button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="표준 일괄 적용 (무기 타입 따름) — 페어리 5타. 근접 = 공속·생흡·더블·근피 4종(최소 32/15/15/42), 원거리 = 공속·생흡·더블·원피 4종(최소 32/15/15/13). 공통: 공속 합 ≥ 220(윈드업 0.32 한 틱 경계 — 37 이상 6줄이면 6줄, 아니면 7줄로 플랜이 채움) · 줄 수 생흡≥4 · 더블 5(100%), AND, 완성도 85, 윈드업 0.32(클로버 스킨, 근접·원거리 동일), 최적 옵션 구성도 같은 4종으로 맞춤">🎯 표준 설정 (무기 타입 따름)</button>
+                    <select id="forge-standard-preset" style="font-size: 11px; padding: 3px 6px; height: auto; margin-right: 4px;" title="표준 프리셋 선택 — 아래 표준 설정 버튼을 누르면 이 구성이 필터·고정 조건·최적 옵션에 한 번에 들어갑니다."><option value="melee-five">근접 5타 (근피)</option><option value="ranged-five">원거리 5타 (원피)</option><option value="ranged-hp">원거리 체력 변환</option><option value="melee-hp">근접 체력 변환</option></select><button id="forge-filter-standard" style="font-size: 11px; padding: 4px 8px; background: #e67e22; border-color: #ca6f1e; color: white; font-weight: bold; margin-right: 6px;" title="선택한 프리셋을 일괄 적용. 공통: 공속 줄 최소 32 + 공속 합 ≥ 220(37 이상 6줄이면 6줄, 아니면 7줄), 생흡 ≥ 4줄, 더블 5줄(100%), 생흡·더블 최소 15, 근피 최소 42 / 원피 최소 13, 체력 변환 프리셋은 체력 6줄(최소 13), AND, 완성도 85, 윈드업 0.32, 최적 옵션 구성도 같은 스탯으로 맞춤">🎯 표준 설정 적용</button>
                     <button id="forge-filter-apply" style="font-size: 11px; padding: 4px 8px; background: #27ae60; border-color: #1e8449; color: white; font-weight: bold; margin-right: 6px;">필터 적용</button>
                     <button id="forge-filter-clear" style="font-size: 11px; padding: 4px 8px; background: #e74c3c; border-color: #c0392b; color: white;">필터 초기화</button>
                 </div>
@@ -18932,53 +18932,62 @@ function initFilters() {
   // 🎯 표준 설정: 확정 필터+조건 일괄 적용 (교체 플랜 표준 워크플로)
   const stdBtn = $('#forge-filter-standard');
   if (stdBtn) {
+    // === 🎯 표준 프리셋 (버튼 옆 드롭다운에서 직접 선택) ===
+    // 공통: AND, 완성도 85, 공속 줄 최소 32 + 공속 합 ≥ 220(윈드업 0.32 한 틱 경계 — 37 이상 6줄이면 6줄, 아니면 7줄로 플랜이 채움),
+    //       생흡 ≥ 4줄, 더블 5줄(100%), 윈드업 0.32(클로버 스킨, 근접·원거리 동일). 최적 옵션 구성도 같은 스탯으로 맞춘다.
+    // 5타 프리셋: 피해 줄(근피/원피) 몰빵 — 바탕 체력이 피해의 4배 이상인 긴 전투에서 최선 (결투 시뮬 총당전, 2026-11-10).
+    // 체력 변환 프리셋: 체력 6줄(짝수 줄, 10% 계단) — 비율이 3 아래인 짧은 전투에서만 유효.
+    const STANDARD_PRESETS = {
+      'melee-five':  { label: '근접 5타 (근피)',        weapon: 'melee',  fairy: 'five', dmgStat: 'Melee Damage',  dmgMin: 42, hp: false },
+      'ranged-five': { label: '원거리 5타 (원피)',      weapon: 'ranged', fairy: 'five', dmgStat: 'Ranged Damage', dmgMin: 13, hp: false },
+      'ranged-hp':   { label: '원거리 체력 변환 (원피+체력)', weapon: 'ranged', fairy: 'hp',  dmgStat: 'Ranged Damage', dmgMin: 13, hp: true },
+      'melee-hp':    { label: '근접 체력 변환 (근피+체력)',   weapon: 'melee',  fairy: 'hp',  dmgStat: 'Melee Damage',  dmgMin: 42, hp: true },
+    };
+    const presetSel = $('#forge-standard-preset');
+    if (presetSel) {
+      if (state.standardPreset && STANDARD_PRESETS[state.standardPreset]) presetSel.value = state.standardPreset;
+      presetSel.addEventListener('change', () => { state.standardPreset = presetSel.value; persist(); });
+    }
     stdBtn.addEventListener('click', () => {
-      // 표준 (결투 시뮬 총당전으로 확정, 2026-11-10) — 페어리 5타 + 피해 줄 몰빵.
-      //  바탕 체력이 피해의 4배를 넘으면(결투장 배수까지 곱하면 수십 배) 전투가 길어져 양쪽 생흡이 HP를 상쇄하고,
-      //  그때는 HP·체력 변환의 가치가 사라져 줄당 피해 효율(근피 50 > 원피 15 > 체력 변환)과 5타(평균 ×1.44)만 남는다.
-      //  - 근접(기본) = 5타 + 근피 / 원거리 = 5타 + 원피. 윈드업은 둘 다 0.32(클로버 스킨 무기).
-      //    윈드업 0.32가 한 틱에 끝나려면 공속 합 ≥ 220. 줄 수를 고정하지 않고 '공속 합 ≥ 220'을 고정 조건 2로 걸어,
-      //    37 이상 6줄이 모이면 6줄로, 아니면 7줄로 플랜이 알아서 채운다(공속 줄 최소 수치는 32). 생흡 4 · 더블 5(100%).
-      //  크리는 치확 줄(12%/줄)로 상한을 못 채워 손해, 체력 변환은 비율이 3 아래인 짧은 전투에서만 유효 → 둘 다 표준에서 제외.
-      //  스킬피해(변환 없어짐)·블록·체력재생·쿨감·치확·치피·체력은 포함 스탯에서 뺀다 (AND 모드라 섞이면 탈락).
-      const wpEl = $('#cons-weapon');
-      const melee = !!(wpEl && wpEl.value === 'melee');
-      const DMG = melee ? 'Melee Damage' : 'Ranged Damage';
-      const MINS = { 'Attack Speed': 32, 'Life Steal': 15, 'Double Chance': 15, [DMG]: melee ? 42 : 13 };
+      const key = (presetSel && STANDARD_PRESETS[presetSel.value]) ? presetSel.value : 'melee-five';
+      const P = STANDARD_PRESETS[key];
+      state.standardPreset = key;
+      const MINS = { 'Attack Speed': 32, 'Life Steal': 15, 'Double Chance': 15, [P.dmgStat]: P.dmgMin };
+      if (P.hp) MINS['Health'] = 13;
       const LINE_MINS = { 'Life Steal': 4, 'Double Chance': 5 };
       const LINE_MAXS = { 'Double Chance': 5 };
-      const fairyEl = $('#cons-fairy'); if (fairyEl) fairyEl.value = 'five';
+      if (P.hp) { LINE_MINS['Health'] = 6; LINE_MAXS['Health'] = 6; }
+      // 필터
       const grid = $('#forge-filter-grid');
       if (grid) {
         grid.querySelectorAll('.filter-inc').forEach(cb => { cb.checked = cb.dataset.stat in MINS; });
         grid.querySelectorAll('.filter-exc').forEach(cb => { cb.checked = false; });
-        grid.querySelectorAll('.filter-min').forEach(inp => {
-          inp.value = MINS[inp.dataset.stat] !== undefined ? MINS[inp.dataset.stat] : '';
-        });
+        grid.querySelectorAll('.filter-min').forEach(inp => { inp.value = MINS[inp.dataset.stat] !== undefined ? MINS[inp.dataset.stat] : ''; });
       }
-      const andRadio = $('#forge-match-and');
-      if (andRadio) andRadio.checked = true;
+      const andRadio = $('#forge-match-and'); if (andRadio) andRadio.checked = true;
       const tierEl = $('#forge-min-tier'); if (tierEl) tierEl.value = '0';
       const totalEl = $('#forge-min-total'); if (totalEl) totalEl.value = '';
       const perfEl = $('#forge-min-perf'); if (perfEl) perfEl.value = '85';
-      $$('.forge-exc-type').forEach(cb => { cb.checked = cb.value === (melee ? 'Ranged Weapon' : 'Melee Weapon'); });
-      // 최적 옵션 구성(DPS 목적함수에 들어가는 스탯)도 같은 스탯으로 맞춘다 — 안 맞추면 그 줄이 DPS 계산에서 빠진다
+      $$('.forge-exc-type').forEach(cb => { cb.checked = cb.value === (P.weapon === 'melee' ? 'Ranged Weapon' : 'Melee Weapon'); });
+      // 최적 옵션 구성 (DPS 목적함수에 들어가는 스탯) — 안 맞추면 그 줄이 DPS 계산에서 빠진다
       const optHost = $('#optimal-stats-host');
       if (optHost) {
         optHost.querySelectorAll('.optimal-stat-cb').forEach(cb => { cb.checked = cb.value in MINS; });
         state.optimalStats = Object.keys(MINS);
       }
-      // 고정 조건: 줄 수 조건으로 코어를 강제, 공속 합 조건은 해제, 윈드업은 무기 타입 기본값
+      // 고정 조건
       $$('.cons-line-min-input').forEach(inp => { inp.value = LINE_MINS[inp.dataset.stat] || 0; });
       $$('.cons-line-max-input').forEach(inp => { inp.value = LINE_MAXS[inp.dataset.stat] || 0; });
       const sumStatEl = $('#cons-sum-stat'); if (sumStatEl) sumStatEl.value = 'Attack Speed';
-      const sumMinEl = $('#cons-sum-min'); if (sumMinEl) sumMinEl.value = '220'; // 윈드업 0.32 한 틱 경계 — 줄 수 대신 합으로 강제
-      const wuEl = $('#cons-windup'); if (wuEl) { wuEl.value = '0.32'; wuEl.dispatchEvent(new Event('change')); } // 클로버 스킨 무기: 근접·원거리 모두 0.32
+      const sumMinEl = $('#cons-sum-min'); if (sumMinEl) sumMinEl.value = '220';
+      const wpEl = $('#cons-weapon'); if (wpEl) wpEl.value = P.weapon;
+      const fairyEl = $('#cons-fairy'); if (fairyEl) fairyEl.value = P.fairy;
+      const wuEl = $('#cons-windup'); if (wuEl) { wuEl.value = '0.32'; wuEl.dispatchEvent(new Event('change')); } // change → saveCons(무기·페어리·합 저장) + 플랜 재계산
       saveFilterSettings();
       applyFilterAndRender('Forge');
-      refreshSwapPlanIfShown(); // 표준 필터로 좁힌 풀로 교체 플랜도 즉시 재계산
-      stdBtn.textContent = melee ? '✅ 적용됨 (5타 근접 · 근피)' : '✅ 적용됨 (5타 원거리 · 원피)';
-      setTimeout(() => { stdBtn.textContent = '🎯 표준 설정 (무기 타입 따름)'; }, 2000);
+      refreshSwapPlanIfShown();
+      stdBtn.textContent = `✅ 적용됨: ${P.label}`;
+      setTimeout(() => { stdBtn.textContent = '🎯 표준 설정 적용'; }, 2000);
     });
   }
 }
