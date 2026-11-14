@@ -846,8 +846,8 @@ tbody tr:last-child td{border-bottom:0}
       <div class="hint" style="line-height:1.8">
         틱 0.1초 · 공격 사이클 1.5초 · 더블 = 윈드업 재진입(타이머 = 윈드업×0.75, 2타는 윈드업/4 뒤) · 스폰 (0,0) vs (18,0) · 유닛 반지름 0.35 · 기본 이동속도 2.0<br>
         사거리 판정: <code>거리 &lt; 내사거리 + 내반지름 + 상대반지름</code> · 무기 사거리: 근접 0.3 / 원거리 7.0 · 사거리·이동속도 보너스는 가산<br>
-        평타: 크리롤 &lt; 치확 → 피해×(치피+120)/100 · 흡혈 = 실제피해×생흡 · 근접 메인피해 ×1.6 · 원피/근피는 별도 곱연산 풀<br>
-        페어리(나/상대 각각 선택): 체력 변환 = 체력% 10%마다 피해 +15%p(공격력 풀 가산, 계단식) · 스쿨 = 쿨감 4%p마다 받는 치명타 보너스 −14%(상한 70%) · 5타 = 5번째 타격마다 ×3.2 (더블 타격도 횟수에 포함)<br>
+        평타: 크리롤 &lt; 치확 → 피해×(치피+120)/100 · 흡혈 = 실제피해×생흡 · 총피해·총체력은 프로필 합산값 그대로 사용(근접 1.6, 피해%, 체력%, 원피/근피는 이미 포함)<br>
+        페어리(나/상대 각각 선택): 체력 변환 = 프로필 총피해에 이미 포함돼 시뮬에서는 추가 효과 없음 · 스쿨 = 쿨감 4%p마다 받는 치명타 보너스 −14%(상한 70%) · 5타 = 5번째 타격마다 ×3.2 (더블 타격도 횟수에 포함)<br>
         결투장 HP = 총체력 × (1 + 0.5×펫수 + 0.5×스킬수 + 2×탈것) — 양쪽 중 큰 배수 공통 적용
       </div>
     </details>
@@ -21060,7 +21060,7 @@ const FIELDS=[
   ['dmg','총 피해(공격력)','num2'],['hp','총 체력','num2'],
   ['pets','펫 수(HP배수)','n',3],['skills','스킬 수(HP배수)','n',3],['mount','탈것(1/0)','n',1],
   ['crit','치명타 확률 %','n',0],['chipi','치명타 피해 %','n',0],['dbl','더블 찬스 %','n',0],['asp','공격 속도 %','n',0],
-  ['ls','생명력 흡수 %','n',0],['hpm','체력 % (전체 배율)','n',0],['dmgm','피해 %','n',0],['sep','원피/근피 %','n',0],
+  ['ls','생명력 흡수 %','n',0],
   ['cd','스킬 쿨감 %','n',0],['block','블록 %','n',0],
   ['range','사거리 보너스(+)','n',0],['msb','이동속도 보너스','n',0],
 ];
@@ -21071,8 +21071,8 @@ function panelHtml(p,title,cls,def){
   <div class="ocr"><div class="bar" style="margin:0 0 4px"><input type="file" id="${p}file" accept="image/*" style="font-size:11px"><button id="${p}paste" style="padding:3px 8px;font-size:11px">클립보드 붙여넣기</button></div>
   <div class="st" id="${p}st"></div><textarea id="${p}raw" placeholder="OCR 원본 — 수정하면 다시 파싱"></textarea></div>
   <div class="grid">
-  <label><span class="k">무기</span><select id="${p}weapon"><option value="R">원거리 (사거리 7)</option><option value="M">근접 (사거리 0.3, 피해×1.6)</option></select></label>
-  <label><span class="k">페어리</span><select id="${p}fairy"><option value="hp">체력 변환 (체력% 10%당 피해 +15%)</option><option value="school">스쿨 (쿨감 4%당 받는 치피 −14%, 최대 70)</option><option value="five">5타마다 ×3.2</option><option value="none">없음</option></select></label>
+  <label><span class="k">무기</span><select id="${p}weapon"><option value="R">원거리 (사거리 7)</option><option value="M">근접 (사거리 0.3)</option></select></label>
+  <label><span class="k">페어리</span><select id="${p}fairy"><option value="hp">체력 변환 (총피해에 포함, 효과 없음)</option><option value="school">스쿨 (쿨감 4%당 받는 치피 −14%, 최대 70)</option><option value="five">5타마다 ×3.2</option><option value="none">없음</option></select></label>
   <label><span class="k">윈드업(초)</span><input type="number" id="${p}wu" step="0.001" value="${def.wu}"></label>
   <label><span class="k">투사체 속도(u/s, 0=즉시)</span><input type="number" id="${p}proj" value="${def.proj||0}"></label>
   <label><span class="k">이속 보너스 단위</span><select id="${p}msu" style="width:110px"><option value="abs">+값</option><option value="pct">+%</option></select></label>`;
@@ -21097,17 +21097,15 @@ function pvpMult(p){return 1+0.5*gv(p+'pets')+0.5*gv(p+'skills')+2*(gv(p+'mount'
 function buildUnit(p,matchMult){
   const melee=$(p+'weapon').value==='M';
   const dmgRaw=gv(p+'dmg')*MULT[$(p+'dmgu').value], hpRaw=gv(p+'hp')*MULT[$(p+'hpu').value];
-  const hpm=gv(p+'hpm'), dmgm=gv(p+'dmgm'), cd=gv(p+'cd');
+  const cd=gv(p+'cd');
   const fairy=$(p+'fairy')? $(p+'fairy').value:'hp';   // 유닛별 페어리: hp / school / five / none
-  const fairyHp=fairy==='hp'? 15*Math.floor(Math.max(hpm,0)/10):0;
-  const dmgMult=1+(dmgm+fairyHp)/100;            // 공격력 풀 (피해% + 페어리 변환) — 입력 총피해에 이미 포함돼 있으면 피해%·체력%를 0으로
-  const sep=1+gv(p+'sep')/100;                     // 원피/근피 별도 곱연산
+  // 총피해·총체력은 프로필 합산값 그대로 사용 — 근접 1.6, 피해%, 체력%(체력 변환), 원피/근피는 이미 포함돼 있어 다시 곱하지 않는다
   const red=fairy==='school'? Math.min(14*Math.floor(Math.max(cd,0)/4),70)/100:0;
   const msb=gv(p+'msb'); const baseMs=gv('g-ms',2);
   const ms=$(p+'msu').value==='pct'? baseMs*(1+msb/100): baseMs+msb;
   return {
     name:p==='me-'?'나':'상대', melee, wu:gv(p+'wu',0.5), fairy, five:fairy==='five',
-    dmg:dmgRaw*(melee?1.6:1)*dmgMult*sep, hp:hpRaw*matchMult,
+    dmg:dmgRaw, hp:hpRaw*matchMult,
     asp:gv(p+'asp'), cm:(gv(p+'chipi')+120)/100, crit:Math.min(gv(p+'crit'),100)/100,
     dbl:Math.min(gv(p+'dbl'),100)/100, ls:gv(p+'ls')/100, block:gv(p+'block')/100, red,
     rng:(melee?0.3:7.0)+gv(p+'range'), ms, proj:(!melee&&gv(p+'proj')>0)?gv(p+'proj'):0,
@@ -21271,7 +21269,7 @@ function ocrFill(text,p){
       const m=segs[i].trim().match(/^(\d+(?:[.,]\d+)?)\s*%?\s*(\S.*?)\s*$/);if(!m)continue;
       const num=parseFloat(m[1].replace(',','.'));if(!isFinite(num))continue;
       const tail=m[2].replace(/\s+/g,'');let key=null;
-      if(/(원거리|근접|근거리)피해/.test(tail)) key='sep';
+      if(/(원거리|근접|근거리)피해/.test(tail)) key=null; // 총피해에 포함
       else if(/스킬.*(쿨|재사용)/.test(tail)) key='cd';
       else if(/스킬피해/.test(tail)) key=null;
       else if(/블록/.test(tail)) key='block';
@@ -21281,9 +21279,9 @@ function ocrFill(text,p){
       else if(/공격속도|속도$/.test(tail)&&!/이동/.test(tail)) key='asp';
       else if(/이동속도/.test(tail)) key='msb';
       else if(/사거리|공격범위|범위/.test(tail)) key='range';
-      else if(/^체력/.test(tail)) key='hpm';
+      else if(/^체력/.test(tail)) key=null; // 총체력에 포함
       else if(/치명타피해|치명피해/.test(tail)) key='chipi';
-      else if(/^피해$|^공격력$/.test(tail)) key='dmgm';
+      else if(/^피해$|^공격력$/.test(tail)) key=null; // 총피해에 포함
       if(key&&!got[key]){$(p+key).value=num;got[key]=1;}
     }
   }
